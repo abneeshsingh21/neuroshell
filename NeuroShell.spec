@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['desktop_app.py'],
+    ['C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\desktop_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets')],
+    datas=[('C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\assets', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\assets\\icon.ico'],
 )

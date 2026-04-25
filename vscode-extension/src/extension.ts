@@ -37,10 +37,12 @@ async function checkAndInstallEngine(): Promise<void> {
     // Check standard installation paths (Local AppData or Program Files)
     const localAppDataPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell', 'NeuroShell.exe');
     const programFilesPath = path.join(process.env.ProgramFiles || '', 'NeuroShell', 'NeuroShell.exe');
+    const programFilesX86Path = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell', 'NeuroShell.exe');
     
     let foundPath = '';
     if (fs.existsSync(localAppDataPath)) foundPath = localAppDataPath;
     else if (fs.existsSync(programFilesPath)) foundPath = programFilesPath;
+    else if (fs.existsSync(programFilesX86Path)) foundPath = programFilesX86Path;
 
     if (foundPath) {
         vscode.workspace.getConfiguration('neuroshell').update('executablePath', foundPath, vscode.ConfigurationTarget.Global);
@@ -115,11 +117,14 @@ async function downloadAndInstallMSI() {
                     
                     const localPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell', 'NeuroShell.exe');
                     const progPath = path.join(process.env.ProgramFiles || '', 'NeuroShell', 'NeuroShell.exe');
+                    const progX86Path = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell', 'NeuroShell.exe');
                     
                     if (fs.existsSync(localPath)) {
                         vscode.workspace.getConfiguration('neuroshell').update('executablePath', localPath, vscode.ConfigurationTarget.Global);
                     } else if (fs.existsSync(progPath)) {
                         vscode.workspace.getConfiguration('neuroshell').update('executablePath', progPath, vscode.ConfigurationTarget.Global);
+                    } else if (fs.existsSync(progX86Path)) {
+                        vscode.workspace.getConfiguration('neuroshell').update('executablePath', progX86Path, vscode.ConfigurationTarget.Global);
                     }
                     
                     injectNeuroShellProfile();

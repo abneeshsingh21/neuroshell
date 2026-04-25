@@ -2,7 +2,7 @@
   "name": "neuroshell-vscode",
   "displayName": "NeuroShell Integration",
   "description": "Seamlessly injects NeuroShell as the default integrated AI terminal in VS Code and Antigravity IDE.",
-  "version": "5.0.2",
+  "version": "5.0.3",
   "publisher": "epl-lang",
   "engines": {
     "vscode": "^1.80.0"
