@@ -1,0 +1,109 @@
+NeuroShell — Proprietary Software License Agreement (EULA)
+==========================================================
+Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+
+IMPORTANT — READ CAREFULLY BEFORE USING THIS SOFTWARE.
+
+By downloading, installing, copying, or otherwise using NeuroShell
+(the "Software"), you agree to be bound by the terms of this End-User
+License Agreement ("Agreement"). If you do not agree, do not use the
+Software.
+
+1. GRANT OF LICENSE
+   Subject to the terms of this Agreement, the copyright holder grants
+   you a limited, non-exclusive, non-transferable, revocable license to
+   use the Software solely for your personal or internal business purposes
+   on devices you own or control.
+
+2. RESTRICTIONS
+   You shall NOT, directly or indirectly:
+   (a) Copy, reproduce, distribute, sublicense, lease, rent, sell, or
+       otherwise transfer the Software or any portion thereof to any
+       third party;
+   (b) Modify, adapt, translate, or create derivative works based on
+       the Software;
+   (c) Reverse engineer, disassemble, decompile, or attempt to derive
+       the source code, algorithms, data structures, or underlying
+       ideas of the Software;
+   (d) Remove, alter, or obscure any copyright, trademark, or
+       proprietary notices contained in or on the Software;
+   (e) Use the Software to build a competing product or service;
+   (f) Publish benchmarks, performance data, or security audits of the
+       Software without prior written consent;
+   (g) Use the Software in violation of any applicable law, regulation,
+       or third-party right.
+
+3. INTELLECTUAL PROPERTY
+   The Software, including all source code, object code, binaries,
+   documentation, graphics, design, and trade dress, is and shall remain
+   the exclusive property of Abneesh Singh. This Agreement does not
+   convey any ownership interest in or to the Software. All rights not
+   expressly granted herein are reserved.
+
+4. THIRD-PARTY COMPONENTS
+   The Software may include open-source libraries distributed under their
+   own licenses (e.g., MIT, Apache 2.0). Such components remain subject
+   to their respective licenses. A list of third-party components and
+   their licenses is available in the documentation.
+
+5. CONFIDENTIALITY
+   You acknowledge that the Software contains valuable trade secrets and
+   proprietary information. You agree to maintain the confidentiality of
+   the Software and not disclose its non-public aspects to any third
+   party without prior written consent.
+
+6. DATA COLLECTION & PRIVACY
+   (a) By default, NeuroShell does NOT collect, transmit, or store any
+       user data, telemetry, or usage analytics.
+   (b) If you opt in to optional crash reporting or cloud sync features,
+       only anonymized diagnostic data will be transmitted, and you may
+       opt out at any time.
+   (c) All local data (command history, configuration, learning data) is
+       stored exclusively on your local machine and is never shared.
+
+7. WARRANTY DISCLAIMER
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+   NON-INFRINGEMENT. THE COPYRIGHT HOLDER DOES NOT WARRANT THAT THE
+   SOFTWARE WILL BE ERROR-FREE, UNINTERRUPTED, OR FREE OF HARMFUL
+   COMPONENTS.
+
+8. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY INDIRECT,
+   INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES,
+   INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, BUSINESS
+   OPPORTUNITIES, OR GOODWILL, ARISING OUT OF OR IN CONNECTION WITH
+   THIS AGREEMENT OR THE USE OF THE SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGES.
+
+   THE COPYRIGHT HOLDER'S TOTAL AGGREGATE LIABILITY SHALL NOT EXCEED
+   THE AMOUNT ACTUALLY PAID BY YOU (IF ANY) FOR THE SOFTWARE.
+
+9. TERMINATION
+   (a) This Agreement is effective until terminated.
+   (b) The copyright holder may terminate this Agreement immediately
+       upon written notice if you breach any term herein.
+   (c) Upon termination, you must immediately cease all use of the
+       Software and destroy all copies in your possession or control.
+   (d) Sections 2, 3, 5, 7, 8, and 10 shall survive termination.
+
+10. GOVERNING LAW & JURISDICTION
+    This Agreement shall be governed by and construed in accordance with
+    the laws of India, without regard to its conflict-of-law principles.
+    Any dispute arising under this Agreement shall be subject to the
+    exclusive jurisdiction of the courts located in India.
+
+11. ENTIRE AGREEMENT
+    This Agreement constitutes the entire agreement between you and the
+    copyright holder with respect to the Software and supersedes all
+    prior or contemporaneous communications, proposals, and agreements,
+    whether oral or written.
+
+12. CONTACT
+    For licensing inquiries, permissions, or questions:
+      Name:  Abneesh Singh
+      Email: singhabneesh250@gmail.com
+      Web:   https://github.com/abneeshsingh21/neuroshell
+
+Last updated: April 2026

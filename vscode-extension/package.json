@@ -3,7 +3,7 @@
   "displayName": "NeuroShell Integration",
   "description": "Seamlessly injects NeuroShell as the default integrated AI terminal in VS Code and Antigravity IDE.",
   "version": "5.0.0",
-  "publisher": "Abneesh Singh",
+  "publisher": "abneeshsingh21",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -41,5 +41,10 @@
     "@types/vscode": "^1.80.0",
     "@types/node": "18.x",
     "typescript": "^5.1.3"
+  },
+  "license": "Proprietary",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abneeshsingh21/neuroshell.git"
   }
 }
