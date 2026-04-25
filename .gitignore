@@ -34,3 +34,8 @@ vscode-extension/node_modules/
 vscode-extension/out/
 cpp_engine/build/
 *.egg-info/
+
+# Cleanup
+release/
+*.log
+test_explorer.ps1
