@@ -1,0 +1,19 @@
+# NeuroShell — Developer Dependencies
+# Install: pip install -r requirements-dev.txt
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+pytest>=8.0,<9.0
+pytest-cov>=4.0,<6.0
+pytest-mock>=3.12,<4.0
+pytest-xdist>=3.0,<4.0          # parallel test execution: pytest -n auto
+
+# ─── Static Analysis ──────────────────────────────────────────────────────────
+ruff>=0.3,<1.0                   # fast linter + formatter
+mypy>=1.8,<2.0                   # type checker
+
+# ─── Security Scanning ────────────────────────────────────────────────────────
+bandit>=1.7,<2.0                 # SAST for Python code
+pip-audit>=2.6,<3.0              # dependency CVE scanner
+
+# ─── Build ────────────────────────────────────────────────────────────────────
+pyinstaller>=6.0,<7.0            # standalone .exe builder

@@ -1,0 +1,160 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel", "pybind11>=2.11"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuroshell"
+version = "5.0.0"
+description = "AI-Powered Intelligent Terminal — translates English to shell, auto-fixes errors, and understands plain language"
+readme = "README.md"
+license = {text = "Proprietary — All Rights Reserved"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Abneesh Singh", email = "singhabneesh250@gmail.com"}
+]
+keywords = ["terminal", "shell", "ai", "llm", "cli", "natural-language", "copilot", "dev-tools"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: Other/Proprietary License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Shells",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "rich>=13.0",
+    "psutil>=5.9",
+    "toml>=0.10",
+    "cryptography>=42.0",
+    "colorama>=0.4; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+full = [
+    "rich>=13.0",
+    "psutil>=5.9",
+    "toml>=0.10",
+    "cryptography>=42.0",
+    "colorama>=0.4; sys_platform == 'win32'",
+    "scikit-learn>=1.3",
+    "nltk>=3.8",
+    "pyperclip>=1.8",
+    "ollama>=0.3",
+    "groq>=0.4",
+    "customtkinter>=5.2",
+]
+llm = [
+    "ollama>=0.3",
+    "groq>=0.4",
+]
+nlp = [
+    "spacy>=3.7",
+    "scikit-learn>=1.3",
+    "nltk>=3.8",
+    "sentence-transformers>=2.2",
+]
+desktop = [
+    "customtkinter>=5.2",
+    "Pillow>=10.0",
+    "psutil>=5.9",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-mock>=3.12",
+    "pytest-xdist>=3.0",
+    "bandit>=1.7",
+    "pip-audit>=2.6",
+    "pyinstaller>=6.0",
+    "mypy>=1.8",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+neuroshell = "main:main"
+neuroshell-gui = "desktop_app:main"
+
+[project.urls]
+Homepage      = "https://github.com/abneeshsingh21/neuroshell"
+Documentation = "https://github.com/abneeshsingh21/neuroshell#readme"
+Issues        = "https://github.com/abneeshsingh21/neuroshell/issues"
+Changelog     = "https://github.com/abneeshsingh21/neuroshell/blob/main/CHANGELOG.md"
+Security      = "https://github.com/abneeshsingh21/neuroshell/blob/main/SECURITY.md"
+
+[tool.setuptools.packages.find]
+include = ["core*", "llm*", "nlp*", "intelligence*", "observability*",
+           "learning*", "resilience*", "help*", "ui*", "extensions*",
+           "operations*", "deploy*"]
+
+[tool.setuptools]
+py-modules = ["config", "main", "desktop_app"]
+
+# ─── Pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts      = "-v --tb=short --no-header -ra"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# ─── Coverage ──────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["."]
+omit   = ["tests/*", "dist/*", "build/*", ".venv/*", "*.spec", "setup.py"]
+branch = true
+
+[tool.coverage.report]
+show_missing   = true
+skip_covered   = false
+fail_under     = 60
+exclude_lines  = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+    "pass$",
+]
+
+# ─── Ruff Linter ──────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+exclude = ["dist", "build", ".venv", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "SIM"]
+ignore = [
+    "S603", "S607",      # subprocess — we use it intentionally
+    "S101",              # assert — used in tests
+    "B008",              # function calls in default args
+    "E501",              # line-length — handled by formatter
+    "UP007", "UP006",    # X | Y type hints — py310 compat
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S106"]
+
+# ─── Mypy ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["dist/", "build/", ".venv/", "tests/"]

@@ -1,0 +1,14 @@
+{
+    "extraPaths": ["."],
+    "pythonVersion": "3.11",
+    "typeCheckingMode": "basic",
+    "reportMissingImports": false,
+    "reportMissingModuleSource": false,
+    "reportGeneralTypeIssues": false,
+    "venvPath": ".",
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        ".git"
+    ]
+}

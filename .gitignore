@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+
+# NeuroShell runtime data
+.neuroshell/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/.ropeproject/
+
+# NeuroShell specific
+*.db
+*.sqlite3
+neuroshell.db
+.env
+*.vsix
+vscode-extension/node_modules/
+vscode-extension/out/
+cpp_engine/build/
+*.egg-info/

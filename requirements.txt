@@ -1,0 +1,43 @@
+# NeuroShell v4.2.0 — Production Dependencies
+# Install: pip install -r requirements.txt
+# Full install: pip install -r requirements.txt -r requirements-dev.txt
+
+# ─── Core (always required) ────────────────────────────────────────────────────
+rich>=13.0,<15.0
+psutil>=5.9,<7.0
+toml>=0.10,<1.0
+colorama>=0.4,<1.0; sys_platform == "win32"
+
+# ─── Security (required for encrypted secrets) ────────────────────────────────
+cryptography>=42.0,<45.0
+
+# ─── Desktop GUI ──────────────────────────────────────────────────────────────
+customtkinter>=5.2,<6.0
+Pillow>=10.0,<12.0
+
+# ─── LLM Backends ─────────────────────────────────────────────────────────────
+ollama>=0.3,<1.0
+groq>=0.4,<1.0
+
+# ─── NLP Fast Layer ───────────────────────────────────────────────────────────
+scikit-learn>=1.3,<2.0
+nltk>=3.8,<4.0
+numpy>=1.24,<3.0
+
+# ─── Persistence ──────────────────────────────────────────────────────────────
+joblib>=1.3,<2.0
+
+# ─── Utilities ────────────────────────────────────────────────────────────────
+pyperclip>=1.8,<2.0
+
+# ─── Optional: Advanced NLP (adds ~500MB) ─────────────────────────────────────
+# Uncomment for semantic search with full MiniLM embedding model:
+# sentence-transformers>=2.2,<4.0
+# spacy>=3.7,<4.0
+
+# ─── Optional: Browser automation ─────────────────────────────────────────────
+# pip install playwright && playwright install chromium
+# playwright>=1.40,<2.0
+
+# ─── Optional: C++ acceleration ───────────────────────────────────────────────
+# pybind11>=2.11,<3.0

@@ -1,0 +1,49 @@
+name: Desktop Multi-Platform Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python-version: ["3.11"]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install desktop build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build desktop release
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            python scripts/build_desktop_release.py --output release --msi --version 4.0.0
+          else
+            python scripts/build_desktop_release.py --output release
+          fi
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            release/*.zip
+            release/*.tar.gz
+            release/*.msi
+            release/*.sha256

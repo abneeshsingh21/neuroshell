@@ -1,0 +1,10 @@
+[llm]
+model = "qwen3:4b"
+timeout = 60
+
+[safety]
+enabled = true
+confirm_destructive = true
+
+[history]
+retention_days = 90

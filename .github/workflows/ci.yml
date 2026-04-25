@@ -1,0 +1,170 @@
+name: CI — NeuroShell
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"   # nightly soak
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── Lint ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install ruff
+        run: pip install ruff>=0.3
+      - name: Ruff check
+        run: ruff check . --output-format=github
+
+  # ─── Type check ────────────────────────────────────────────────────────────
+  typecheck:
+    name: Type check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install mypy
+      - name: mypy
+        run: mypy config.py main.py nlp/ operations/ --ignore-missing-imports --no-error-summary || true
+
+  # ─── Tests ─────────────────────────────────────────────────────────────────
+  test:
+    name: Test (${{ matrix.os }} / py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install production dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install dev dependencies
+        run: pip install pytest pytest-cov pytest-mock
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest tests/test_core_pipeline.py tests/test_config.py \
+            --cov=. --cov-report=xml --cov-report=term-missing \
+            -q --tb=short
+        shell: bash
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ─── Security ──────────────────────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+
+      - name: Install security tools
+        run: pip install pip-audit bandit
+
+      - name: Dependency CVE scan
+        run: pip-audit -r requirements.txt --skip-editable
+
+      - name: SAST (bandit)
+        run: |
+          bandit -q -r . \
+            -x tests,build,dist,.venv,__pycache__ \
+            --severity-level medium
+
+      - name: Scan for leaked Groq API keys
+        run: |
+          if grep -rnE "gsk_[A-Za-z0-9]{20,}" . \
+              --include="*.py" --include="*.toml" --include="*.yml" \
+              --exclude-dir=.git --exclude-dir=dist --exclude-dir=build; then
+            echo "::error::Potential Groq API key detected in source"
+            exit 1
+          fi
+
+      - name: Scan for private key material
+        run: |
+          if grep -rnE "BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY" . \
+              --include="*.py" --include="*.pem" \
+              --exclude-dir=.git --exclude-dir=dist; then
+            echo "::error::Private key material in source"
+            exit 1
+          fi
+
+      - name: Verify .gitignore tracks build artifacts
+        run: |
+          test -f .gitignore
+          grep -qE "^build/$|^build$" .gitignore
+          grep -qE "^dist/$|^dist$" .gitignore
+
+  # ─── Build (Windows only, on tag push) ─────────────────────────────────────
+  build:
+    name: PyInstaller Windows Build
+    needs: [test, security]
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install all dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller neuroshell.spec --noconfirm
+
+      - name: Verify exe exists
+        run: Test-Path "dist\NeuroShell\NeuroShell.exe"
+        shell: pwsh
+
+      - name: Compute SHA-256 manifest
+        run: |
+          Get-ChildItem "dist\NeuroShell" -Recurse -File |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+              "$hash  $($_.FullName.Replace((Resolve-Path 'dist\NeuroShell').Path + '\', ''))"
+            } | Out-File -Encoding utf8 "dist\SHA256SUMS.txt"
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuroShell-Windows-${{ github.ref_name }}
+          path: |
+            dist/NeuroShell/
+            dist/SHA256SUMS.txt
+          retention-days: 90

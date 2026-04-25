@@ -1,0 +1,76 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 4.1.0)"
+        required: true
+      stage:
+        description: "Deployment stage"
+        required: true
+        default: "production"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build artifacts
+        env:
+          SOURCE_DATE_EPOCH: "1704067200"
+          PYTHONHASHSEED: "0"
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Generate release manifest and checksums
+        run: |
+          python - <<'PY'
+          from operations.release_pipeline import ReleasePipeline
+          from operations.update_manager import UpdateManager
+          from pathlib import Path
+          rp = ReleasePipeline("dist")
+          rp.write_manifest(version="${{ github.event.inputs.version }}", stage="${{ github.event.inputs.stage }}", output_path="dist/release-manifest.json")
+          rp.write_checksums("dist/SHA256SUMS")
+
+          artifacts = [p for p in Path("dist").glob("*") if p.suffix in {".whl", ".gz", ".zip"}]
+          um = UpdateManager("dist")
+          manifest = um.build_manifest(
+              version="${{ github.event.inputs.version }}",
+              channel="stable",
+              artifacts=artifacts,
+              notes="Automated release manifest",
+          )
+          um.write_manifest(manifest, "dist/update-manifest.json")
+          PY
+
+      - name: Optionally sign update manifest
+        run: |
+          if [ -z "$NEUROSHELL_RELEASE_PRIVATE_KEY_PEM" ]; then
+            echo "No signing key in runner env (NEUROSHELL_RELEASE_PRIVATE_KEY_PEM); skipping manifest signing"
+            exit 0
+          fi
+          cat <<'KEY' > release-private.pem
+          $NEUROSHELL_RELEASE_PRIVATE_KEY_PEM
+          KEY
+          python - <<'PY'
+          from operations.update_manager import UpdateManager
+          um = UpdateManager("dist")
+          um.sign_manifest("dist/update-manifest.json", "release-private.pem")
+          PY
+          rm -f release-private.pem
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.event.inputs.version }}
+          path: |
+            dist/*

@@ -1,0 +1,85 @@
+name: Nightly Soak
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run reliability-focused tests
+        run: |
+          python -m pytest tests/test_production_ops.py tests/test_v4_improvements.py -q
+
+      - name: Run soak simulation and emit report
+        run: |
+          python - <<'PY'
+          import json
+          import random
+          import time
+          from pathlib import Path
+          from operations.runtime_ops import RuntimeSLOMonitor
+          from resilience.chaos import FaultInjector, ChaosPolicy
+
+          random.seed(42)
+          monitor = RuntimeSLOMonitor()
+          injector = FaultInjector(ChaosPolicy(failure_rate=0.05, latency_ms_min=5, latency_ms_max=35))
+
+          start = time.time()
+          failures = 0
+          iterations = 1000
+
+          def op():
+              return True
+
+          for _ in range(iterations):
+              t0 = time.perf_counter()
+              try:
+                  injector.run(op)
+              except Exception:
+                  failures += 1
+                  monitor.record_error()
+              finally:
+                  latency = (time.perf_counter() - t0) * 1000
+                  monitor.record_latency_ms("execute", latency)
+
+          summary = {
+              "generated_at": time.time(),
+              "duration_s": time.time() - start,
+              "iterations": iterations,
+              "failures": failures,
+              "execute_latency": monitor.summarize_latency("execute", window_minutes=120),
+              "burn": monitor.error_budget_burn(target_availability=0.99, window_minutes=120),
+              "alerts": monitor.evaluate_alerts(),
+          }
+
+          out = Path("soak-report.json")
+          out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+          if summary["burn"]["budget_consumed_ratio"] > 2.0:
+              raise SystemExit("Error budget burn too high in soak simulation")
+          PY
+
+      - name: Upload soak report
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-soak-report
+          path: soak-report.json

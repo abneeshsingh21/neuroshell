@@ -1,0 +1,45 @@
+{
+  "name": "neuroshell-vscode",
+  "displayName": "NeuroShell Integration",
+  "description": "Seamlessly injects NeuroShell as the default integrated AI terminal in VS Code and Antigravity IDE.",
+  "version": "5.0.0",
+  "publisher": "Abneesh Singh",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "neuroshell.injectDefaultTerminal",
+        "title": "NeuroShell: Set as Default Terminal"
+      }
+    ],
+    "configuration": {
+      "title": "NeuroShell",
+      "properties": {
+        "neuroshell.executablePath": {
+          "type": "string",
+          "default": "NeuroShell",
+          "description": "Path to the NeuroShell executable (or python main.py if not compiled)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "18.x",
+    "typescript": "^5.1.3"
+  }
+}
