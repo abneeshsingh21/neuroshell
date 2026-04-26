@@ -102,8 +102,10 @@ async function checkAndInstallEngine(): Promise<void> {
     }
 
     // Check if executable is custom set
-    if (configPath && configPath !== 'NeuroShell' && fs.existsSync(configPath)) {
-        return;
+    if (configPath && configPath !== 'NeuroShell' && configPath !== 'NeuroShell-CLI' && fs.existsSync(configPath)) {
+        if (!configPath.toLowerCase().endsWith('neuroshell.exe')) {
+            return;
+        }
     }
 
     // Check standard installation paths
@@ -113,9 +115,9 @@ async function checkAndInstallEngine(): Promise<void> {
         return;
     }
 
-    // Try to run 'NeuroShell' from PATH
+    // Try to run 'NeuroShell-CLI' from PATH
     try {
-        cp.execSync('NeuroShell --help', { stdio: 'ignore' });
+        cp.execSync('NeuroShell-CLI --help', { stdio: 'ignore' });
         return; // It exists in PATH
     } catch (e) {
         // Not found
@@ -147,8 +149,8 @@ async function downloadAndInstallMSI() {
     }, async (progress) => {
         progress.report({ message: 'Downloading installer from GitHub...' });
         
-        // v5.0.6 Release MSI from neuroshell-installer repo
-        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.6/NeuroShell-windows-x64-5.0.6.msi';
+        // v5.0.4 Release MSI from neuroshell-installer repo
+        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.4/NeuroShell-windows-x64-5.0.4.msi';
         const tempPath = path.join(process.env.TEMP || '', 'NeuroShell_Installer.msi');
 
         await new Promise<void>((resolve, reject) => {
@@ -201,7 +203,15 @@ async function downloadAndInstallMSI() {
 
 function injectNeuroShellProfile() {
     const config = vscode.workspace.getConfiguration('terminal.integrated');
-    const neuroPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath') || 'NeuroShell';
+    let neuroPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath') || 'NeuroShell-CLI';
+
+    // Auto-migrate in memory just in case settings haven't synced
+    if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
+        const cliPath = path.join(path.dirname(neuroPath), 'NeuroShell-CLI.exe');
+        if (fs.existsSync(cliPath)) {
+            neuroPath = cliPath;
+        }
+    }
 
     // Determine terminal command and args
     let terminalPath: string;
@@ -209,7 +219,7 @@ function injectNeuroShellProfile() {
 
     const isWindows = process.platform === 'win32';
 
-    if (neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
+    if (neuroPath !== 'NeuroShell-CLI' && neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
         // Use compiled CLI exe
         terminalPath = neuroPath;
         terminalArgs = [];
@@ -220,8 +230,8 @@ function injectNeuroShellProfile() {
             terminalPath = fallback.pythonPath;
             terminalArgs = ['-u', fallback.mainPyPath];
         } else {
-            // Last resort: try 'NeuroShell' from PATH
-            terminalPath = neuroPath;
+            // Last resort: try 'NeuroShell-CLI' from PATH
+            terminalPath = 'NeuroShell-CLI';
             terminalArgs = [];
         }
     }
