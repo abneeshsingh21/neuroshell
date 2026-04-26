@@ -20,6 +20,69 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(disposable);
 }
 
+/**
+ * Locate the NeuroShell CLI executable on the system.
+ * Returns the full path if found, or empty string if not.
+ */
+function findNeuroShellCLI(): string {
+    const isWindows = process.platform === 'win32';
+    if (!isWindows) { return ''; }
+
+    // Check standard installation paths
+    const searchDirs = [
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell'),
+        path.join(process.env.ProgramFiles || '', 'NeuroShell'),
+        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell'),
+    ];
+
+    for (const dir of searchDirs) {
+        // We MUST use the CLI version for the terminal
+        const cliExe = path.join(dir, 'NeuroShell-CLI.exe');
+        if (fs.existsSync(cliExe)) {
+            return cliExe;
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Locate python + main.py as a fallback terminal command.
+ * Returns { pythonPath, mainPyPath } if found.
+ */
+function findPythonFallback(): { pythonPath: string; mainPyPath: string } | null {
+    // Check common locations for the neuroshell source
+    const possibleRoots = [
+        // Workspace folders
+        ...(vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) || []),
+    ];
+
+    for (const root of possibleRoots) {
+        const mainPy = path.join(root, 'main.py');
+        if (fs.existsSync(mainPy)) {
+            // Verify it's actually the NeuroShell main.py
+            try {
+                const content = fs.readFileSync(mainPy, 'utf8').slice(0, 500);
+                if (content.includes('NeuroShell') || content.includes('neuroshell')) {
+                    // Find python
+                    for (const py of ['python', 'python3', 'py']) {
+                        try {
+                            cp.execSync(`${py} --version`, { stdio: 'ignore' });
+                            return { pythonPath: py, mainPyPath: mainPy };
+                        } catch (e) {
+                            // Try next
+                        }
+                    }
+                }
+            } catch (e) {
+                // Skip
+            }
+        }
+    }
+
+    return null;
+}
+
 async function checkAndInstallEngine(): Promise<void> {
     const isWindows = process.platform === 'win32';
     if (!isWindows) {
@@ -27,23 +90,24 @@ async function checkAndInstallEngine(): Promise<void> {
         return;
     }
 
-    const configPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath');
+    let configPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath');
     
+    // Auto-migrate from old GUI executable to CLI executable if necessary
+    if (configPath && configPath.toLowerCase().endsWith('neuroshell.exe')) {
+        const cliPath = path.join(path.dirname(configPath), 'NeuroShell-CLI.exe');
+        if (fs.existsSync(cliPath)) {
+            configPath = cliPath;
+            vscode.workspace.getConfiguration('neuroshell').update('executablePath', cliPath, vscode.ConfigurationTarget.Global);
+        }
+    }
+
     // Check if executable is custom set
     if (configPath && configPath !== 'NeuroShell' && fs.existsSync(configPath)) {
         return;
     }
 
-    // Check standard installation paths (Local AppData or Program Files)
-    const localAppDataPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell', 'NeuroShell.exe');
-    const programFilesPath = path.join(process.env.ProgramFiles || '', 'NeuroShell', 'NeuroShell.exe');
-    const programFilesX86Path = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell', 'NeuroShell.exe');
-    
-    let foundPath = '';
-    if (fs.existsSync(localAppDataPath)) foundPath = localAppDataPath;
-    else if (fs.existsSync(programFilesPath)) foundPath = programFilesPath;
-    else if (fs.existsSync(programFilesX86Path)) foundPath = programFilesX86Path;
-
+    // Check standard installation paths
+    const foundPath = findNeuroShellCLI();
     if (foundPath) {
         vscode.workspace.getConfiguration('neuroshell').update('executablePath', foundPath, vscode.ConfigurationTarget.Global);
         return;
@@ -55,6 +119,13 @@ async function checkAndInstallEngine(): Promise<void> {
         return; // It exists in PATH
     } catch (e) {
         // Not found
+    }
+
+    // Check if we have a python fallback (development mode)
+    const fallback = findPythonFallback();
+    if (fallback) {
+        // Dev mode — don't prompt install, just use python
+        return;
     }
 
     // Prompt user to install
@@ -76,8 +147,8 @@ async function downloadAndInstallMSI() {
     }, async (progress) => {
         progress.report({ message: 'Downloading installer from GitHub...' });
         
-        // Target v5.0.0 Release MSI
-        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell/releases/download/v5.0.0/NeuroShell-windows-x64-5.0.0.msi';
+        // v5.0.6 Release MSI from neuroshell-installer repo
+        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.6/NeuroShell-windows-x64-5.0.6.msi';
         const tempPath = path.join(process.env.TEMP || '', 'NeuroShell_Installer.msi');
 
         await new Promise<void>((resolve, reject) => {
@@ -88,7 +159,7 @@ async function downloadAndInstallMSI() {
                         return request(response.headers.location as string);
                     }
                     if (response.statusCode !== 200) {
-                        reject(new Error(`Failed to download. Make sure the v5.0.0 GitHub release is published! (Status: ${response.statusCode})`));
+                        reject(new Error(`Failed to download. Status: ${response.statusCode}`));
                         return;
                     }
                     response.pipe(file);
@@ -113,18 +184,11 @@ async function downloadAndInstallMSI() {
                     vscode.window.showErrorMessage('NeuroShell installation was cancelled or failed.');
                     reject(error);
                 } else {
-                    vscode.window.showInformationMessage('NeuroShell installed successfully!');
+                    vscode.window.showInformationMessage('NeuroShell installed successfully! Restart the terminal to use it.');
                     
-                    const localPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell', 'NeuroShell.exe');
-                    const progPath = path.join(process.env.ProgramFiles || '', 'NeuroShell', 'NeuroShell.exe');
-                    const progX86Path = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell', 'NeuroShell.exe');
-                    
-                    if (fs.existsSync(localPath)) {
-                        vscode.workspace.getConfiguration('neuroshell').update('executablePath', localPath, vscode.ConfigurationTarget.Global);
-                    } else if (fs.existsSync(progPath)) {
-                        vscode.workspace.getConfiguration('neuroshell').update('executablePath', progPath, vscode.ConfigurationTarget.Global);
-                    } else if (fs.existsSync(progX86Path)) {
-                        vscode.workspace.getConfiguration('neuroshell').update('executablePath', progX86Path, vscode.ConfigurationTarget.Global);
+                    const foundPath = findNeuroShellCLI();
+                    if (foundPath) {
+                        vscode.workspace.getConfiguration('neuroshell').update('executablePath', foundPath, vscode.ConfigurationTarget.Global);
                     }
                     
                     injectNeuroShellProfile();
@@ -139,21 +203,46 @@ function injectNeuroShellProfile() {
     const config = vscode.workspace.getConfiguration('terminal.integrated');
     const neuroPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath') || 'NeuroShell';
 
-    // Windows Injection
-    const profilesWindows = config.get<any>('profiles.windows') || {};
-    profilesWindows['NeuroShell'] = {
-        path: neuroPath,
-        args: [],
-        icon: "terminal-bash"
-    };
-    config.update('profiles.windows', profilesWindows, vscode.ConfigurationTarget.Global);
-    config.update('defaultProfile.windows', 'NeuroShell', vscode.ConfigurationTarget.Global);
+    // Determine terminal command and args
+    let terminalPath: string;
+    let terminalArgs: string[];
+
+    const isWindows = process.platform === 'win32';
+
+    if (neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
+        // Use compiled CLI exe
+        terminalPath = neuroPath;
+        terminalArgs = [];
+    } else {
+        // Fallback: use python + main.py from workspace
+        const fallback = findPythonFallback();
+        if (fallback) {
+            terminalPath = fallback.pythonPath;
+            terminalArgs = ['-u', fallback.mainPyPath];
+        } else {
+            // Last resort: try 'NeuroShell' from PATH
+            terminalPath = neuroPath;
+            terminalArgs = [];
+        }
+    }
+
+    if (isWindows) {
+        // Windows Injection
+        const profilesWindows = config.get<any>('profiles.windows') || {};
+        profilesWindows['NeuroShell'] = {
+            path: terminalPath,
+            args: terminalArgs,
+            icon: "terminal-bash"
+        };
+        config.update('profiles.windows', profilesWindows, vscode.ConfigurationTarget.Global);
+        config.update('defaultProfile.windows', 'NeuroShell', vscode.ConfigurationTarget.Global);
+    }
 
     // Linux/Mac Injection
     const profilesLinux = config.get<any>('profiles.linux') || {};
     profilesLinux['NeuroShell'] = {
-        path: neuroPath,
-        args: [],
+        path: terminalPath,
+        args: terminalArgs,
         icon: "terminal-bash"
     };
     config.update('profiles.linux', profilesLinux, vscode.ConfigurationTarget.Global);
@@ -161,8 +250,8 @@ function injectNeuroShellProfile() {
 
     const profilesMac = config.get<any>('profiles.osx') || {};
     profilesMac['NeuroShell'] = {
-        path: neuroPath,
-        args: [],
+        path: terminalPath,
+        args: terminalArgs,
         icon: "terminal-bash"
     };
     config.update('profiles.osx', profilesMac, vscode.ConfigurationTarget.Global);
