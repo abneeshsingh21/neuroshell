@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "C:\Users\lenovo\Desktop\LLM model train\neuroshell\test_nlp_eval.py", line 21, in <module>
-    history = HistoryStore(':memory:')
-              ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\Users\lenovo\Desktop\LLM model train\neuroshell\core\history.py", line 81, in __init__
-    self.db_path.parent.mkdir(parents=True, exist_ok=True)
-    ^^^^^^^^^^^^^^^^^^^
-AttributeError: 'str' object has no attribute 'parent'

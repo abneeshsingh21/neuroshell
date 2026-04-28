@@ -131,8 +131,8 @@ async function downloadAndInstallMSI() {
     }, async (progress) => {
         progress.report({ message: 'Downloading installer from GitHub...' });
         
-        // v5.0.6 Release MSI from neuroshell-installer repo
-        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.6/NeuroShell-windows-x64-5.0.6.msi';
+        // v5.0.7 Release from neuroshell-installer repo
+        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.7/NeuroShell-CLI.exe';
         const tempPath = path.join(process.env.TEMP || '', 'NeuroShell_Installer.msi');
 
         await new Promise<void>((resolve, reject) => {

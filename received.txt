@@ -1,2 +1,0 @@
-RECV: {'type': 'input', 'payload': 'show all wifi password'}
-RECV: {'type': 'input', 'payload': 'show all wifi password'}
