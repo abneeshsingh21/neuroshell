@@ -131,8 +131,8 @@ async function downloadAndInstallMSI() {
     }, async (progress) => {
         progress.report({ message: 'Downloading NeuroShell-CLI.exe from GitHub (~500MB)...' });
         
-        // v5.0.7 Release from neuroshell-installer repo
-        const exeUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.7/NeuroShell-CLI.exe';
+        // v5.1.0 Release from neuroshell-installer repo
+        const exeUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.1.0/NeuroShell-CLI.exe';
         
         // Install directly to Program Files
         const installDir = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell');
