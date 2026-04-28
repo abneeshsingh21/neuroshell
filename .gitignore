@@ -51,3 +51,5 @@ test_explorer.ps1
 *.db-wal
 github.com/
 name/
+neuroshell-web/
+.sixth/
