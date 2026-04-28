@@ -21,8 +21,38 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
+ * Locate python + neuroshell_cli.py in the current workspace.
+ * This is the FASTEST way to start NeuroShell (no exe validation needed).
+ * Returns { pythonPath, mainPyPath } if found.
+ */
+function findPythonFallback(): { pythonPath: string; mainPyPath: string } | null {
+    const possibleRoots = [
+        ...(vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) || []),
+    ];
+
+    for (const root of possibleRoots) {
+        // Look for the CLI entry point, NOT main.py (which starts the GUI)
+        const cliPy = path.join(root, 'neuroshell_cli.py');
+        if (fs.existsSync(cliPy)) {
+            // Find python
+            for (const py of ['python', 'python3', 'py']) {
+                try {
+                    cp.execSync(`${py} --version`, { stdio: 'ignore', timeout: 3000 });
+                    return { pythonPath: py, mainPyPath: cliPy };
+                } catch (e) {
+                    // Try next
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
  * Locate the NeuroShell CLI executable on the system.
- * Returns the full path if found AND validated, or empty string if not.
+ * Only checks file existence — no slow validation.
+ * Returns the full path if found, or empty string if not.
  */
 function findNeuroShellCLI(): string {
     const isWindows = process.platform === 'win32';
@@ -37,53 +67,23 @@ function findNeuroShellCLI(): string {
     for (const dir of searchDirs) {
         const cliExe = path.join(dir, 'NeuroShell-CLI.exe');
         if (fs.existsSync(cliExe)) {
-            try {
-                cp.execSync(`"${cliExe}" --help`, { stdio: 'ignore', timeout: 10000 });
-                return cliExe;
-            } catch (e) {
-                console.warn(`NeuroShell-CLI.exe at ${cliExe} failed validation, skipping.`);
-                continue;
-            }
+            return cliExe;
         }
     }
 
     return '';
 }
 
-/**
- * Locate python + main.py as a fallback terminal command.
- * Returns { pythonPath, mainPyPath } if found.
- */
-function findPythonFallback(): { pythonPath: string; mainPyPath: string } | null {
-    // Check common locations for the neuroshell source
-    const possibleRoots = [
-        // Workspace folders
-        ...(vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) || []),
-    ];
-
-    for (const root of possibleRoots) {
-        // Look for the CLI entry point, NOT main.py (which starts the GUI)
-        const cliPy = path.join(root, 'neuroshell_cli.py');
-        if (fs.existsSync(cliPy)) {
-            // Find python
-            for (const py of ['python', 'python3', 'py']) {
-                try {
-                    cp.execSync(`${py} --version`, { stdio: 'ignore' });
-                    return { pythonPath: py, mainPyPath: cliPy };
-                } catch (e) {
-                    // Try next
-                }
-            }
-        }
-    }
-
-    return null;
-}
-
 async function checkAndInstallEngine(): Promise<void> {
     const isWindows = process.platform === 'win32';
     if (!isWindows) {
-        // Auto-installer currently only supports Windows
+        return;
+    }
+
+    // PRIORITY 1: Python fallback (instant, no validation needed)
+    const fallback = findPythonFallback();
+    if (fallback) {
+        // Dev mode — neuroshell_cli.py found in workspace, skip everything
         return;
     }
 
@@ -98,32 +98,17 @@ async function checkAndInstallEngine(): Promise<void> {
         }
     }
 
-    // Check if executable is custom set
+    // Check if executable is custom set and exists
     if (configPath && configPath !== 'NeuroShell' && configPath !== 'NeuroShell-CLI' && fs.existsSync(configPath)) {
         if (!configPath.toLowerCase().endsWith('neuroshell.exe')) {
             return;
         }
     }
 
-    // Check standard installation paths
+    // PRIORITY 2: Check standard installation paths (file existence only, no slow validation)
     const foundPath = findNeuroShellCLI();
     if (foundPath) {
         vscode.workspace.getConfiguration('neuroshell').update('executablePath', foundPath, vscode.ConfigurationTarget.Global);
-        return;
-    }
-
-    // Try to run 'NeuroShell-CLI' from PATH
-    try {
-        cp.execSync('NeuroShell-CLI --help', { stdio: 'ignore' });
-        return; // It exists in PATH
-    } catch (e) {
-        // Not found
-    }
-
-    // Check if we have a python fallback (development mode)
-    const fallback = findPythonFallback();
-    if (fallback) {
-        // Dev mode — don't prompt install, just use python
         return;
     }
 
@@ -200,15 +185,6 @@ async function downloadAndInstallMSI() {
 
 function injectNeuroShellProfile() {
     const config = vscode.workspace.getConfiguration('terminal.integrated');
-    let neuroPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath') || 'NeuroShell-CLI';
-
-    // Auto-migrate in memory just in case settings haven't synced
-    if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
-        const cliPath = path.join(path.dirname(neuroPath), 'NeuroShell-CLI.exe');
-        if (fs.existsSync(cliPath)) {
-            neuroPath = cliPath;
-        }
-    }
 
     // Determine terminal command and args
     let terminalPath: string;
@@ -216,50 +192,36 @@ function injectNeuroShellProfile() {
 
     const isWindows = process.platform === 'win32';
 
-    if (neuroPath !== 'NeuroShell-CLI' && neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
-        if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
-            // NEVER inject the GUI app into the terminal. Force fallback.
-            const fallback = findPythonFallback();
-            if (fallback) {
-                terminalPath = fallback.pythonPath;
-                terminalArgs = ['-u', fallback.mainPyPath];
-            } else {
-                terminalPath = 'NeuroShell-CLI';
-                terminalArgs = [];
-            }
-        } else {
-            // Validate the CLI exe actually works before using it
-            let exeValid = false;
-            try {
-                cp.execSync(`"${neuroPath}" --help`, { stdio: 'ignore', timeout: 10000 });
-                exeValid = true;
-            } catch (e) {
-                console.warn(`NeuroShell-CLI.exe validation failed: ${neuroPath}`);
-            }
+    // PRIORITY 1: Always prefer Python fallback when neuroshell_cli.py is in workspace
+    // This is instant, reliable, and doesn't depend on exe installation
+    const fallback = findPythonFallback();
+    if (fallback) {
+        terminalPath = fallback.pythonPath;
+        terminalArgs = ['-u', fallback.mainPyPath];
+    } else {
+        // PRIORITY 2: Use the compiled CLI exe from settings or discovery
+        let neuroPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath') || 'NeuroShell-CLI';
 
-            if (exeValid) {
-                terminalPath = neuroPath;
-                terminalArgs = [];
-            } else {
-                // Exe is broken, use Python fallback
-                const fallback = findPythonFallback();
-                if (fallback) {
-                    terminalPath = fallback.pythonPath;
-                    terminalArgs = ['-u', fallback.mainPyPath];
-                } else {
-                    terminalPath = 'NeuroShell-CLI';
-                    terminalArgs = [];
-                }
+        // Auto-migrate from GUI exe to CLI exe
+        if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
+            const cliPath = path.join(path.dirname(neuroPath), 'NeuroShell-CLI.exe');
+            if (fs.existsSync(cliPath)) {
+                neuroPath = cliPath;
             }
         }
-    } else {
-        // Try Python fallback first (dev mode)
-        const fallback = findPythonFallback();
-        if (fallback) {
-            terminalPath = fallback.pythonPath;
-            terminalArgs = ['-u', fallback.mainPyPath];
+
+        if (neuroPath !== 'NeuroShell-CLI' && neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
+            if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
+                // NEVER inject the GUI app into the terminal
+                terminalPath = 'NeuroShell-CLI';
+                terminalArgs = [];
+            } else {
+                // Use compiled CLI exe
+                terminalPath = neuroPath;
+                terminalArgs = [];
+            }
         } else {
-            // Last resort: try 'NeuroShell-CLI' from PATH
+            // Last resort: try NeuroShell-CLI from PATH
             terminalPath = 'NeuroShell-CLI';
             terminalArgs = [];
         }
