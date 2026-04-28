@@ -39,7 +39,13 @@ def build_command(project_root: Path, dist_dir: Path, work_dir: Path, system_nam
     ]
 
     # Include hidden imports for CLI
-    cmd.extend(["--hidden-import", "rich"])
+    cmd.extend([
+        "--hidden-import", "rich",
+        "--collect-all", "torch",
+        "--collect-all", "transformers",
+        "--collect-all", "sentence_transformers",
+        "--collect-all", "spacy"
+    ])
 
     return cmd
 
