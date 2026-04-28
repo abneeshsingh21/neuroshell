@@ -74,20 +74,39 @@ def get_health_summary(config) -> str:
     """Get a quick health check summary."""
     lines = []
 
-    # Check Ollama
-    try:
-        import ollama
-        models = ollama.list()
-        model_names = [m.get("name", "") for m in models.get("models", [])]
-        has_model = any(config.llm.model in n for n in model_names)
-        if has_model:
-            lines.append("  ✅ Ollama: ready")
-        else:
-            lines.append(f"  ⚠️  Ollama: running but '{config.llm.model}' not found")
-    except ImportError:
-        lines.append("  ❌ Ollama: package not installed")
-    except Exception:
-        lines.append("  ❌ Ollama: not running")
+    # Check LLM provider (provider-aware, not always Ollama)
+    provider = getattr(config.llm, 'provider', 'ollama')
+    model = getattr(config.llm, 'model', 'unknown')
+
+    if provider == "ollama":
+        try:
+            import ollama
+            models = ollama.list()
+            model_names = [m.get("name", "") for m in models.get("models", [])]
+            has_model = any(config.llm.model in n for n in model_names)
+            if has_model:
+                lines.append("  ✅ Ollama: ready")
+            else:
+                lines.append(f"  ⚠️  Ollama: running but '{config.llm.model}' not found")
+        except ImportError:
+            lines.append("  ❌ Ollama: package not installed")
+        except Exception:
+            lines.append("  ❌ Ollama: not running")
+    elif provider == "groq":
+        lines.append(f"  ✅ Groq Cloud: {model}")
+    elif provider == "openai":
+        lines.append(f"  ✅ OpenAI: {model}")
+    elif provider == "anthropic":
+        lines.append(f"  ✅ Anthropic: {model}")
+    elif provider == "gemini":
+        lines.append(f"  ✅ Google Gemini: {model}")
+    elif provider == "openrouter":
+        lines.append(f"  ✅ OpenRouter: {model}")
+    else:
+        lines.append(f"  🤖 LLM: {provider} / {model}")
+
+    if getattr(config, 'raw_shell_mode', False):
+        lines.append("  🔒 Raw Shell Mode (no LLM)")
 
     # Check safety
     safety = "on" if config.safety.enabled else "off"
