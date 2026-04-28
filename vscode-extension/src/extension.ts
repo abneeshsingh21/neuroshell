@@ -129,57 +129,81 @@ async function downloadAndInstallMSI() {
         title: "Installing NeuroShell Engine",
         cancellable: false
     }, async (progress) => {
-        progress.report({ message: 'Downloading installer from GitHub...' });
+        progress.report({ message: 'Downloading NeuroShell-CLI.exe from GitHub (~500MB)...' });
         
         // v5.0.7 Release from neuroshell-installer repo
-        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.7/NeuroShell-CLI.exe';
-        const tempPath = path.join(process.env.TEMP || '', 'NeuroShell_Installer.msi');
-
-        await new Promise<void>((resolve, reject) => {
-            const file = fs.createWriteStream(tempPath);
-            const request = (url: string) => {
-                https.get(url, (response) => {
-                    if (response.statusCode === 301 || response.statusCode === 302) {
-                        return request(response.headers.location as string);
-                    }
-                    if (response.statusCode !== 200) {
-                        reject(new Error(`Failed to download. Status: ${response.statusCode}`));
-                        return;
-                    }
-                    response.pipe(file);
-                    file.on('finish', () => {
-                        file.close();
-                        resolve();
-                    });
-                }).on('error', (err) => {
-                    fs.unlink(tempPath, () => {});
-                    reject(err);
-                });
-            };
-            request(msiUrl);
-        });
-
-        progress.report({ message: 'Opening Windows Installer...' });
+        const exeUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.7/NeuroShell-CLI.exe';
         
-        // Execute MSI interactively
-        return new Promise<void>((resolve, reject) => {
-            cp.exec(`msiexec /i "${tempPath}"`, (error) => {
-                if (error) {
-                    vscode.window.showErrorMessage('NeuroShell installation was cancelled or failed.');
-                    reject(error);
-                } else {
-                    vscode.window.showInformationMessage('NeuroShell installed successfully! Restart the terminal to use it.');
-                    
-                    const foundPath = findNeuroShellCLI();
-                    if (foundPath) {
-                        vscode.workspace.getConfiguration('neuroshell').update('executablePath', foundPath, vscode.ConfigurationTarget.Global);
-                    }
-                    
-                    injectNeuroShellProfile();
-                    resolve();
+        // Install directly to Program Files
+        const installDir = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell');
+        const exePath = path.join(installDir, 'NeuroShell-CLI.exe');
+        
+        // Create install directory (may need admin)
+        try {
+            if (!fs.existsSync(installDir)) {
+                fs.mkdirSync(installDir, { recursive: true });
+            }
+        } catch (e) {
+            // If can't create in Program Files, use AppData
+            const fallbackDir = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell');
+            if (!fs.existsSync(fallbackDir)) {
+                fs.mkdirSync(fallbackDir, { recursive: true });
+            }
+            const fallbackExe = path.join(fallbackDir, 'NeuroShell-CLI.exe');
+            
+            await downloadFile(exeUrl, fallbackExe, progress);
+            
+            vscode.workspace.getConfiguration('neuroshell').update('executablePath', fallbackExe, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage('NeuroShell installed! Restart the terminal to use it.');
+            injectNeuroShellProfile();
+            return;
+        }
+
+        await downloadFile(exeUrl, exePath, progress);
+        
+        vscode.workspace.getConfiguration('neuroshell').update('executablePath', exePath, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('NeuroShell installed successfully! Restart the terminal to use it.');
+        injectNeuroShellProfile();
+    });
+}
+
+function downloadFile(url: string, destPath: string, progress: vscode.Progress<{ message?: string }>): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        const file = fs.createWriteStream(destPath);
+        const request = (reqUrl: string) => {
+            https.get(reqUrl, (response) => {
+                if (response.statusCode === 301 || response.statusCode === 302) {
+                    return request(response.headers.location as string);
                 }
+                if (response.statusCode !== 200) {
+                    fs.unlink(destPath, () => {});
+                    reject(new Error(`Download failed. Status: ${response.statusCode}`));
+                    return;
+                }
+
+                const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+                let downloaded = 0;
+
+                response.on('data', (chunk: Buffer) => {
+                    downloaded += chunk.length;
+                    if (totalSize > 0) {
+                        const pct = Math.round((downloaded / totalSize) * 100);
+                        progress.report({ message: `Downloading... ${pct}% (${Math.round(downloaded / 1024 / 1024)}MB)` });
+                    }
+                });
+
+                response.pipe(file);
+                file.on('finish', () => {
+                    file.close();
+                    progress.report({ message: 'Download complete! Configuring...' });
+                    resolve();
+                });
+            }).on('error', (err) => {
+                fs.unlink(destPath, () => {});
+                reject(err);
             });
-        });
+        };
+        request(url);
     });
 }
 
