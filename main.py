@@ -305,28 +305,38 @@ class NeuroShell:
         from ui.banner import render_startup_banner
         print(render_startup_banner(self.config))
 
-        # Run health checks
-        report = self.health.run_all()
-        self.ui.print_health_report(report)
+        # Fast start mode: skip heavy initialization
+        fast_start = os.environ.get("NEUROSHELL_FAST_START") == "1"
 
-        # Initialize NLP layer
-        self._init_nlp()
+        if not fast_start:
+            # Run health checks
+            report = self.health.run_all()
+            self.ui.print_health_report(report)
 
-        # Pre-warm LLM model in background for faster first response
-        self.llm.warmup_async()
+            # Initialize NLP layer
+            self._init_nlp()
 
-        # Initialize learning
-        try:
-            self.pattern_learner.learn_from_history()
-            self.predictor.train()
-        except Exception as e:
-            self.logger.warn("learning_init_failed", error=str(e))
+            # Pre-warm LLM model in background for faster first response
+            self.llm.warmup_async()
 
-        # Check graceful degradation
-        self.degradation.check_and_degrade(
-            "ollama", self.llm.is_available(),
-            "⚠️ Ollama not available — AI features limited to NLP + cached fixes"
-        )
+            # Initialize learning
+            try:
+                self.pattern_learner.learn_from_history()
+                self.predictor.train()
+            except Exception as e:
+                self.logger.warn("learning_init_failed", error=str(e))
+        else:
+            # Minimal init for fast start
+            self._init_nlp()
+            self.ui.print_info("⚡ Fast start mode — health checks skipped")
+
+        # Check graceful degradation (only warn about Ollama if actually using it)
+        provider = getattr(getattr(self.config, 'llm', None), 'provider', 'ollama')
+        if provider == "ollama":
+            self.degradation.check_and_degrade(
+                "ollama", self.llm.is_available(),
+                "⚠️ Ollama not available — AI features limited to NLP + cached fixes"
+            )
         self.degradation.check_and_degrade(
             "nlp", self.intent_classifier._loaded,
             "⚠️ NLP model not loaded — using regex fallback"

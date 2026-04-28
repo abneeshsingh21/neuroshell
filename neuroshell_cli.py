@@ -96,16 +96,57 @@ PROVIDERS = [
 ]
 
 
-def cli_first_run_wizard():
-    """Console-based first-run wizard for terminal/VS Code users."""
-    from config import CONFIG_FILE, Config
+def cli_first_run_wizard(force: bool = False):
+    """Console-based first-run wizard for terminal/VS Code users.
+    
+    Triggers when:
+    - config.toml doesn't exist (true first run)
+    - --setup flag is passed (force reconfigure)
+    - Config exists but no API key is set for a cloud provider
+    """
+    from config import CONFIG_FILE, Config, SECRETS_FILE
+    import json
 
-    if CONFIG_FILE.exists():
-        return  # Already configured
+    if not force and CONFIG_FILE.exists():
+        # Smart check: if using a cloud provider, verify API key exists
+        try:
+            import toml
+            data = toml.load(CONFIG_FILE)
+            provider = data.get("llm", {}).get("provider", "ollama")
+            
+            if provider == "ollama":
+                return  # Ollama doesn't need API keys
+            
+            if data.get("raw_shell_mode", False):
+                return  # Raw shell mode doesn't need keys
+            
+            # Check if API key exists in secrets or environment
+            env_keys = {
+                "groq": "GROQ_API_KEY",
+                "openai": "OPENAI_API_KEY", 
+                "anthropic": "ANTHROPIC_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY",
+            }
+            
+            env_key = env_keys.get(provider)
+            if env_key:
+                # Check environment variable
+                if os.environ.get(env_key):
+                    return  # Key set in environment
+                
+                # Check secrets file
+                if SECRETS_FILE.exists():
+                    return  # Secrets exist (encrypted, can't check contents easily)
+            
+            return  # Default: trust the config
+            
+        except Exception:
+            return  # If anything fails, don't block startup
 
     print()
     print("  ╔══════════════════════════════════════════════╗")
-    print("  ║     🧠 Welcome to NeuroShell — First Setup   ║")
+    print("  ║     🧠 NeuroShell — Setup Wizard             ║")
     print("  ╚══════════════════════════════════════════════╝")
     print()
     print("  Let's get you set up in 60 seconds.")
@@ -194,15 +235,40 @@ def cli_first_run_wizard():
     print(f"     Model: {selected['default_model']}")
     print(f"     Config: ~/.neuroshell/config.toml")
     print()
-    print("  You can change settings anytime with the 'config' command.")
+    print("  You can reconfigure anytime with: neuroshell --setup")
     print()
 
 
 def main():
     """Launch the NeuroShell REPL."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="NeuroShell CLI", add_help=False)
+    parser.add_argument("--setup", action="store_true", help="Force run the setup wizard")
+    parser.add_argument("--fast", action="store_true", help="Skip health checks for instant startup")
+    parser.add_argument("--help", "-h", action="store_true", help="Show help")
+    args, remaining = parser.parse_known_args()
+    
+    if args.help:
+        print("NeuroShell CLI — AI-powered terminal")
+        print()
+        print("Usage:")
+        print("  neuroshell_cli.py           Start NeuroShell REPL")
+        print("  neuroshell_cli.py --setup   Run setup wizard")
+        print("  neuroshell_cli.py --fast    Skip health checks (instant start)")
+        print()
+        return
+    
     try:
-        # Run first-run wizard if needed (console version)
-        cli_first_run_wizard()
+        # Run setup wizard if requested or needed
+        cli_first_run_wizard(force=args.setup)
+        
+        if args.setup:
+            return  # Exit after setup
+        
+        # Set fast mode environment variable so main.py can skip health checks
+        if args.fast:
+            os.environ["NEUROSHELL_FAST_START"] = "1"
 
         from main import NeuroShell
         shell = NeuroShell()
@@ -217,3 +283,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
