@@ -114,7 +114,8 @@ class NeuroShell:
         from intelligence.agent import AgentPlanner
         from intelligence.script_generator import ScriptGenerator
         from intelligence.phrase_dictionary import PhraseDictionary
-        import intelligence.pii_scrubber as pii_scrubber
+        import intelligence.pii_scrubber as _pii_scrubber
+        self.pii_scrubber = _pii_scrubber
         from intelligence.offline_fallback import OfflineFallbackManager
 
 
@@ -1449,7 +1450,7 @@ class NeuroShell:
                 return
 
         # PII Scrubbing
-        safe_input = pii_scrubber.scrub(user_input)
+        safe_input = self.pii_scrubber.scrub(user_input)
         if safe_input != user_input:
             self.ui.print_info('🔒 PII Scrubber redacted sensitive data before cloud transmission.')
             user_input = safe_input
