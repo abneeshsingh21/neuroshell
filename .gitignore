@@ -44,4 +44,10 @@ neuroshell-installer-temp/
 # Cleanup
 release/
 *.log
+*.spec
 test_explorer.ps1
+.coverage
+*.db-shm
+*.db-wal
+github.com/
+name/
