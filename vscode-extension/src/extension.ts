@@ -58,24 +58,17 @@ function findPythonFallback(): { pythonPath: string; mainPyPath: string } | null
     ];
 
     for (const root of possibleRoots) {
-        const mainPy = path.join(root, 'main.py');
-        if (fs.existsSync(mainPy)) {
-            // Verify it's actually the NeuroShell main.py
-            try {
-                const content = fs.readFileSync(mainPy, 'utf8').slice(0, 500);
-                if (content.includes('NeuroShell') || content.includes('neuroshell')) {
-                    // Find python
-                    for (const py of ['python', 'python3', 'py']) {
-                        try {
-                            cp.execSync(`${py} --version`, { stdio: 'ignore' });
-                            return { pythonPath: py, mainPyPath: mainPy };
-                        } catch (e) {
-                            // Try next
-                        }
-                    }
+        // Look for the CLI entry point, NOT main.py (which starts the GUI)
+        const cliPy = path.join(root, 'neuroshell_cli.py');
+        if (fs.existsSync(cliPy)) {
+            // Find python
+            for (const py of ['python', 'python3', 'py']) {
+                try {
+                    cp.execSync(`${py} --version`, { stdio: 'ignore' });
+                    return { pythonPath: py, mainPyPath: cliPy };
+                } catch (e) {
+                    // Try next
                 }
-            } catch (e) {
-                // Skip
             }
         }
     }
@@ -149,8 +142,8 @@ async function downloadAndInstallMSI() {
     }, async (progress) => {
         progress.report({ message: 'Downloading installer from GitHub...' });
         
-        // v5.0.4 Release MSI from neuroshell-installer repo
-        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.4/NeuroShell-windows-x64-5.0.4.msi';
+        // v5.0.6 Release MSI from neuroshell-installer repo
+        const msiUrl = 'https://github.com/abneeshsingh21/neuroshell-installer/releases/download/v5.0.6/NeuroShell-windows-x64-5.0.6.msi';
         const tempPath = path.join(process.env.TEMP || '', 'NeuroShell_Installer.msi');
 
         await new Promise<void>((resolve, reject) => {
@@ -220,9 +213,21 @@ function injectNeuroShellProfile() {
     const isWindows = process.platform === 'win32';
 
     if (neuroPath !== 'NeuroShell-CLI' && neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
-        // Use compiled CLI exe
-        terminalPath = neuroPath;
-        terminalArgs = [];
+        if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
+            // NEVER inject the GUI app into the terminal. Force fallback.
+            const fallback = findPythonFallback();
+            if (fallback) {
+                terminalPath = fallback.pythonPath;
+                terminalArgs = ['-u', fallback.mainPyPath];
+            } else {
+                terminalPath = 'NeuroShell-CLI';
+                terminalArgs = [];
+            }
+        } else {
+            // Use compiled CLI exe
+            terminalPath = neuroPath;
+            terminalArgs = [];
+        }
     } else {
         // Fallback: use python + main.py from workspace
         const fallback = findPythonFallback();

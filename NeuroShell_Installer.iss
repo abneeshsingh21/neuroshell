@@ -4,12 +4,12 @@
 ; Output: dist\installer\NeuroShell_v5.0_Setup.exe
 
 #define MyAppName      "NeuroShell"
-#define MyAppVersion   "5.0.0"
+#define MyAppVersion   "5.0.7"
 #define MyAppPublisher "Abneesh Singh"
 #define MyAppURL       "https://github.com/abneeshsingh21/neuroshell"
 #define MyAppExeName   "NeuroShell.exe"
 #define MyAppIcon      "assets\icon.ico"
-#define DistFolder     "dist\NeuroShell"
+#define DistFolder     "dist"
 
 [Setup]
 ; Basic identity
@@ -25,8 +25,8 @@ AppUpdatesURL={#MyAppURL}/releases
 ; File layout
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-OutputDir=dist\installer
-OutputBaseFilename=NeuroShell_v5.0_Setup
+OutputDir=release
+OutputBaseFilename=NeuroShell-windows-x64-5.0.7
 SetupIconFile={#MyAppIcon}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
@@ -54,7 +54,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; Files to install
 [Files]
 ; Copy the entire PyInstaller output folder
-Source: "{#DistFolder}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#DistFolder}\NeuroShell.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#DistFolder}\NeuroShell-CLI.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Icons
 [Icons]

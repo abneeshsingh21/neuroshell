@@ -1,16 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-# NeuroShell GUI Build — Windowed Desktop App (console=False)
-# For VS Code terminal integration, use NeuroShell_CLI.spec instead.
-# Build: pyinstaller NeuroShell.spec
-# Output: dist/NeuroShell.exe (windowed GUI — NOT for VS Code terminal)
-
+# NeuroShell CLI Build — Console Mode for VS Code Terminal Integration
+# Build: pyinstaller NeuroShell_CLI.spec
+# Output: dist/NeuroShell.exe (console=True)
 
 a = Analysis(
-    ['C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\desktop_app.py'],
+    ['C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\neuroshell_cli.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\assets', 'assets')],
-    hiddenimports=[],
+    datas=[('C:\\Users\\lenovo\\Desktop\\LLM model train\\neuroshell\\assets', 'assets'),
+           ('C:\\Users\\lenovo\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\rich\\_unicode_data', 'rich/_unicode_data')],
+    hiddenimports=['rich._unicode_data'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -26,14 +25,14 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='NeuroShell',
+    name='NeuroShell-CLI',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,          # <-- KEY DIFFERENCE: console=True for VS Code terminal
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
