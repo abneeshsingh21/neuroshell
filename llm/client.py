@@ -234,9 +234,16 @@ class LLMClient:
         self._lock = threading.Lock()
         self._warmed_up = False
 
-        # Groq cloud fallback
+        # ── Multi-provider initialization ──
         self._groq_client: Any = None
         self._groq_available = False
+        self._openai_client: Any = None
+        self._openai_available = False
+        self._anthropic_available = False
+
+        provider = getattr(self.config, "provider", "ollama")
+
+        # Groq
         groq_key = os.environ.get("GROQ_API_KEY", getattr(self.config, "groq_api_key", ""))
         if HAS_GROQ and groq_key:
             try:
@@ -244,6 +251,44 @@ class LLMClient:
                 self._groq_available = True
             except Exception:
                 pass
+
+        # OpenAI / OpenRouter / Gemini (all OpenAI-compatible)
+        if provider in ("openai", "openrouter", "gemini"):
+            api_key = (
+                os.environ.get("OPENAI_API_KEY", "")
+                or os.environ.get("OPENROUTER_API_KEY", "")
+                or os.environ.get("GEMINI_API_KEY", "")
+            )
+            if api_key:
+                try:
+                    import httpx as _httpx
+                    self._openai_client = _httpx.Client(
+                        base_url=getattr(self.config, "base_url", "https://api.openai.com/v1"),
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        timeout=getattr(self.config, "timeout", 30),
+                    )
+                    self._openai_available = True
+                except ImportError:
+                    _llm_log.warning("httpx not installed — OpenAI/OpenRouter/Gemini provider unavailable")
+
+        # Anthropic
+        if provider == "anthropic":
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if anthropic_key:
+                try:
+                    import httpx as _httpx
+                    self._openai_client = _httpx.Client(
+                        base_url="https://api.anthropic.com/v1",
+                        headers={
+                            "x-api-key": anthropic_key,
+                            "anthropic-version": "2023-06-01",
+                            "Content-Type": "application/json",
+                        },
+                        timeout=getattr(self.config, "timeout", 30),
+                    )
+                    self._anthropic_available = True
+                except ImportError:
+                    _llm_log.warning("httpx not installed — Anthropic provider unavailable")
 
         # Hard timeout from config
         self._hard_timeout = getattr(
@@ -337,7 +382,8 @@ class LLMClient:
     @property
     def has_any_llm(self) -> bool:
         """Check if any LLM backend is available."""
-        return self.is_available() or self._groq_available
+        return (self.is_available() or self._groq_available
+                or self._openai_available or self._anthropic_available)
 
     # ═══════════════════════════════════════════════════════
     # Health & Availability
@@ -365,6 +411,104 @@ class LLMClient:
         except Exception:
             self._available = False
             return False
+
+    # ═══════════════════════════════════════════════════════
+    # OpenAI-Compatible Provider (OpenAI, OpenRouter, Gemini)
+    # ═══════════════════════════════════════════════════════
+
+    def _openai_generate(self, prompt: str, system_prompt: str = "",
+                         temperature: Optional[float] = None) -> LLMResponse:
+        """Generate via OpenAI-compatible API (OpenAI, OpenRouter, Gemini)."""
+        if not self._openai_client:
+            return self._fallback_response("OpenAI client not configured")
+
+        start = time.time()
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            payload = {
+                "model": self.config.model,
+                "messages": messages,
+                "temperature": temperature or self.config.temperature,
+                "max_tokens": self.config.max_tokens,
+            }
+
+            resp = self._openai_client.post("/chat/completions", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+            latency = (time.time() - start) * 1000
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+
+            self._budget.total_requests += 1
+            self._budget.total_completion_tokens += usage.get("completion_tokens", 0)
+            self._budget.total_prompt_tokens += usage.get("prompt_tokens", 0)
+
+            return LLMResponse(
+                text=text,
+                model=f"{self.config.provider}:{self.config.model}",
+                latency_ms=round(latency, 1),
+                tokens_used=usage.get("total_tokens", 0),
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+            )
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            self._budget.total_failures += 1
+            return self._fallback_response(f"OpenAI error: {e}", latency)
+
+    # ═══════════════════════════════════════════════════════
+    # Anthropic Provider
+    # ═══════════════════════════════════════════════════════
+
+    def _anthropic_generate(self, prompt: str, system_prompt: str = "",
+                            temperature: Optional[float] = None) -> LLMResponse:
+        """Generate via Anthropic Claude API."""
+        if not self._openai_client:  # reuses _openai_client httpx handle
+            return self._fallback_response("Anthropic client not configured")
+
+        start = time.time()
+        try:
+            payload = {
+                "model": self.config.model,
+                "max_tokens": self.config.max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            if system_prompt:
+                payload["system"] = system_prompt
+
+            resp = self._openai_client.post("/messages", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+            latency = (time.time() - start) * 1000
+            # Anthropic response: {"content": [{"type": "text", "text": "..."}]}
+            text = ""
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    text += block.get("text", "")
+
+            usage = data.get("usage", {})
+            self._budget.total_requests += 1
+            self._budget.total_completion_tokens += usage.get("output_tokens", 0)
+            self._budget.total_prompt_tokens += usage.get("input_tokens", 0)
+
+            return LLMResponse(
+                text=text,
+                model=f"anthropic:{self.config.model}",
+                latency_ms=round(latency, 1),
+                tokens_used=usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                prompt_tokens=usage.get("input_tokens", 0),
+                completion_tokens=usage.get("output_tokens", 0),
+            )
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            self._budget.total_failures += 1
+            return self._fallback_response(f"Anthropic error: {e}", latency)
 
     def health_status(self) -> dict:
         """Get detailed health status."""
@@ -538,17 +682,28 @@ class LLMClient:
     ) -> LLMResponse:
         """Generate a response with retry and caching. Falls back to Ollama if Groq fails."""
         prompt = _sanitize_for_prompt(prompt)  # Prevent prompt injection from command output
-        # ── Priority: Groq Cloud (fast, <1s) → Ollama (slow, local) ──
-        if self._groq_available:
+        
+        provider = getattr(self.config, "provider", "ollama")
+
+        # ── Priority: Configured Cloud Provider → Ollama (local) ──
+        if provider == "groq" and self._groq_available:
             try:
                 result = self._groq_generate(prompt, system_prompt, temperature)
-                if result.success:
-                    return result
-            except Exception:
-                pass  # Fall through to Ollama
+                if result.success: return result
+            except Exception: pass
+        elif provider in ("openai", "openrouter", "gemini") and self._openai_available:
+            try:
+                result = self._openai_generate(prompt, system_prompt, temperature)
+                if result.success: return result
+            except Exception: pass
+        elif provider == "anthropic" and self._anthropic_available:
+            try:
+                result = self._anthropic_generate(prompt, system_prompt, temperature)
+                if result.success: return result
+            except Exception: pass
 
         if not HAS_OLLAMA:
-            return self._fallback_response("No LLM available (install Ollama or set GROQ_API_KEY)")
+            return self._fallback_response(f"Provider {provider} failed or unavailable, and Ollama is not installed.")
 
         # Check cache
         if use_cache:
@@ -635,17 +790,33 @@ class LLMClient:
         callback: Optional[Callable[..., Any]] = None,
     ) -> LLMResponse:
         """Generate with streaming token-by-token output. Falls back to Ollama."""
-        # ── Priority: Groq Cloud (fast) → Ollama (local) ──
-        if self._groq_available:
+        # ── Priority: Configured Cloud Provider → Ollama (local) ──
+        provider = getattr(self.config, "provider", "ollama")
+
+        if provider == "groq" and self._groq_available:
             try:
                 result = self._groq_generate_streaming(prompt, system_prompt, temperature, callback)
-                if result.success:
-                    return result
-            except Exception:
-                pass  # Fall through to Ollama
+                if result.success: return result
+            except Exception: pass
+        elif provider in ("openai", "openrouter", "gemini") and self._openai_available:
+            try:
+                # Fallback to non-streaming for now, but simulate streaming output for UI
+                result = self._openai_generate(prompt, system_prompt, temperature)
+                if result.success and callback:
+                    callback(result.text)
+                if result.success: return result
+            except Exception: pass
+        elif provider == "anthropic" and self._anthropic_available:
+            try:
+                # Fallback to non-streaming for now, but simulate streaming output for UI
+                result = self._anthropic_generate(prompt, system_prompt, temperature)
+                if result.success and callback:
+                    callback(result.text)
+                if result.success: return result
+            except Exception: pass
 
         if not HAS_OLLAMA:
-            return self._fallback_response("No LLM available (install Ollama or set GROQ_API_KEY)")
+            return self._fallback_response(f"Provider {provider} failed or unavailable, and Ollama is not installed.")
 
         start = time.time()
         chunks = []

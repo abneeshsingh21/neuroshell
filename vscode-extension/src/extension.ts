@@ -84,18 +84,31 @@ function findPythonFallback(): { pythonPath: string; mainPyPath: string } | null
  */
 function findNeuroShellCLI(): string {
     const isWindows = process.platform === 'win32';
-    if (!isWindows) { return ''; }
+    
+    if (isWindows) {
+        const searchDirs = [
+            path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell'),
+            path.join(process.env.ProgramFiles || '', 'NeuroShell'),
+            path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell'),
+        ];
 
-    const searchDirs = [
-        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell'),
-        path.join(process.env.ProgramFiles || '', 'NeuroShell'),
-        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell'),
-    ];
-
-    for (const dir of searchDirs) {
-        const cliExe = path.join(dir, 'NeuroShell-CLI.exe');
-        if (fs.existsSync(cliExe)) {
-            return cliExe;
+        for (const dir of searchDirs) {
+            const cliExe = path.join(dir, 'NeuroShell-CLI.exe');
+            if (fs.existsSync(cliExe)) {
+                return cliExe;
+            }
+        }
+    } else {
+        // Linux/macOS
+        const searchPaths = [
+            '/usr/local/bin/neuroshell',
+            '/usr/bin/neuroshell'
+        ];
+        
+        for (const bin of searchPaths) {
+            if (fs.existsSync(bin)) {
+                return bin;
+            }
         }
     }
 
@@ -228,7 +241,19 @@ async function checkForUpdates(context: vscode.ExtensionContext, manual: boolean
             return;
         }
 
-        // Find the exe asset
+        const isWindows = process.platform === 'win32';
+
+        if (!isWindows) {
+            // For Linux/macOS, just notify the user and don't try to auto-download exe
+            if (manual) {
+                vscode.window.showInformationMessage(`NeuroShell ${remoteVersion} is available (you have ${localVersion}). Run the curl install script to upgrade.`);
+            } else {
+                vscode.window.showInformationMessage(`NeuroShell update ${remoteVersion} is available! Run: curl -sSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash`);
+            }
+            return;
+        }
+
+        // Find the exe asset for Windows
         const exeAsset = release.assets.find(a => a.name.toLowerCase().endsWith('.exe'));
         if (!exeAsset) {
             if (manual) {
@@ -417,6 +442,12 @@ async function downloadAndInstallLatest(context: vscode.ExtensionContext) {
         title: "Installing NeuroShell Engine",
         cancellable: false
     }, async (progress) => {
+        const isWindows = process.platform === 'win32';
+        if (!isWindows) {
+            vscode.window.showInformationMessage('On Linux/macOS, please run: curl -sSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash');
+            return;
+        }
+
         progress.report({ message: 'Fetching latest version...' });
 
         let downloadUrl: string;
@@ -535,16 +566,16 @@ function injectNeuroShellProfile() {
         if (neuroPath !== 'NeuroShell-CLI' && neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
             if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
                 // NEVER inject the GUI app into the terminal
-                terminalPath = 'NeuroShell-CLI';
+                terminalPath = isWindows ? 'NeuroShell-CLI' : 'neuroshell';
                 terminalArgs = [];
             } else {
-                // Use compiled CLI exe
+                // Use compiled CLI exe or absolute script path
                 terminalPath = neuroPath;
                 terminalArgs = [];
             }
         } else {
-            // Last resort: try NeuroShell-CLI from PATH
-            terminalPath = 'NeuroShell-CLI';
+            // Last resort: try NeuroShell-CLI from PATH on Windows, neuroshell on Unix
+            terminalPath = isWindows ? 'NeuroShell-CLI' : 'neuroshell';
             terminalArgs = [];
         }
     }

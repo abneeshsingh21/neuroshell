@@ -56,231 +56,24 @@ class NeuroShell:
     """
 
     def __init__(self):
-        # ── Load config ──────────────────────────────
+        import threading
+
+        # ── Fast path: config + session state (<0.5s) ──
         self.config = load_config()
 
-        # ── Observability (load first for logging) ───
+        # Lightweight logger — no heavy deps
         from observability.logger import StructuredLogger
         self.logger = StructuredLogger("main")
 
-        # ── Core Layer ───────────────────────────────
-        from core.executor import ShellExecutor
-        from core.context import ContextManager
-        from core.history import HistoryStore
-        from core.output_parser import OutputParser
-        from core.dependency_resolver import DependencyResolver
-
-        self.executor = ShellExecutor(self.config)
-        self.context = ContextManager(self.config)
-        self.history = HistoryStore()
-        self.parser = OutputParser()
-        self.dep_resolver = DependencyResolver(self.context)
-
-        # ── Observability ────────────────────────────
-        from observability.tracer import EventTracer
-        from observability.provenance import ProvenanceTracker
-
-        self.tracer = EventTracer(self.logger)
-        self.provenance = ProvenanceTracker()
-
-        # ── Learning/Metrics (lazy load) ─────────────
-        from learning.metrics import MetricsTracker
-        self.metrics = MetricsTracker()
-
-        # ── LLM ──────────────────────────────────────
-        from llm.client import LLMClient
-        self.llm = LLMClient(self.config)
-
-        # ── NLP Fast Layer ───────────────────────────
-        from nlp.intent_classifier import IntentClassifier
-        from nlp.entity_extractor import EntityExtractor
-        from nlp.sentiment import SentimentDetector
-
-        self.intent_classifier = IntentClassifier()
-        self.entity_extractor = EntityExtractor()
-        self.sentiment = SentimentDetector()
-
-        # ── Intelligence ─────────────────────────────
-        from intelligence.translator import Translator
-        from intelligence.safety import SafetyChecker, RiskLevel
-        from intelligence.error_fixer import ErrorFixer
-        from intelligence.explainer import Explainer
-        from intelligence.autocomplete import Autocomplete
-        from intelligence.pipeline_builder import PipelineBuilder
-        from intelligence.fuzzy_corrector import FuzzyCorrector
-        from intelligence.chain_builder import ChainBuilder
-        from intelligence.project_detector import ProjectDetector
-        from intelligence.bookmarks import BookmarkManager
-        from intelligence.agent import AgentPlanner
-        from intelligence.script_generator import ScriptGenerator
-        from intelligence.phrase_dictionary import PhraseDictionary
-        import intelligence.pii_scrubber as _pii_scrubber
-        self.pii_scrubber = _pii_scrubber
-        from intelligence.offline_fallback import OfflineFallbackManager
-
-
-        self.translator = Translator(self.llm, self.context, self.history)
-        self.safety = SafetyChecker(self.config, self.llm)
-        self.fixer = ErrorFixer(self.llm, self.history, self.context)
-        self.explainer = Explainer(self.llm, self.context)
-        self.autocomplete = Autocomplete(self.history, self.context)
-        self.pipeline_builder = PipelineBuilder(self.llm, self.context)
-        self._RiskLevel = RiskLevel
-
-        # ── New futuristic modules ────────────────────
-        self.fuzzy_corrector = FuzzyCorrector()
-        self.chain_builder = ChainBuilder(self.llm, self.translator)
-        self.project_detector = ProjectDetector()
-        self.bookmarks = BookmarkManager(self.history)
-        self.agent = AgentPlanner(self.llm, self.executor, self.safety)
-        self.script_generator = ScriptGenerator(self.llm)
-        self.phrase_dict = PhraseDictionary()
-        
-        self.offline_fallback = OfflineFallbackManager(self.config)
-        
-        # Try importing C++ engine gracefully
-        try:
-            import cpp_engine.cpp_engine_core as cpp
-            self.cpp_parser = cpp.FastParser()
-            self.cpp_matcher = cpp.FuzzyMatcher()
-            self._cpp_enabled = True
-        except ImportError:
-            self._cpp_enabled = False
-
-
-        # ── New Feature Modules ──────────────────────
-        from extensions.alias_manager import AliasManager
-        from core.env_manager import EnvManager
-        from llm.model_manager import ModelManager
-        from extensions.config_editor import ConfigEditor
-        from core.timer import CommandTimer
-        from extensions.auto_docs import AutoDocsGenerator
-        from intelligence.smart_suggestions import SmartSuggester
-        from intelligence.smart_open import SmartOpenEngine
-
-        self.alias_manager = AliasManager()
-        self.env_manager = EnvManager()
-        self.model_manager = ModelManager(self.config, self.llm)
-        self.config_editor = ConfigEditor(self.config)
-        self.command_timer = CommandTimer(self.executor)
-        self.docs_generator = AutoDocsGenerator(self.history, self.pattern_learner if hasattr(self, 'pattern_learner') else None)
-        self.smart_suggester = SmartSuggester(self.history, self.context)
-        self.smart_open = SmartOpenEngine()  # singleton — handles open/clone/launch/power intents
-
-        # ── Phase 7 Agentic Features ─────────────────
-        from intelligence.coordinator import Coordinator
-        from intelligence.mcp.mcp_client import MCPClient
-        from intelligence.lsp.lsp_client import LSPClient
-        from intelligence.tools.mcp_tool import MCPTool
-        from intelligence.tools.lsp_tool import LSPTool
-        from intelligence.tools.task_tools import TaskSystemTool
-        from intelligence.tools.mode_tools import ModeTool
-        from intelligence.tools.teammate_tool import TeammateTool
-        from intelligence.modes.plan_mode import PlanModeController
-        from intelligence.memory.session_memory import SessionMemory
-        from intelligence.swarm import SwarmOrchestrator
-
-        # Setup short-term rolling context
-        self.session_memory = SessionMemory(max_turns=15)
-
-        # MCP is optional — engine stays fully operational if no MCP server is running
-        try:
-            self.mcp_client = MCPClient("http://localhost:8000")
-        except Exception:
-            self.mcp_client = None
-
-        # LSPClient takes only the server command list
-        self.lsp_client = LSPClient(["python", "-m", "pylsp"])
-        
-        from intelligence.tasks.task_manager import TaskManager
-
-        self.task_manager = TaskManager()
-
-        self.coordinator = Coordinator(self.llm, self.context)
-        if self.mcp_client is not None:
-            self.coordinator.register_tool(MCPTool(self.mcp_client))
-        self.coordinator.register_tool(LSPTool(self.lsp_client))
-        self.coordinator.register_tool(TaskSystemTool(self.task_manager))
-        self.coordinator.register_tool(TeammateTool())
-
-        # PlanModeController takes no constructor args
-        self.plan_mode = PlanModeController()
-
-        # Mode tool requires the instantiated plan_mode
-        self.coordinator.register_tool(ModeTool(self.plan_mode))
-
-        # SwarmOrchestrator takes (llm_client, context_manager)
-        self.swarm_orchestrator = SwarmOrchestrator(self.llm, self.context)
-
-        # ── Intelligence Background Services ─────────
-        from intelligence.services.magic_docs import MagicDocs
-        from intelligence.memory.auto_dream import AutoDreamDaemon
-
-        self.magic_docs = MagicDocs(self.llm)
-        self.auto_dream = AutoDreamDaemon(
-            self.session_memory, self.llm,
-            magic_docs=self.magic_docs,
-            ui_callback=lambda m: print(f"[AutoDream] {m}")
-        )
-
-        # Auto-start memory daemon
-        self.auto_dream.start()
-        
-        # This will be updated by the UI when the toggle switches
-        self.mode = "Builder"
-
-        # ── Learning (lazy) ──────────────────────────
-        from learning.pattern_learner import PatternLearner
-        from learning.predictor import Predictor
-        from learning.feedback_loop import FeedbackLoop
-
-        self.pattern_learner = PatternLearner(self.history)
-        self.predictor = Predictor(self.history)
-        self.feedback = FeedbackLoop(self.history, self.intent_classifier)
-
-        # Re-link docs generator with pattern_learner now that it exists
-        self.docs_generator = AutoDocsGenerator(self.history, self.pattern_learner)
-
-        # ── Resilience ───────────────────────────────
-        from resilience.resilience import HealthCheck, GracefulDegradation, NetworkAware
-        self.network = NetworkAware()
-        self.health = HealthCheck(self.config)
-        self.degradation = GracefulDegradation()
-
-        # ── Deployment operations ───────────────────
-        from operations.deploy_manager import DeployManager
-        from operations.browser_access import BrowserAccessManager
-        from operations.github_access import GitHubAccessManager
-        from operations.runtime_ops import RuntimeSLOMonitor
-        self.deploy_manager = DeployManager(NEUROSHELL_DIR / "deploy" / "state.json")
-        self.browser_access = BrowserAccessManager(Path.cwd())
-        self.github_access = GitHubAccessManager(Path.cwd(), NEUROSHELL_DIR / "github_context.json")
-        self.runtime_slo = RuntimeSLOMonitor()
-
-        # ── Help ─────────────────────────────────────
-        from help.help_system import HelpSystem, OnboardingTutorial
-        self.help = HelpSystem(self.config)
-        self.tutorial = OnboardingTutorial()
-
-        # ── UI ───────────────────────────────────────
-        from ui.app import NeuroShellUI
-        from ui.dashboard import Dashboard
-        self.ui = NeuroShellUI()
-        self.dashboard = Dashboard(
-            history_store=self.history,
-            metrics_tracker=self.metrics,
-            project_detector=self.project_detector,
-            config=self.config,
-        )
-
-        # ── Session state ────────────────────────────
+        # Session state (zero-cost)
         self.session_id = uuid.uuid4().hex[:8]
         self._last_error_output = ""
         self._last_command = ""
         self._running = True
         self._command_count = 0
+        self.mode = "Builder"
 
-        # ── Conversation memory for follow-ups ──
+        # Conversation memory for follow-ups
         self._conversation_context = []  # last N (input, command, result) tuples
         self._MAX_MEMORY = 5
         self._FOLLOWUP_WORDS = {
@@ -289,30 +82,272 @@ class NeuroShell:
             "filter", "sort", "only", "except", "without",
         }
 
+        # ── Background loading gate ──
+        self._modules_ready = threading.Event()
+        self._load_error = None
+
+        # Start heavy loading in background
+        self._loader_thread = threading.Thread(
+            target=self._load_heavy_modules, daemon=True, name="neuroshell-loader"
+        )
+        self._loader_thread.start()
+
+    def _wait_for_modules(self, timeout: float = 30.0) -> bool:
+        """Block until heavy modules are loaded. Returns True if ready."""
+        if self._modules_ready.is_set():
+            return True
+        print("  ⏳ Loading modules...", end="", flush=True)
+        ready = self._modules_ready.wait(timeout=timeout)
+        if ready:
+            print(" ✅")
+        else:
+            print(" ⚠️ timeout")
+        return ready
+
+    def _load_heavy_modules(self):
+        """Load all heavy modules in background thread."""
+        try:
+            # ── Core Layer ───────────────────────────────
+            from core.executor import ShellExecutor
+            from core.context import ContextManager
+            from core.history import HistoryStore
+            from core.output_parser import OutputParser
+            from core.dependency_resolver import DependencyResolver
+
+            self.executor = ShellExecutor(self.config)
+            self.context = ContextManager(self.config)
+            self.history = HistoryStore()
+            self.parser = OutputParser()
+            self.dep_resolver = DependencyResolver(self.context)
+
+            # ── Observability ────────────────────────────
+            from observability.tracer import EventTracer
+            from observability.provenance import ProvenanceTracker
+
+            self.tracer = EventTracer(self.logger)
+            self.provenance = ProvenanceTracker()
+
+            # ── Learning/Metrics ─────────────────────────
+            from learning.metrics import MetricsTracker
+            self.metrics = MetricsTracker()
+
+            # ── LLM ──────────────────────────────────────
+            from llm.client import LLMClient
+            self.llm = LLMClient(self.config)
+
+            # ── NLP Fast Layer ───────────────────────────
+            from nlp.intent_classifier import IntentClassifier
+            from nlp.entity_extractor import EntityExtractor
+            from nlp.sentiment import SentimentDetector
+
+            self.intent_classifier = IntentClassifier()
+            self.entity_extractor = EntityExtractor()
+            self.sentiment = SentimentDetector()
+
+            # ── Intelligence ─────────────────────────────
+            from intelligence.translator import Translator
+            from intelligence.safety import SafetyChecker, RiskLevel
+            from intelligence.error_fixer import ErrorFixer
+            from intelligence.explainer import Explainer
+            from intelligence.autocomplete import Autocomplete
+            from intelligence.pipeline_builder import PipelineBuilder
+            from intelligence.fuzzy_corrector import FuzzyCorrector
+            from intelligence.chain_builder import ChainBuilder
+            from intelligence.project_detector import ProjectDetector
+            from intelligence.bookmarks import BookmarkManager
+            from intelligence.agent import AgentPlanner
+            from intelligence.script_generator import ScriptGenerator
+            from intelligence.phrase_dictionary import PhraseDictionary
+            import intelligence.pii_scrubber as _pii_scrubber
+            self.pii_scrubber = _pii_scrubber
+            from intelligence.offline_fallback import OfflineFallbackManager
+
+            self.translator = Translator(self.llm, self.context, self.history)
+            self.safety = SafetyChecker(self.config, self.llm)
+            self.fixer = ErrorFixer(self.llm, self.history, self.context)
+            self.explainer = Explainer(self.llm, self.context)
+            self.autocomplete = Autocomplete(self.history, self.context)
+            self.pipeline_builder = PipelineBuilder(self.llm, self.context)
+            self._RiskLevel = RiskLevel
+
+            # ── Futuristic modules ────────────────────────
+            self.fuzzy_corrector = FuzzyCorrector()
+            self.chain_builder = ChainBuilder(self.llm, self.translator)
+            self.project_detector = ProjectDetector()
+            self.bookmarks = BookmarkManager(self.history)
+            self.agent = AgentPlanner(self.llm, self.executor, self.safety)
+            self.script_generator = ScriptGenerator(self.llm)
+            self.phrase_dict = PhraseDictionary()
+            self.offline_fallback = OfflineFallbackManager(self.config)
+
+            # Try importing C++ engine gracefully
+            try:
+                import cpp_engine.cpp_engine_core as cpp
+                self.cpp_parser = cpp.FastParser()
+                self.cpp_matcher = cpp.FuzzyMatcher()
+                self._cpp_enabled = True
+            except ImportError:
+                self._cpp_enabled = False
+
+            # ── Feature Modules ──────────────────────────
+            from extensions.alias_manager import AliasManager
+            from core.env_manager import EnvManager
+            from llm.model_manager import ModelManager
+            from extensions.config_editor import ConfigEditor
+            from core.timer import CommandTimer
+            from extensions.auto_docs import AutoDocsGenerator
+            from intelligence.smart_suggestions import SmartSuggester
+            from intelligence.smart_open import SmartOpenEngine
+
+            self.alias_manager = AliasManager()
+            self.env_manager = EnvManager()
+            self.model_manager = ModelManager(self.config, self.llm)
+            self.config_editor = ConfigEditor(self.config)
+            self.command_timer = CommandTimer(self.executor)
+            self.docs_generator = AutoDocsGenerator(self.history, None)
+            self.smart_suggester = SmartSuggester(self.history, self.context)
+            self.smart_open = SmartOpenEngine()
+
+            # ── Phase 7 Agentic Features ─────────────────
+            from intelligence.coordinator import Coordinator
+            from intelligence.mcp.mcp_client import MCPClient
+            from intelligence.lsp.lsp_client import LSPClient
+            from intelligence.tools.mcp_tool import MCPTool
+            from intelligence.tools.lsp_tool import LSPTool
+            from intelligence.tools.task_tools import TaskSystemTool
+            from intelligence.tools.mode_tools import ModeTool
+            from intelligence.tools.teammate_tool import TeammateTool
+            from intelligence.modes.plan_mode import PlanModeController
+            from intelligence.memory.session_memory import SessionMemory
+            from intelligence.swarm import SwarmOrchestrator
+
+            self.session_memory = SessionMemory(max_turns=15)
+
+            try:
+                self.mcp_client = MCPClient("http://localhost:8000")
+            except Exception:
+                self.mcp_client = None
+
+            self.lsp_client = LSPClient(["python", "-m", "pylsp"])
+
+            from intelligence.tasks.task_manager import TaskManager
+            self.task_manager = TaskManager()
+
+            self.coordinator = Coordinator(self.llm, self.context)
+            if self.mcp_client is not None:
+                self.coordinator.register_tool(MCPTool(self.mcp_client))
+            self.coordinator.register_tool(LSPTool(self.lsp_client))
+            self.coordinator.register_tool(TaskSystemTool(self.task_manager))
+            self.coordinator.register_tool(TeammateTool())
+
+            self.plan_mode = PlanModeController()
+            self.coordinator.register_tool(ModeTool(self.plan_mode))
+            self.swarm_orchestrator = SwarmOrchestrator(self.llm, self.context)
+
+            # ── Intelligence Background Services ─────────
+            from intelligence.services.magic_docs import MagicDocs
+            from intelligence.memory.auto_dream import AutoDreamDaemon
+
+            self.magic_docs = MagicDocs(self.llm)
+            self.auto_dream = AutoDreamDaemon(
+                self.session_memory, self.llm,
+                magic_docs=self.magic_docs,
+                ui_callback=lambda m: print(f"[AutoDream] {m}")
+            )
+            self.auto_dream.start()
+
+            # ── Learning ─────────────────────────────────
+            from learning.pattern_learner import PatternLearner
+            from learning.predictor import Predictor
+            from learning.feedback_loop import FeedbackLoop
+
+            self.pattern_learner = PatternLearner(self.history)
+            self.predictor = Predictor(self.history)
+            self.feedback = FeedbackLoop(self.history, self.intent_classifier)
+            self.docs_generator = AutoDocsGenerator(self.history, self.pattern_learner)
+
+            # ── Resilience ───────────────────────────────
+            from resilience.resilience import HealthCheck, GracefulDegradation, NetworkAware
+            self.network = NetworkAware()
+            self.health = HealthCheck(self.config)
+            self.degradation = GracefulDegradation()
+
+            # ── Deployment operations ───────────────────
+            from operations.deploy_manager import DeployManager
+            from operations.browser_access import BrowserAccessManager
+            from operations.github_access import GitHubAccessManager
+            from operations.runtime_ops import RuntimeSLOMonitor
+            self.deploy_manager = DeployManager(NEUROSHELL_DIR / "deploy" / "state.json")
+            self.browser_access = BrowserAccessManager(Path.cwd())
+            self.github_access = GitHubAccessManager(Path.cwd(), NEUROSHELL_DIR / "github_context.json")
+            self.runtime_slo = RuntimeSLOMonitor()
+
+            # ── Help ─────────────────────────────────────
+            from help.help_system import HelpSystem, OnboardingTutorial
+            self.help = HelpSystem(self.config)
+            self.tutorial = OnboardingTutorial()
+
+            # ── UI ───────────────────────────────────────
+            from ui.app import NeuroShellUI
+            from ui.dashboard import Dashboard
+            self.ui = NeuroShellUI()
+            self.dashboard = Dashboard(
+                history_store=self.history,
+                metrics_tracker=self.metrics,
+                project_detector=self.project_detector,
+                config=self.config,
+            )
+
+            # Signal ready
+            self._modules_ready.set()
+            self.logger.info("modules_loaded", status="ok")
+
+        except Exception as e:
+            self._load_error = str(e)
+            self._modules_ready.set()  # Unblock main thread even on error
+            import traceback
+            traceback.print_exc()
+
     # ═══════════════════════════════════════════════════════
     # Lifecycle
     # ═══════════════════════════════════════════════════════
 
     def startup(self):
         """Run startup sequence with signal handling."""
-        self.logger.info("startup", session_id=self.session_id)
-
-        # Register signal handlers
+        # Register signal handlers immediately
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
         atexit.register(self._crash_cleanup)
 
-        # Print startup banner
+        # Print startup banner INSTANTLY (no heavy deps needed)
         from ui.banner import render_startup_banner
         print(render_startup_banner(self.config))
+
+        # Wait for background module loading to complete
+        modules_loaded = self._wait_for_modules(timeout=30.0)
+        
+        if not modules_loaded or self._load_error:
+            self._degraded = True
+            error_msg = self._load_error or "Module loading timed out."
+            
+            # Use UI if loaded, otherwise fallback to plain print
+            if hasattr(self, 'ui') and self.ui:
+                self.ui.print_warning(f"NeuroShell started in Degraded Mode.\nError: {error_msg}")
+            else:
+                print(f"  ⚠️ NeuroShell started in Degraded Mode.\n  ⚠️ Error: {error_msg}")
+        else:
+            self._degraded = False
+
+        self.logger.info("startup", session_id=self.session_id)
 
         # Fast start mode: skip heavy initialization
         fast_start = os.environ.get("NEUROSHELL_FAST_START") == "1"
 
-        if not fast_start:
+        if not fast_start and not self._degraded:
             # Run health checks
-            report = self.health.run_all()
-            self.ui.print_health_report(report)
+            if hasattr(self, 'health') and self.health:
+                report = self.health.run_all()
+                self.ui.print_health_report(report)
 
             # Initialize NLP layer
             self._init_nlp()
@@ -481,6 +516,15 @@ class NeuroShell:
         start_time = time.time()
         self.metrics.count("inputs")
         self._command_count += 1
+
+        # ── Degraded Fallback ──
+        if getattr(self, '_degraded', False):
+            # In degraded mode, bypass NLP and intelligence, just run raw shell
+            self._handle_shell_command(user_input, cid)
+            total_ms = (time.time() - start_time) * 1000
+            self.metrics.record_latency("total_pipeline", total_ms)
+            self.tracer.end_trace(cid)
+            return
 
         # ── Step 1: NLP Pre-processing (<5ms) ──────
         self.tracer.add_event(cid, "nlp_start")
@@ -1350,42 +1394,62 @@ class NeuroShell:
         """Execute shell command through safety pipeline."""
         self.tracer.add_event(cid, "safety_check")
 
-        safety = self.safety.check(command)
-        policy_tag = self._policy_tag()
-        if safety.risk_level in (self._RiskLevel.DANGER, self._RiskLevel.BLOCKED):
-            self.ui.print_safety(safety)
-            if policy_tag:
-                self.ui.print_info(f"  🛡️ Blocked under policy {policy_tag}")
-            self.metrics.count("blocked_commands")
-            return
+        # ── Safe Degradation Checks ──
+        has_ui = hasattr(self, 'ui') and self.ui
+        has_safety = hasattr(self, 'safety') and self.safety
+        has_network = hasattr(self, 'network') and self.network
 
-        if safety.needs_confirmation:
-            self.ui.print_safety(safety)
-            if policy_tag:
-                self.ui.print_info(f"  🛡️ Confirmation required by policy {policy_tag}")
-            if not self.ui.confirm("Execute anyway?"):
-                self.metrics.count("user_cancelled")
+        if has_safety:
+            safety = self.safety.check(command)
+            policy_tag = self._policy_tag()
+            if safety.risk_level in (self._RiskLevel.DANGER, self._RiskLevel.BLOCKED):
+                if has_ui:
+                    self.ui.print_safety(safety)
+                    if policy_tag:
+                        self.ui.print_info(f"  🛡️ Blocked under policy {policy_tag}")
+                else:
+                    print(f"  ❌ Blocked: {safety.reason}")
+                self.metrics.count("blocked_commands")
                 return
 
-        # Dependency check
-        dep_issues = self.dep_resolver.check_command(command)
-        for issue in dep_issues:
-            if not issue.is_available:
-                self.ui.print_info(f"  ⚠️ {issue.message}")
-                if issue.fix_command:
-                    self.ui.print_info(f"  💡 Fix: {issue.fix_command}")
+            if safety.needs_confirmation:
+                if has_ui:
+                    self.ui.print_safety(safety)
+                    if policy_tag:
+                        self.ui.print_info(f"  🛡️ Confirmation required by policy {policy_tag}")
+                    if not self.ui.confirm("Execute anyway?"):
+                        self.metrics.count("user_cancelled")
+                        return
+                else:
+                    print(f"  ⚠️ Warning: {safety.reason}. Skipping for safety in degraded mode.")
+                    return
+
+                        self.ui.print_info(f"  ⚠️ {issue.message}")
+                        if issue.fix_command:
+                            self.ui.print_info(f"  💡 Fix: {issue.fix_command}")
+                    else:
+                        print(f"  ⚠️ {issue.message}")
 
         # Network check
-        net_warning = self.network.warn_if_offline(command)
-        if net_warning:
-            self.ui.print_info(net_warning)
+        if has_network:
+            net_warning = self.network.warn_if_offline(command)
+            if net_warning:
+                if has_ui:
+                    self.ui.print_info(net_warning)
+                else:
+                    print(net_warning)
 
         # Execute with spinner for potentially slow commands
         self.tracer.add_event(cid, "execute")
+        
+        capture = False
+        if has_safety:
+            capture = safety.risk_level == self._RiskLevel.CAUTION
+
         result = self.executor.execute(
             command,
             stream_callback=lambda line: print(line),
-            capture_snapshot=safety.risk_level == self._RiskLevel.CAUTION,
+            capture_snapshot=capture,
         )
 
         self._last_command = command
@@ -1394,27 +1458,39 @@ class NeuroShell:
         # Parse and highlight output
         language_hint = ""
         parsed_output = None
-        if result.stdout:
+        if result.stdout and hasattr(self, 'parser') and self.parser:
             parsed_output = self.parser.parse(result.stdout)
             self.tracer.add_event(cid, "parsed", output_type=parsed_output.output_type.value)
-            language_hint = parsed_output.language_hint if hasattr(parsed_output, 'language_hint') else ""
+            language_hint = getattr(parsed_output, 'language_hint', "")
 
-        # Display result with syntax highlighting
-        self.ui.print_result(command, result, language_hint=language_hint, parsed_output=parsed_output)
+        # Display result
+        if has_ui:
+            self.ui.print_result(command, result, language_hint=language_hint, parsed_output=parsed_output)
+        else:
+            print(f"\n[Exit code: {result.returncode}]")
+            if result.stdout: print(result.stdout)
+            if result.stderr: print(f"Error: {result.stderr}")
 
         # Store in history
-        from core.history import CommandRecord
-        record = CommandRecord(
-            command=command,
-            exit_code=result.exit_code,
-            stdout_preview=result.stdout[:500],
-            stderr_preview=result.stderr[:200],
-            cwd=os.getcwd(),
-            shell=result.shell,
-            duration_ms=result.duration_ms,
-            session_id=self.session_id,
-        )
-        self.history.add_command(record)
+        if hasattr(self, 'history') and self.history:
+            try:
+                from core.history import CommandRecord
+                record = CommandRecord(
+                    command=command,
+                    exit_code=result.exit_code,
+                    stdout_preview=result.stdout[:500] if result.stdout else "",
+                    stderr_preview=result.stderr[:200] if result.stderr else "",
+                    cwd=os.getcwd(),
+                    shell=result.shell,
+                    duration_ms=result.duration_ms,
+                    session_id=self.session_id,
+                )
+                if hasattr(self.history, 'add_command'):
+                    self.history.add_command(record)
+                elif hasattr(self.history, 'add'):
+                    self.history.add(record)
+            except Exception as e:
+                pass
 
         # Record in conversation memory for follow-ups
         self._conversation_context.append({
@@ -1428,10 +1504,18 @@ class NeuroShell:
         # Handle errors
         if result.exit_code != 0:
             self._last_error_output = result.stderr or result.stdout
-            self.sentiment.record_error()
-            hint = self.help.get_hint("first_error")
-            if hint:
-                self.ui.print_hint(hint)
+            if hasattr(self, 'sentiment') and self.sentiment:
+                try:
+                    self.sentiment.record_error()
+                except Exception:
+                    pass
+            if hasattr(self, 'help') and self.help and has_ui:
+                try:
+                    hint = self.help.get_hint("first_error")
+                    if hint:
+                        self.ui.print_hint(hint)
+                except Exception:
+                    pass
         else:
             self._last_error_output = ""
 

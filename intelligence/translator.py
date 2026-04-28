@@ -312,6 +312,50 @@ WINDOWS_OVERRIDES = {
     r"(?:show|paste|view)\s+clipboard(?:\s+content)?": 'powershell -NoProfile -Command "Get-Clipboard"',
 }
 
+LINUX_OVERRIDES = {
+    # File operations
+    r"(?:show|list|view)\s+(?:all\s+)?files?": "ls -la",
+    r"(?:deep\s+)?(?:find|search|locate)\s+(?:for\s+)?(?:files?\s+)?(?:named?\s+)?(.+)": 'find . -name "*{0}*"',
+    r"(?:deep\s+)?(?:search|grep|find)\s+(?:for\s+)?['\"](.+?)['\"]\s+(?:in\s+)?(?:all\s+)?files?": 'grep -rn "{0}" .',
+    r"(?:show|view)\s+(?:the\s+)?(?:size|sizes)\s+(?:of\s+)?(?:all\s+)?(?:files?|folders?|directories)": "du -sh *",
+    r"(?:compare|diff)\s+(\S+)\s+(?:and|with|vs)\s+(\S+)": "diff -u {0} {1}",
+    r"(?:clear|cls)\s+(?:the\s+)?(?:screen|terminal|console)": "clear",
+
+    # System
+    r"(?:show|what)\s+(?:is\s+)?(?:free\s+)?(?:disk\s+)?space": "df -h",
+    r"(?:show|what)\s+(?:is\s+)?memory\s+usage": "free -m",
+    r"(?:find|show)\s+(?:my\s+)?(?:ip|IP)\s+(?:address)?": "ip a",
+    r"(?:show|list)\s+(?:running\s+)?processes": "ps aux",
+    r"(?:kill|stop)\s+process\s+(\d+)": "kill -9 {0}",
+    r"(?:show|list)\s+(?:all\s+)?environment\s+variables?": "env",
+    r"(?:update|upgrade)\s+(?:the\s+)?system": "sudo apt update && sudo apt upgrade -y",
+    r"(?:show|view)\s+(?:system\s+)?(?:info|information)": "uname -a",
+    r"(?:restart|reboot)\s+(?:the\s+)?(?:computer|system|pc|machine)": "sudo reboot",
+    r"(?:shutdown|turn off|power off)\s+(?:the\s+)?(?:computer|system|pc|machine)": "sudo shutdown -h now",
+    
+    # Virtual Env
+    r"(?:activate)\s+(?:the\s+)?(?:virtual\s+)?(?:env|environment|venv)": "source .venv/bin/activate",
+
+    # Clipboard
+    r"(?:copy|save)\s+(?:output|result)\s+(?:to\s+)?clipboard": "| xclip -sel clip",
+    r"(?:show|paste|view)\s+clipboard(?:\s+content)?": "xclip -sel clip -o",
+}
+
+MACOS_OVERRIDES = {
+    # System
+    r"(?:show|what)\s+(?:is\s+)?(?:free\s+)?(?:disk\s+)?space": "df -h",
+    r"(?:show|what)\s+(?:is\s+)?memory\s+usage": "vm_stat",
+    r"(?:find|show)\s+(?:my\s+)?(?:ip|IP)\s+(?:address)?": "ifconfig",
+    r"(?:update|upgrade)\s+(?:the\s+)?system": "brew update && brew upgrade",
+    
+    # DNS
+    r"(?:flush|clear)\s+(?:dns|DNS)\s+(?:cache)?": "sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder",
+
+    # Clipboard
+    r"(?:copy|save)\s+(?:output|result)\s+(?:to\s+)?clipboard": "| pbcopy",
+    r"(?:show|paste|view)\s+clipboard(?:\s+content)?": "pbpaste",
+}
+
 
 # ═══════════════════════════════════════════════════════════
 # Translator — Production Engine
@@ -454,13 +498,17 @@ class Translator:
     def _try_local_patterns(self, user_input: str) -> Optional[TranslationResult]:
         """Try to match against known patterns locally."""
         import platform as plat
-        is_windows = plat.system() == "Windows"
+        os_name = plat.system()
 
-        # Compile patterns. LOCAL_PATTERNS first, then WINDOWS_OVERRIDES so overrides take precedence
+        # Compile patterns. LOCAL_PATTERNS first, then OS_OVERRIDES so overrides take precedence
         patterns = {}
         patterns.update(LOCAL_PATTERNS)
-        if is_windows:
+        if os_name == "Windows":
             patterns.update(WINDOWS_OVERRIDES)
+        elif os_name == "Linux":
+            patterns.update(LINUX_OVERRIDES)
+        elif os_name == "Darwin":
+            patterns.update(MACOS_OVERRIDES)
 
         def _resolve_match(m, p_str, tpl):
             command = tpl
