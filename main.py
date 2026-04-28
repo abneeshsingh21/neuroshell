@@ -1423,7 +1423,12 @@ class NeuroShell:
                 else:
                     print(f"  ⚠️ Warning: {safety.reason}. Skipping for safety in degraded mode.")
                     return
-
+        # Dependency check
+        if hasattr(self, 'dep_resolver') and self.dep_resolver:
+            dep_issues = self.dep_resolver.check_command(command)
+            for issue in dep_issues:
+                if not issue.is_available:
+                    if has_ui:
                         self.ui.print_info(f"  ⚠️ {issue.message}")
                         if issue.fix_command:
                             self.ui.print_info(f"  💡 Fix: {issue.fix_command}")

@@ -390,7 +390,11 @@ class SafetyChecker:
                     scope.directories.append(part_clean)
                     if scope.recursive:
                         try:
-                            count = sum(1 for _ in Path(part_clean).rglob("*"))
+                            count = 0
+                            for _ in Path(part_clean).rglob("*"):
+                                count += 1
+                                if count >= 1000:
+                                    break
                             scope.estimated_file_count += count
                         except (PermissionError, OSError):
                             scope.estimated_file_count += 100  # estimate

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="50%" stop-color="#2962FF"/>
+      <stop offset="100%" stop-color="#AA00FF"/>
+    </linearGradient>
+  </defs>
+  
+  <rect width="512" height="512" rx="115" fill="#0a0a0c"/>
+  
+  <g transform="translate(-15, 0)">
+    <!-- Hexagon -->
+    <path d="M 140 153 
+             L 256 86 
+             L 403 171 
+             L 403 341 
+             L 256 426 
+             L 140 359" 
+          stroke="url(#hexGrad)" 
+          stroke-width="34" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+          
+    <!-- >_ symbol -->
+    <path d="M 140 196 L 200 256 L 140 316" 
+          stroke="#ffffff" 
+          stroke-width="34" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+          
+    <line x1="245" y1="316" x2="335" y2="316" 
+          stroke="#ffffff" 
+          stroke-width="34" 
+          stroke-linecap="round"/>
+  </g>
+</svg>
