@@ -75,7 +75,6 @@ def _get_telemetry_cmd(arg: str) -> str:
 
 
 LOCAL_PATTERNS = {
-    # ═══════════════════════════════════════════════════════════
     # Cockpit UI Mission Commands
     # ═══════════════════════════════════════════════════════════
     r"show dashboard": _get_telemetry_cmd("dashboard"),
@@ -89,40 +88,53 @@ LOCAL_PATTERNS = {
     r"deploy now": _get_telemetry_cmd("deploy_now"),
     r"help": _get_telemetry_cmd("help"),
 
-    # File operations
-    r"(?:show|list|view)\s+(?:all\s+)?files?(?:\s+in\s+(.+))?": "ls {0}",
-    r"(?:make|create)\s+(?:a\s+)?(?:directory|folder|dir)\s+(?:called\s+)?(\S+)": "mkdir {0}",
-    r"(?:delete|remove)\s+(?:the\s+)?(?:file|directory|folder)\s+(\S+)": "rm {0}",
+    # File operations — flexible natural language
+    r"(?:show|list|view|ls)\s+(?:all\s+)?files?(?:\s+in\s+(.+))?": "ls {0}",
+    r"(?:make|create|new)\s+(?:a\s+)?(?:new\s+)?(?:directory|folder|dir)\s+(?:(?:called|name|named|with\s+name)\s+)?(\S+)": "mkdir {0}",
+    r"(?:new|create|make)\s+(?:a\s+)?(?:new\s+)?folder\s+(\S+)": "mkdir {0}",
+    r"(?:make|create|new)\s+(?:a\s+)?(?:new\s+)?(?:file)\s+(?:(?:called|name|named)\s+)?(\S+)": "touch {0}",
+    r"(?:delete|remove|rm)\s+(?:the\s+)?(?:file|directory|folder)?\s*(\S+)": "rm {0}",
     r"(?:copy|cp)\s+(\S+)\s+(?:to\s+)?(\S+)": "cp {0} {1}",
     r"(?:move|mv|rename)\s+(\S+)\s+(?:to\s+)?(\S+)": "mv {0} {1}",
-    r"(?:show|display|cat|view)\s+(?:the\s+)?(?:contents?\s+of\s+)?(\S+)": "cat {0}",
+    r"(?:show|display|cat|read|view|open)\s+(?:the\s+)?(?:contents?\s+of\s+)?(?:file\s+)?(\S+\.\S+)": "cat {0}",
     r"(?:find|search|locate)\s+(?:files?\s+)?(?:named?\s+)?(\S+)": "find . -name '*{0}*'",
     r"(?:count|how many)\s+(?:lines?\s+in)\s+(\S+)": "wc -l {0}",
-    r"(?:show|what(?:'s| is))\s+(?:the\s+)?(?:current\s+)?(?:directory|dir|pwd)": "pwd",
-    r"(?:go|change|cd|switch)\s+(?:to\s+)?(?:directory\s+)?(\S+)": "cd {0}",
+    r"(?:show|what(?:'s| is)|where\s+am\s+i)\s*(?:the\s+)?(?:current\s+)?(?:directory|dir|pwd|location|path)?": "pwd",
+    r"(?:go|change|cd|switch|navigate)\s+(?:to\s+)?(?:directory\s+)?(\S+)": "cd {0}",
+    r"go\s+(?:back|up)(?:\s+one)?(?:\s+(?:directory|folder|level))?": "cd ..",
     r"(?:show|view)\s+(?:the\s+)?(?:size|sizes)\s+(?:of\s+)?(?:all\s+)?(?:files?|folders?|directories)": "du -sh *",
+    r"(?:show|view)\s+(?:folder\s+)?(?:tree|structure)": "tree",
     r"(?:compress|zip)\s+(\S+)": "zip -r {0}.zip {0}",
     r"(?:extract|unzip)\s+(\S+)": "unzip {0}",
     r"(?:compare|diff)\s+(\S+)\s+(?:and|with|vs)\s+(\S+)": "diff {0} {1}",
-    r"(?:find|search)\s+(?:for\s+)?['\"](.+?)['\"]\s+in\s+(\S+)": "grep -r '{0}' {1}",
-    r"(?:search|grep|find)\s+(?:for\s+)?['\"](.+?)['\"]\s+(?:in\s+)?(?:all\s+)?files?": "grep -r '{0}' .",
+    r"(?:find|search)\s+(?:for\s+)?(.+?)\s+in\s+(\S+)": "grep -r '{0}' {1}",
+
+    r"(?:search|grep|find)\s+(?:for\s+)?(.+?)\s+(?:in\s+)?(?:all\s+)?files?": "grep -r '{0}' .",
+
+    r"(?:write|echo|put)\s+['\"](.+?)['\"]\s+(?:to|in|into)\s+(\S+)": "echo '{0}' > {1}",
+    r"(?:append|add)\s+['\"](.+?)['\"]\s+(?:to|in|into)\s+(\S+)": "echo '{0}' >> {1}",
+    r"(?:empty|truncate|clear)\s+(?:the\s+)?(?:file\s+)?(\S+\.\S+)": "echo. > {0}",
+    r"(?:head|first)\s+(\d+)\s+(?:lines?\s+(?:of|in|from)\s+)?(\S+)": "head -n {0} {1}",
+    r"(?:tail|last)\s+(\d+)\s+(?:lines?\s+(?:of|in|from)\s+)?(\S+)": "tail -n {0} {1}",
 
     # Git operations
-    r"(?:what(?:'s| is)|show|check)\s+(?:the\s+)?git\s+status": "git status",
+    r"(?:what(?:'s| is)|show|check)\s+(?:the\s+)?(?:git\s+)?status": "git status",
     r"(?:show|list)\s+(?:all\s+)?(?:git\s+)?branches": "git branch -a",
-    r"(?:create|make)\s+(?:a\s+)?(?:new\s+)?branch\s+(?:called\s+)?(\S+)": "git checkout -b {0}",
+    r"(?:create|make|new)\s+(?:a\s+)?(?:new\s+)?branch\s+(?:(?:called|named|name)\s+)?(\S+)": "git checkout -b {0}",
     r"(?:switch|checkout)\s+(?:to\s+)?(?:branch\s+)?(\S+)": "git checkout {0}",
     r"(?:commit|save)\s+(?:with\s+)?(?:message\s+)?['\"](.+)['\"]": 'git commit -m "{0}"',
-    r"(?:push|upload)\s+(?:to\s+)?(?:remote)?": "git push",
+    r"(?:commit|save)\s+(?:all|everything)(?:\s+(?:with\s+)?(?:message\s+)?['\"](.+)['\"])?": 'git add -A && git commit -m "{0}"',
+    r"(?:push|upload)\s+(?:to\s+)?(?:remote|origin|github)?": "git push",
     r"(?:git\s+)?(?:pull|fetch)(?:\s+(?:from\s+)?(?:remote|origin))?": "git pull",
     r"(?:update|sync)\s+(?:git\s+)?(?:repo(?:sitory)?|branch|code)(?:\s+from\s+(?:remote|origin))?": "git pull",
-    r"(?:show|view)\s+(?:recent\s+)?(?:git\s+)?(?:log|history)": "git log --oneline -10",
+    r"(?:show|view)\s+(?:recent\s+)?(?:git\s+)?(?:log|history|commits)": "git log --oneline -10",
     r"(?:stash|save)\s+(?:my\s+)?changes": "git stash",
+    r"(?:pop|restore)\s+(?:stashed?\s+)?changes": "git stash pop",
     r"(?:add|stage)\s+all\s+(?:files?|changes)": "git add -A",
     r"(?:add|stage)\s+(\S+)": "git add {0}",
-    r"(?:undo|revert)\s+(?:last\s+)?commit": "git reset --soft HEAD~1",
+    r"(?:undo|revert)\s+(?:the\s+)?(?:last\s+)?commit": "git reset --soft HEAD~1",
     r"(?:show|view)\s+(?:git\s+)?diff": "git diff",
-    # Git clone — explicit URL or owner/repo falls here; bare-name goes to smart_open
+    r"(?:discard|reset)\s+(?:all\s+)?(?:unstaged\s+)?changes": "git checkout -- .",
     r"(?:clone|git clone)\s+(https?://\S+)": "git clone {0}",
     r"(?:clone|git clone)\s+([\w.-]+/[\w.-]+)": "git clone https://github.com/{0}.git",
     r"(?:clone)\s+(\S+)": "git clone {0}",
@@ -130,33 +142,41 @@ LOCAL_PATTERNS = {
     r"(?:merge)\s+(?:branch\s+)?(\S+)": "git merge {0}",
     r"(?:show|list)\s+(?:git\s+)?(?:remote|remotes)": "git remote -v",
     r"(?:show|list)\s+(?:git\s+)?tags?": "git tag",
+    r"(?:what|which)\s+branch\s+(?:am i|is this)(?:\s+on)?": "git branch --show-current",
+    r"(?:show|list)\s+(?:git\s+)?(?:changed|modified)\s+files?": "git diff --name-only",
+    r"(?:blame|who\s+(?:changed|edited|wrote))\s+(\S+)": "git blame {0}",
 
     # System operations
     r"(?:show|what)\s+(?:is\s+)?(?:free\s+)?(?:disk\s+)?space": "df -h",
     r"(?:show|what)\s+(?:is\s+)?memory\s+usage": "free -h",
-    r"(?:who\s+am\s+i|current\s+user)": "whoami",
+    r"(?:who\s+am\s+i|current\s+user|whoami)": "whoami",
     r"(?:what(?:'s| is)|show)\s+(?:the\s+)?(?:system\s+)?(?:date|time)": "date",
     r"(?:show|list)\s+(?:running\s+)?processes": "ps aux",
     r"(?:kill|stop)\s+process\s+(\d+)": "kill {0}",
     r"(?:find|show)\s+(?:my\s+)?(?:ip|IP)\s+(?:address)?": "ip addr show",
-    r"(?:check|test)\s+(?:internet|network)\s+(?:connection)?": "ping -c 4 8.8.8.8",
+    r"(?:check|test)\s+(?:internet|network|connectivity)\s*(?:connection)?": "ping -c 4 8.8.8.8",
     r"(?:show|what)\s+(?:is\s+)?(?:system\s+)?uptime": "uptime",
     r"(?:show|list)\s+(?:all\s+)?environment\s+variables?": "env",
-    r"(?:clear|cls)\s+(?:the\s+)?(?:screen|terminal|console)": "clear",
+    r"(?:clear|cls)(?:\s+(?:the\s+)?(?:screen|terminal|console))?": "clear",
     r"(?:show|what)\s+(?:is\s+)?(?:my\s+)?hostname": "hostname",
     r"(?:restart|reboot)\s+(?:the\s+)?(?:computer|system|pc|machine)": "shutdown -r",
     r"(?:shutdown|turn off|power off)\s+(?:the\s+)?(?:computer|system|pc|machine)": "shutdown -s",
 
     # Package management
-    r"install\s+(?:package\s+)?(\S+)(?:\s+(?:with|using)\s+pip)?": "pip install {0}",
-    r"uninstall\s+(?:package\s+)?(\S+)": "pip uninstall {0}",
+    r"(?:pip\s+)?install\s+(?:package\s+)?(\S+)(?:\s+(?:with|using)\s+pip)?": "pip install {0}",
+    r"(?:pip\s+)?uninstall\s+(?:package\s+)?(\S+)": "pip uninstall {0}",
     r"(?:list|show)\s+(?:installed\s+)?(?:pip\s+)?packages": "pip list",
-    r"(?:update|upgrade)\s+pip": "pip install --upgrade pip",
+    r"(?:update|upgrade)\s+(?:all\s+)?(?:pip\s+)?packages?": "pip install --upgrade pip",
     r"(?:install|add)\s+(\S+)\s+(?:with|using)\s+npm": "npm install {0}",
     r"npm\s+install\s+(\S+)": "npm install {0}",
     r"(?:list|show)\s+npm\s+packages": "npm list",
     r"(?:run|start)\s+(?:npm\s+)?(?:dev|development)\s+(?:server)?": "npm run dev",
+    r"(?:run|start)\s+(?:the\s+)?(?:server|app|application)": "npm start",
+    r"(?:build|compile)\s+(?:the\s+)?(?:project|app)": "npm run build",
     r"(?:create|init)\s+(?:a\s+)?(?:new\s+)?(?:node|npm)\s+project": "npm init -y",
+    r"(?:create|init)\s+(?:a\s+)?(?:new\s+)?(?:react)\s+(?:app|project)(?:\s+(?:called|named)\s+(\S+))?": "npx create-react-app {0}",
+    r"(?:create|init)\s+(?:a\s+)?(?:new\s+)?(?:vite)\s+(?:app|project)": "npm create vite@latest",
+    r"(?:create|init)\s+(?:a\s+)?(?:new\s+)?(?:next\.?js?)\s+(?:app|project)": "npx create-next-app@latest",
     r"(?:create|init)\s+(?:a\s+)?(?:new\s+)?(?:python|pip)\s+(?:virtual\s+)?(?:env|environment|venv)": "python -m venv .venv",
     r"(?:activate)\s+(?:the\s+)?(?:virtual\s+)?(?:env|environment|venv)": ".venv\\Scripts\\activate",
 
@@ -169,15 +189,20 @@ LOCAL_PATTERNS = {
     r"(?:remove|delete)\s+(?:docker\s+)?image\s+(\S+)": "docker rmi {0}",
     r"(?:show|view)\s+(?:docker\s+)?logs?\s+(?:for\s+)?(\S+)": "docker logs {0}",
     r"docker\s+compose\s+up": "docker compose up -d",
+    r"docker\s+compose\s+down": "docker compose down",
 
     # Python operations
-    r"run\s+python\s+(?:script\s+)?(\S+)": "python {0}",
+    r"run\s+(?:the\s+)?(?:python\s+)?(?:script\s+)?(\S+\.py)": "python {0}",
     r"run\s+(?:the\s+)?(?:tests?|pytest)": "python -m pytest",
-    r"(?:check|show)\s+python\s+version": "python --version",
+    r"(?:check|show|what(?:'s| is))\s+(?:the\s+)?python\s+version": "python --version",
+    r"(?:check|show|what(?:'s| is))\s+(?:the\s+)?node\s+version": "node --version",
     r"(?:run|start)\s+(?:flask|django)\s+(?:server|app)": "python -m flask run",
     r"(?:format|lint)\s+(?:the\s+)?(?:code|python)": "python -m black .",
     r"(?:freeze|export)\s+(?:pip\s+)?(?:requirements|deps|dependencies)": "pip freeze > requirements.txt",
     r"install\s+(?:from\s+)?requirements": "pip install -r requirements.txt",
+    r"(?:run|execute)\s+(\S+\.py)": "python {0}",
+    r"(?:run|execute)\s+(\S+\.js)": "node {0}",
+    r"(?:run|execute)\s+(\S+\.sh)": "bash {0}",
 
     # Network
     r"(?:ping)\s+(\S+)": "ping {0}",
@@ -192,6 +217,8 @@ LOCAL_PATTERNS = {
     r"(?:what|which)\s+(?:shell|terminal)\s+(?:am i using|is this)": "echo $SHELL",
     r"(?:make|set)\s+(\S+)\s+(?:executable|runnable)": "chmod +x {0}",
     r"(?:show|what)\s+(?:is\s+)?(?:the\s+)?(?:weather)": "curl wttr.in",
+    r"(?:show|what(?:'s| is))\s+(?:the\s+)?(?:current\s+)?(?:time|date)\s+(?:in\s+)?(\S+)": "TZ={0} date",
+    r"(?:calculate|calc|math)\s+(.+)": "python -c \"print({0})\"",
 }
 
 # Windows-specific pattern overrides
@@ -492,7 +519,7 @@ class Translator:
         """Handle dynamic local patterns with argument-safe command rendering."""
         patterns: list[tuple[str, Callable[..., Optional[str]]]] = [
             (r"(?:show|list|view)\s+(?:all\s+)?files?(?:\s+in\s+(.+))?", lambda g: self._build_cmd(["dir" if is_windows else "ls", g[0].strip()] if g and g[0] else ["dir" if is_windows else "ls"])),
-            (r"(?:make|create)\s+(?:a\s+)?(?:directory|folder|dir)\s+(?:called\s+)?(\S+)", lambda g: self._build_cmd(["mkdir", g[0]])),
+            (r"(?:make|create)\s+(?:a\s+)?(?:directory|folder|dir)\s+(?:(?:called|name|named)\s+)?(\S+)", lambda g: self._build_cmd(["mkdir", g[0]])),
             (r"(?:delete|remove)\s+(?:the\s+)?(?:file|directory|folder)\s+(\S+)", lambda g: self._build_cmd(["rm", g[0]])),
             (r"(?:copy|cp)\s+(\S+)\s+(?:to\s+)?(\S+)", lambda g: self._build_cmd(["cp", g[0], g[1]])),
             (r"(?:move|mv|rename)\s+(\S+)\s+(?:to\s+)?(\S+)", lambda g: self._build_cmd(["mv", g[0], g[1]])),
