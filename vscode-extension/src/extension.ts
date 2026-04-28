@@ -22,13 +22,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 /**
  * Locate the NeuroShell CLI executable on the system.
- * Returns the full path if found, or empty string if not.
+ * Returns the full path if found AND validated, or empty string if not.
  */
 function findNeuroShellCLI(): string {
     const isWindows = process.platform === 'win32';
     if (!isWindows) { return ''; }
 
-    // Check standard installation paths
     const searchDirs = [
         path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell'),
         path.join(process.env.ProgramFiles || '', 'NeuroShell'),
@@ -36,10 +35,15 @@ function findNeuroShellCLI(): string {
     ];
 
     for (const dir of searchDirs) {
-        // We MUST use the CLI version for the terminal
         const cliExe = path.join(dir, 'NeuroShell-CLI.exe');
         if (fs.existsSync(cliExe)) {
-            return cliExe;
+            try {
+                cp.execSync(`"${cliExe}" --help`, { stdio: 'ignore', timeout: 10000 });
+                return cliExe;
+            } catch (e) {
+                console.warn(`NeuroShell-CLI.exe at ${cliExe} failed validation, skipping.`);
+                continue;
+            }
         }
     }
 
@@ -224,12 +228,32 @@ function injectNeuroShellProfile() {
                 terminalArgs = [];
             }
         } else {
-            // Use compiled CLI exe
-            terminalPath = neuroPath;
-            terminalArgs = [];
+            // Validate the CLI exe actually works before using it
+            let exeValid = false;
+            try {
+                cp.execSync(`"${neuroPath}" --help`, { stdio: 'ignore', timeout: 10000 });
+                exeValid = true;
+            } catch (e) {
+                console.warn(`NeuroShell-CLI.exe validation failed: ${neuroPath}`);
+            }
+
+            if (exeValid) {
+                terminalPath = neuroPath;
+                terminalArgs = [];
+            } else {
+                // Exe is broken, use Python fallback
+                const fallback = findPythonFallback();
+                if (fallback) {
+                    terminalPath = fallback.pythonPath;
+                    terminalArgs = ['-u', fallback.mainPyPath];
+                } else {
+                    terminalPath = 'NeuroShell-CLI';
+                    terminalArgs = [];
+                }
+            }
         }
     } else {
-        // Fallback: use python + main.py from workspace
+        // Try Python fallback first (dev mode)
         const fallback = findPythonFallback();
         if (fallback) {
             terminalPath = fallback.pythonPath;
