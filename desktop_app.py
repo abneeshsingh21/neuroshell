@@ -1655,6 +1655,36 @@ class NeuroShellDesktop(ctk.CTk):
         widget.see("end")
 
     # ═════════════════════════════════════════════════════════════════════════
+    # QUICK COMMAND DISPATCHER (sidebar → panel or terminal)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _quick_command(self, cmd: str):
+        """Route a sidebar quick-action to a dedicated panel or execute in terminal."""
+        _panel_routes = {
+            "scan":       self._show_security_scan_panel,
+            "themes":     self._show_theme_picker,
+            "snippets":   self._show_snippets_panel,
+            "notebook":   self._show_notebook_panel,
+            "timeline":   self._show_timeline_panel,
+            "audit":      self._show_audit_panel,
+            "api start":  self._show_api_control_panel,
+            "api stop":   self._show_api_control_panel,
+            "palette ":   self._show_command_palette,
+        }
+        cmd_stripped = cmd.strip()
+        if cmd_stripped in _panel_routes:
+            try:
+                _panel_routes[cmd_stripped]()
+            except Exception as e:
+                self._show_toast(f"Panel error: {e}", "error")
+            return
+        # Default: inject into command entry and execute
+        self.command_entry.delete(0, "end")
+        self.command_entry.insert(0, cmd)
+        if not cmd.endswith(" "):
+            self._on_enter(None)
+
+    # ═════════════════════════════════════════════════════════════════════════
     # STARTUP
     # ═════════════════════════════════════════════════════════════════════════
 
@@ -2493,6 +2523,396 @@ class NeuroShellDesktop(ctk.CTk):
 
         self._show_toast(f"🎨 Theme: {name}", "success")
 
+    # ═════════════════════════════════════════════════════════════════════════
+    # EXTENSION PANEL WINDOWS — Security Scan, Themes, Snippets, Notebook,
+    #                           Timeline, Audit, API, Sync
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _show_security_scan_panel(self):
+        """Launch vulnerability scanner and display results in a panel."""
+        key = "scan"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("🛡️ Security Vulnerability Scanner")
+        win.geometry("680x520")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="🛡️  Security Scan",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_red"]).pack(pady=(14, 4))
+        ctk.CTkLabel(win, text=f"Project: {os.path.basename(os.getcwd())}",
+                     font=ctk.CTkFont(family=FONT_UI, size=10),
+                     text_color=COLORS["text_muted"]).pack()
+        out = ctk.CTkTextbox(win, fg_color=COLORS["bg_card"], text_color=COLORS["text_primary"],
+                             font=ctk.CTkFont(family=FONT_MONO, size=10),
+                             corner_radius=8, border_width=0, wrap="word")
+        out.pack(fill="both", expand=True, padx=16, pady=(8, 0))
+        def _run_scan():
+            out.configure(state="normal")
+            out.insert("end", "⏳ Initialising scanner...\n")
+            out.configure(state="disabled")
+            try:
+                from extensions.enterprise import VulnerabilityScanner
+                scanner = VulnerabilityScanner()
+                scans = scanner.get_scan_commands(os.getcwd())
+                if not scans:
+                    self.after(0, lambda: (out.configure(state="normal"),
+                                          out.insert("end", "✓ No scan targets detected (no requirements.txt/package.json/.git).\n"),
+                                          out.configure(state="disabled")))
+                    return
+                for desc, cmd in scans:
+                    self.after(0, lambda d=desc: (out.configure(state="normal"),
+                                                  out.insert("end", f"\n▶ {d}\n"),
+                                                  out.configure(state="disabled")))
+            except Exception as e:
+                self.after(0, lambda err=str(e): (out.configure(state="normal"),
+                                                  out.insert("end", f"⚠ Scanner error: {err}\n"),
+                                                  out.configure(state="disabled")))
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=8)
+        ctk.CTkButton(btn_row, text="▶  Run Scan", height=32,
+                      fg_color=COLORS["accent_red"], hover_color="#c0392b",
+                      text_color=COLORS["bg_root"],
+                      font=ctk.CTkFont(family=FONT_UI, size=11, weight="bold"),
+                      command=lambda: threading.Thread(target=_run_scan, daemon=True).start()
+                      ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text="Run via Terminal", height=32,
+                      fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["text_primary"],
+                      command=lambda: (self._quick_command("scan"), win.destroy())
+                      ).pack(side="left")
+
+    def _show_theme_picker(self):
+        """Theme picker panel with live preview."""
+        key = "themes"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("🎨 Theme Picker")
+        win.geometry("480x440")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="🎨  Select a Theme",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_cyan"]).pack(pady=(14, 6))
+        scroll = ctk.CTkScrollableFrame(win, fg_color=COLORS["bg_card"], corner_radius=10)
+        scroll.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        try:
+            from extensions.desktop_features import BUILT_IN_THEMES, ThemeEngine
+            engine = ThemeEngine()
+            themes = BUILT_IN_THEMES
+        except Exception:
+            themes = {"cyberpunk": {"name": "Cyberpunk", "primary": "#ff00ff"},
+                      "dracula":   {"name": "Dracula",   "primary": "#bd93f9"},
+                      "matrix":    {"name": "Matrix",    "primary": "#00ff00"},
+                      "nord":      {"name": "Nord",      "primary": "#88c0d0"},
+                      "ocean":     {"name": "Ocean",     "primary": "#0077b6"},
+                      "solarized": {"name": "Solarized", "primary": "#268bd2"}}
+        for theme_key, theme in themes.items():
+            row = ctk.CTkFrame(scroll, fg_color=COLORS["bg_elevated"],
+                               corner_radius=8, border_width=1, border_color=COLORS["border_soft"])
+            row.pack(fill="x", padx=4, pady=3)
+            accent = theme.get("primary", COLORS["accent_cyan"])
+            ctk.CTkLabel(row, text=f"  {theme.get('prompt_icon', '●')}  {theme.get('name', theme_key)}",
+                         font=ctk.CTkFont(family=FONT_UI, size=11, weight="bold"),
+                         text_color=accent, anchor="w").pack(side="left", padx=8, pady=8)
+            ctk.CTkButton(row, text="Apply", width=68, height=26,
+                          font=ctk.CTkFont(family=FONT_UI, size=10),
+                          fg_color=accent, hover_color=accent,
+                          text_color=COLORS["bg_root"], corner_radius=6,
+                          command=lambda k=theme_key: (
+                              self._quick_command(f"theme {k}"), win.destroy())
+                          ).pack(side="right", padx=8)
+        ctk.CTkButton(win, text="Cycle GUI Themes (Deep Dark / Indigo / Matrix)", height=30,
+                      fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["accent_purple"],
+                      font=ctk.CTkFont(family=FONT_UI, size=10),
+                      command=lambda: (self._cycle_theme(), win.destroy())
+                      ).pack(fill="x", padx=16, pady=(0, 12))
+
+    def _show_snippets_panel(self):
+        """Snippet manager panel — list, run, delete snippets."""
+        key = "snippets"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("📌 Snippet Manager")
+        win.geometry("580x460")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="📌  Saved Snippets",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_cyan"]).pack(pady=(14, 6))
+        scroll = ctk.CTkScrollableFrame(win, fg_color=COLORS["bg_card"], corner_radius=10)
+        scroll.pack(fill="both", expand=True, padx=16, pady=(0, 0))
+        try:
+            from extensions.desktop_features import SnippetManager
+            mgr = SnippetManager()
+            snippets = mgr.list_all()
+        except Exception:
+            snippets = []
+        if not snippets:
+            ctk.CTkLabel(scroll, text="No snippets saved yet.\n\nRun: snippet save <name>  to save the last command.",
+                         font=ctk.CTkFont(family=FONT_UI, size=11),
+                         text_color=COLORS["text_muted"]).pack(pady=20)
+        else:
+            for s in snippets:
+                row = ctk.CTkFrame(scroll, fg_color=COLORS["bg_elevated"],
+                                   corner_radius=8, border_width=1, border_color=COLORS["border_soft"])
+                row.pack(fill="x", padx=4, pady=3)
+                ctk.CTkLabel(row, text=f"📌 {s.name}",
+                             font=ctk.CTkFont(family=FONT_UI, size=10, weight="bold"),
+                             text_color=COLORS["accent_cyan"], anchor="w").pack(side="left", padx=8, pady=4)
+                ctk.CTkLabel(row, text=s.command[:50],
+                             font=ctk.CTkFont(family=FONT_MONO, size=9),
+                             text_color=COLORS["text_muted"], anchor="w").pack(side="left", padx=4)
+                ctk.CTkButton(row, text="▶", width=28, height=24,
+                              fg_color=COLORS["accent_cyan"], hover_color="#00b0a8",
+                              text_color=COLORS["bg_root"], corner_radius=6,
+                              command=lambda n=s.name: (self._quick_command(f"snippet run {n}"), win.destroy())
+                              ).pack(side="right", padx=(2, 8))
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=8)
+        ctk.CTkButton(btn_row, text="💾 Save Last Command as Snippet", height=30,
+                      fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["accent_cyan"],
+                      font=ctk.CTkFont(family=FONT_UI, size=10),
+                      command=lambda: self._quick_command("snippets")).pack(side="left")
+
+    def _show_notebook_panel(self):
+        """Notebook viewer panel — show recorded cells and export."""
+        key = "notebook"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("📓 Session Notebook")
+        win.geometry("640x520")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="📓  Session Notebook",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_cyan"]).pack(pady=(14, 4))
+        out = ctk.CTkTextbox(win, fg_color=COLORS["bg_card"], text_color=COLORS["text_primary"],
+                             font=ctk.CTkFont(family=FONT_MONO, size=10),
+                             corner_radius=10, border_width=1,
+                             border_color=COLORS["border_soft"], wrap="word")
+        out.pack(fill="both", expand=True, padx=16, pady=(4, 0))
+        out.configure(state="normal")
+        try:
+            if self._neuroshell and hasattr(self._neuroshell, "notebook"):
+                nb = self._neuroshell.notebook
+                if nb.cells:
+                    out.insert("end", f"# {nb.title}\n{'━'*60}\n\n")
+                    for i, cell in enumerate(nb.cells, 1):
+                        if cell.cell_type == "markdown":
+                            out.insert("end", f"📝  {cell.content}\n\n")
+                        else:
+                            icon = "✅" if cell.exit_code == 0 else "❌"
+                            out.insert("end", f"[{i}] {icon}  $ {cell.content}  ({cell.duration_ms:.0f}ms)\n")
+                            if cell.output:
+                                out.insert("end", f"    {cell.output[:300]}\n\n")
+                else:
+                    out.insert("end", "No notebook cells yet.\n\nExecute some commands — they are recorded automatically.\nRun 'notebook note <text>' to add a markdown note.\n")
+            else:
+                out.insert("end", "Notebook engine not loaded yet.\n")
+        except Exception as e:
+            out.insert("end", f"⚠ Notebook error: {e}\n")
+        out.configure(state="disabled")
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=8)
+        ctk.CTkButton(btn_row, text="📤 Export as Markdown", height=30,
+                      fg_color=COLORS["accent_cyan"], hover_color="#00b0a8",
+                      text_color=COLORS["bg_root"],
+                      font=ctk.CTkFont(family=FONT_UI, size=10, weight="bold"),
+                      command=lambda: (self._quick_command("notebook save"), win.destroy())
+                      ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text="🗑 Clear Notebook", height=30,
+                      fg_color=COLORS["bg_elevated"], hover_color=COLORS["accent_red"],
+                      text_color=COLORS["text_muted"],
+                      command=lambda: (self._quick_command("notebook clear"), win.destroy())
+                      ).pack(side="left")
+
+    def _show_timeline_panel(self):
+        """Session memory timeline panel."""
+        key = "timeline"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("📅 Session Timeline")
+        win.geometry("600x480")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="📅  Session Timeline",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_blue"]).pack(pady=(14, 6))
+        scroll = ctk.CTkScrollableFrame(win, fg_color=COLORS["bg_card"], corner_radius=10)
+        scroll.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        history = self.command_history[:50]
+        if not history:
+            ctk.CTkLabel(scroll, text="No commands in this session yet.",
+                         font=ctk.CTkFont(family=FONT_UI, size=11),
+                         text_color=COLORS["text_muted"]).pack(pady=20)
+        else:
+            for i, cmd in enumerate(reversed(history)):
+                row = ctk.CTkFrame(scroll, fg_color=COLORS["bg_elevated"],
+                                   corner_radius=6, border_width=1, border_color=COLORS["border_soft"])
+                row.pack(fill="x", padx=4, pady=2)
+                ctk.CTkLabel(row, text=f"#{len(history)-i:03d}",
+                             font=ctk.CTkFont(family=FONT_MONO, size=9),
+                             text_color=COLORS["text_muted"], width=36).pack(side="left", padx=6, pady=5)
+                ctk.CTkLabel(row, text=cmd[:80],
+                             font=ctk.CTkFont(family=FONT_MONO, size=10),
+                             text_color=COLORS["text_primary"], anchor="w").pack(side="left")
+                ctk.CTkButton(row, text="▶", width=24, height=20,
+                              fg_color=COLORS["accent_blue"], hover_color="#2980b9",
+                              text_color=COLORS["bg_root"], corner_radius=4,
+                              command=lambda c=cmd: (self._quick_command(c), win.destroy())
+                              ).pack(side="right", padx=6)
+
+    def _show_audit_panel(self):
+        """Audit trail panel — SOC2 compliance log viewer."""
+        key = "audit"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("📊 Audit Trail — SOC2 Compliance")
+        win.geometry("680x500")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="📊  Audit Trail",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_yellow"]).pack(pady=(14, 4))
+        out = ctk.CTkTextbox(win, fg_color=COLORS["bg_card"], text_color=COLORS["text_primary"],
+                             font=ctk.CTkFont(family=FONT_MONO, size=10),
+                             corner_radius=10, border_width=1,
+                             border_color=COLORS["border_soft"], wrap="word")
+        out.pack(fill="both", expand=True, padx=16, pady=(4, 0))
+        out.configure(state="normal")
+        try:
+            from extensions.enterprise import AuditTrail
+            trail = AuditTrail()
+            report = trail.export_report(days=7)
+            out.insert("end", report)
+        except Exception as e:
+            out.insert("end", f"⚠ Audit module error: {e}\n\nRun 'audit' in the terminal to generate a report.")
+        out.configure(state="disabled")
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=8)
+        ctk.CTkButton(btn_row, text="📤 Full Report (30 days)", height=30,
+                      fg_color=COLORS["accent_yellow"], hover_color="#d4a017",
+                      text_color=COLORS["bg_root"],
+                      font=ctk.CTkFont(family=FONT_UI, size=10, weight="bold"),
+                      command=lambda: (self._quick_command("audit report"), win.destroy())
+                      ).pack(side="left")
+
+    def _show_api_control_panel(self):
+        """REST API control panel — start/stop the local API server."""
+        key = "api"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("🌐 REST API Control")
+        win.geometry("460x320")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="🌐  REST API Server",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_cyan"]).pack(pady=(14, 4))
+        info_card = ctk.CTkFrame(win, fg_color=COLORS["bg_card"],
+                                 corner_radius=10, border_width=1, border_color=COLORS["border_soft"])
+        info_card.pack(fill="x", padx=16, pady=8)
+        for label, value in [("Endpoint", "http://localhost:9876"),
+                              ("Auth",     "Bearer token (from config)"),
+                              ("Docs",     "GET /api/v1/docs")]:
+            row = ctk.CTkFrame(info_card, fg_color="transparent")
+            row.pack(fill="x", padx=10, pady=3)
+            ctk.CTkLabel(row, text=label, width=70, anchor="w",
+                         font=ctk.CTkFont(family=FONT_UI, size=10),
+                         text_color=COLORS["text_muted"]).pack(side="left")
+            ctk.CTkLabel(row, text=value, anchor="w",
+                         font=ctk.CTkFont(family=FONT_MONO, size=10),
+                         text_color=COLORS["accent_cyan"]).pack(side="left")
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=16)
+        ctk.CTkButton(btn_row, text="▶  Start API", height=36,
+                      fg_color=COLORS["accent_green"], hover_color="#27ae60",
+                      text_color=COLORS["bg_root"],
+                      font=ctk.CTkFont(family=FONT_UI, size=12, weight="bold"),
+                      command=lambda: (self._quick_command("api start"), win.destroy())
+                      ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text="⏹  Stop API", height=36,
+                      fg_color=COLORS["accent_red"], hover_color="#c0392b",
+                      text_color=COLORS["bg_root"],
+                      font=ctk.CTkFont(family=FONT_UI, size=12, weight="bold"),
+                      command=lambda: (self._quick_command("api stop"), win.destroy())
+                      ).pack(side="left")
+        ctk.CTkButton(btn_row, text="🌐 Open in Browser", height=36,
+                      fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["text_primary"],
+                      command=lambda: webbrowser.open("http://localhost:9876")
+                      ).pack(side="left", padx=8)
+
+    def _show_sync_panel(self):
+        """Settings sync panel — export/import config for multi-machine sync."""
+        key = "sync"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift(); return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("☁️ Multi-Machine Sync")
+        win.geometry("480x300")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+        ctk.CTkLabel(win, text="☁️  Settings Sync",
+                     font=ctk.CTkFont(family=FONT_UI, size=15, weight="bold"),
+                     text_color=COLORS["accent_blue"]).pack(pady=(14, 4))
+        ctk.CTkLabel(win, text="Export your config, snippets, aliases and history\nto sync across multiple machines.",
+                     font=ctk.CTkFont(family=FONT_UI, size=10),
+                     text_color=COLORS["text_muted"], justify="center").pack(pady=4)
+        card = ctk.CTkFrame(win, fg_color=COLORS["bg_card"],
+                            corner_radius=10, border_width=1, border_color=COLORS["border_soft"])
+        card.pack(fill="x", padx=16, pady=8)
+        for label, value in [("Config dir", str(NEUROSHELL_DIR)),
+                              ("Includes",  "config, snippets, themes, aliases, history")]:
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", padx=10, pady=4)
+            ctk.CTkLabel(row, text=label, width=80, anchor="w",
+                         font=ctk.CTkFont(family=FONT_UI, size=10),
+                         text_color=COLORS["text_muted"]).pack(side="left")
+            ctk.CTkLabel(row, text=value, anchor="w",
+                         font=ctk.CTkFont(family=FONT_MONO, size=9),
+                         text_color=COLORS["text_secondary"]).pack(side="left")
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=12)
+        ctk.CTkButton(btn_row, text="📤 Export", height=34,
+                      fg_color=COLORS["accent_blue"], hover_color="#2980b9",
+                      text_color=COLORS["bg_root"],
+                      font=ctk.CTkFont(family=FONT_UI, size=11, weight="bold"),
+                      command=lambda: (self._quick_command("sync export"), win.destroy())
+                      ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text="📥 Import", height=34,
+                      fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["text_primary"],
+                      font=ctk.CTkFont(family=FONT_UI, size=11),
+                      command=lambda: (self._quick_command("sync import"), win.destroy())
+                      ).pack(side="left")
+
     def _show_github_repo_dialog(self):
         win = ctk.CTkToplevel(self)
         win.title("GitHub Repository")
@@ -2964,16 +3384,14 @@ class NeuroShellDesktop(ctk.CTk):
 
 def main():
     app = NeuroShellDesktop()
-        
+
     config = load_config()
     if needs_first_run():
         print('Starting First-Run Wizard...')
         wiz = FirstRunWizard(app, on_complete=lambda cfg: print('Wizard complete. Using:', cfg.llm.provider))
-        # wait for wizard to close
         wiz.wait_window()
-        # Reload config after wizard
-        config = load_config()
-        
+        config = load_config()  # reload after wizard
+
     app.mainloop()
 
 if __name__ == "__main__":
