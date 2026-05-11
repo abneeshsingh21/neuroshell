@@ -266,6 +266,38 @@ class NeuroShell:
             self.feedback = FeedbackLoop(self.history, self.intent_classifier)
             self.docs_generator = AutoDocsGenerator(self.history, self.pattern_learner)
 
+            # ── Tier 1-4: Production Extensions ─────────
+            try:
+                from extensions.agent_mode import AutonomousAgent as ExtAgent, SmartErrorRecovery
+                from extensions.session_memory import SessionMemory as ExtSessionMemory
+                from extensions.smart_intel import explain_command, score_risk, detect_project
+                from extensions.enterprise import WorkflowEngine, VulnerabilityScanner, AuditTrail
+                from extensions.platform_features import SmartNotifications, NeuroShellAPI, MachineSync, VoiceCommandEngine
+                from extensions.desktop_features import CommandPalette, SnippetManager, ThemeEngine, NotebookMode, DiffPreview, SmartAutocomplete
+
+                self.ext_recovery = SmartErrorRecovery(is_windows=__import__('platform').system() == 'Windows')
+                self.ext_agent = ExtAgent(recovery=self.ext_recovery)
+                self.ext_memory = ExtSessionMemory()
+                self.ext_workflow = WorkflowEngine()
+                self.ext_scanner = VulnerabilityScanner()
+                self.ext_audit = AuditTrail()
+                self.ext_notifications = SmartNotifications()
+                self.ext_api = NeuroShellAPI(translator=self.translator)
+                self.ext_sync = MachineSync()
+                self.ext_voice = VoiceCommandEngine()
+                self.ext_palette = CommandPalette()
+                self.ext_snippets = SnippetManager()
+                self.ext_themes = ThemeEngine()
+                self.ext_notebook = NotebookMode()
+                self.ext_diff = DiffPreview()
+                self.ext_autocomplete = SmartAutocomplete(memory=self.ext_memory, palette=self.ext_palette)
+                self._ext_explain = explain_command
+                self._ext_risk = score_risk
+                self._ext_detect = detect_project
+                self.logger.info("extensions_loaded", tier1=True, tier2=True, tier3=True, tier4=True)
+            except Exception as ext_err:
+                self.logger.warn("extensions_load_failed", error=str(ext_err))
+
             # ── Resilience ───────────────────────────────
             from resilience.resilience import HealthCheck, GracefulDegradation, NetworkAware
             self.network = NetworkAware()
@@ -1071,6 +1103,221 @@ class NeuroShell:
             print(self.help.get_help(topic))
             total_ms = (time.time() - start_time) * 1000
             self.metrics.record_latency("total_pipeline", total_ms)
+            self.tracer.end_trace(cid)
+            return
+
+        # ═══════════════════════════════════════════════════════
+        # Tier 1-4 Extension Commands
+        # ═══════════════════════════════════════════════════════
+
+        # ── Voice mode ──
+        if lower in ("voice", "listen", "voice mode"):
+            if hasattr(self, 'ext_voice') and self.ext_voice.available:
+                self.ui.print_info("  🎤 Listening... speak your command")
+                text = self.ext_voice.listen()
+                if text:
+                    self.ui.print_info(f"  🗣️ Heard: {text}")
+                    self.process_input(text)
+                else:
+                    self.ui.print_error("  Could not understand. Try again.")
+            else:
+                self.ui.print_info(f"  🎤 Voice unavailable. Install: {VoiceCommandEngine.install_hint() if hasattr(self, 'ext_voice') else 'pip install SpeechRecognition pyaudio'}")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Vulnerability scan ──
+        if lower in ("scan", "security scan", "vuln scan", "scan project"):
+            if hasattr(self, 'ext_scanner'):
+                scans = self.ext_scanner.get_scan_commands(os.getcwd())
+                if not scans:
+                    self.ui.print_info("  No scannable project files found.")
+                else:
+                    self.ui.print_info(f"  🛡️ Running {len(scans)} security checks...")
+                    for desc, cmd in scans:
+                        self.ui.print_info(f"\n  📋 {desc}")
+                        self.ui.print_info(f"  $ {cmd}")
+                        try:
+                            result = self.executor.execute(cmd)
+                            if result.stdout:
+                                print(result.stdout[:500])
+                        except Exception:
+                            pass
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Risk score ──
+        if lower.startswith("risk "):
+            cmd = user_input[5:].strip()
+            if hasattr(self, '_ext_risk'):
+                risk = self._ext_risk(cmd)
+                self.ui.print_info(f"  {risk.badge}  Risk: {risk.meter}")
+                for r in risk.reasons:
+                    self.ui.print_info(f"    • {r}")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Workflow engine ──
+        if lower.startswith("schedule ") or lower.startswith("every "):
+            if hasattr(self, 'ext_workflow'):
+                task = self.ext_workflow.parse(user_input)
+                if task:
+                    install_cmd = self.ext_workflow.get_install_command(task)
+                    self.ui.print_info(f"  📅 Workflow: {task.name}")
+                    self.ui.print_info(f"  Commands: {', '.join(task.commands)}")
+                    self.ui.print_info(f"  Install with: {install_cmd}")
+                else:
+                    self.ui.print_info("  Could not parse workflow. Try: 'every day at 9 run git pull'")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Theme commands ──
+        if lower == "themes" or lower == "theme list":
+            if hasattr(self, 'ext_themes'):
+                self.ui.print_info(f"  🎨 Themes: {', '.join(self.ext_themes.list_themes())}")
+                self.ui.print_info(f"  Current: {self.ext_themes.current_name}")
+            self.tracer.end_trace(cid)
+            return
+        if lower.startswith("theme "):
+            name = user_input[6:].strip()
+            if hasattr(self, 'ext_themes') and self.ext_themes.set_theme(name):
+                self.ui.print_info(f"  🎨 Theme set to: {name}")
+            else:
+                self.ui.print_info(f"  ❌ Unknown theme. Available: {', '.join(self.ext_themes.list_themes()) if hasattr(self, 'ext_themes') else 'none'}")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Snippet commands ──
+        if lower == "snippets":
+            if hasattr(self, 'ext_snippets'):
+                items = self.ext_snippets.list_all()
+                if items:
+                    self.ui.print_info("  📌 Saved snippets:")
+                    for s in items:
+                        self.ui.print_info(f"    {s.name}: {s.command} ({s.use_count} uses)")
+                else:
+                    self.ui.print_info("  No snippets saved. Use: snippet save <name> <command>")
+            self.tracer.end_trace(cid)
+            return
+        if lower.startswith("snippet save "):
+            parts = user_input[13:].strip().split(None, 1)
+            if len(parts) == 2 and hasattr(self, 'ext_snippets'):
+                self.ext_snippets.save(parts[0], parts[1])
+                self.ui.print_info(f"  ✅ Snippet saved: {parts[0]}")
+            else:
+                self.ui.print_info("  Usage: snippet save <name> <command>")
+            self.tracer.end_trace(cid)
+            return
+        if lower.startswith("snippet run "):
+            name = user_input[12:].strip()
+            if hasattr(self, 'ext_snippets'):
+                s = self.ext_snippets.get(name)
+                if s:
+                    self.ui.print_info(f"  ▶ Running snippet: {s.command}")
+                    self.process_input(s.command)
+                else:
+                    self.ui.print_info(f"  ❌ No snippet named '{name}'")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Command palette ──
+        if lower.startswith("palette ") or lower.startswith("find command "):
+            query = user_input.split(None, 1)[1] if len(user_input.split(None, 1)) > 1 else ""
+            if hasattr(self, 'ext_palette'):
+                results = self.ext_palette.search(query)
+                if results:
+                    self.ui.print_info(f"  🔍 {len(results)} commands found:")
+                    for r in results:
+                        self.ui.print_info(f"    [{r.category}] {r.name}: {r.command}")
+                else:
+                    self.ui.print_info(f"  No commands matched '{query}'")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Notebook mode ──
+        if lower == "notebook" or lower == "notebook show":
+            if hasattr(self, 'ext_notebook'):
+                print(self.ext_notebook.export_markdown())
+            self.tracer.end_trace(cid)
+            return
+        if lower.startswith("notebook note "):
+            note = user_input[14:].strip()
+            if hasattr(self, 'ext_notebook'):
+                self.ext_notebook.add_note(note)
+                self.ui.print_info("  📝 Note added to notebook")
+            self.tracer.end_trace(cid)
+            return
+        if lower.startswith("notebook save "):
+            path = user_input[14:].strip()
+            if hasattr(self, 'ext_notebook'):
+                self.ext_notebook.save(Path(path))
+                self.ui.print_info(f"  💾 Notebook saved to {path}")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Diff preview ──
+        if lower.startswith("preview ") or lower.startswith("dry-run ") or lower.startswith("dryrun "):
+            cmd = user_input.split(None, 1)[1] if len(user_input.split(None, 1)) > 1 else ""
+            if hasattr(self, 'ext_diff'):
+                preview = self.ext_diff.get_preview(cmd)
+                if preview:
+                    self.ui.print_info(f"  👁️ Preview: {preview[1]}")
+                    self.ui.print_info(f"  $ {preview[0]}")
+                else:
+                    self.ui.print_info(f"  No preview available for: {cmd}")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Audit commands ──
+        if lower == "audit" or lower == "audit report":
+            if hasattr(self, 'ext_audit'):
+                print(self.ext_audit.export_report())
+            self.tracer.end_trace(cid)
+            return
+
+        # ── API server ──
+        if lower == "api start" or lower == "start api":
+            if hasattr(self, 'ext_api'):
+                if self.ext_api.start():
+                    self.ui.print_info(f"  🌐 API running on http://127.0.0.1:{self.ext_api.port}")
+                    self.ui.print_info(f"  Usage: {NeuroShellAPI.usage_hint()}")
+                else:
+                    self.ui.print_error("  API server failed to start")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Sync commands ──
+        if lower == "sync export":
+            if hasattr(self, 'ext_sync'):
+                path = self.ext_sync.export_config()
+                self.ui.print_info(f"  📤 Config exported to: {path}")
+            self.tracer.end_trace(cid)
+            return
+        if lower.startswith("sync import "):
+            filepath = user_input[12:].strip()
+            if hasattr(self, 'ext_sync'):
+                result = self.ext_sync.import_config(Path(filepath))
+                self.ui.print_info(f"  📥 Sync result: {result}")
+            self.tracer.end_trace(cid)
+            return
+
+        # ── Memory/timeline commands ──
+        if lower == "timeline" or lower == "memory timeline":
+            if hasattr(self, 'ext_memory'):
+                entries = self.ext_memory.get_timeline(20)
+                if entries:
+                    self.ui.print_info("  📅 Command Timeline:")
+                    for e in entries:
+                        icon = "✅" if e.success else "❌"
+                        self.ui.print_info(f"    {icon} {e.input_text[:50]} → {e.command[:50]}")
+                else:
+                    self.ui.print_info("  No history yet.")
+            self.tracer.end_trace(cid)
+            return
+        if lower == "memory stats":
+            if hasattr(self, 'ext_memory'):
+                stats = self.ext_memory.get_stats()
+                for k, v in stats.items():
+                    self.ui.print_info(f"    {k}: {v}")
             self.tracer.end_trace(cid)
             return
 
