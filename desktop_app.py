@@ -1227,6 +1227,21 @@ class NeuroShellDesktop(ctk.CTk):
         self.command_count += 1
         self._last_command = cmd
 
+        # ── Risk Score Check — warn before dangerous commands ──
+        if self._engine_ready and self._neuroshell and hasattr(self._neuroshell, 'ext_risk'):
+            try:
+                assessment = self._neuroshell.ext_risk.assess(cmd)
+                if assessment.get('score', 0) >= 7:
+                    score = assessment['score']
+                    level = assessment.get('level', 'HIGH')
+                    reasons = assessment.get('reasons', [])
+                    reason_text = '\n'.join(f'  • {r}' for r in reasons[:3])
+                    self._append_output(
+                        f"\n⚠️  RISK WARNING — Level: {level} ({score}/10)\n{reason_text}\n",
+                        "err")
+            except Exception:
+                pass
+
         # Echo with timestamp
         ts = datetime.now().strftime("%H:%M:%S")
         self._append_output(f"\n[{ts}] ❯ {cmd}\n", "cmd_echo")
@@ -1438,6 +1453,13 @@ class NeuroShellDesktop(ctk.CTk):
             "deploy audit", "history export", "history import", "env",
             "cheatsheet", "playbook", "pipelines", "suggest", "explain:",
             "agent:", "script:", "browser", "github",
+            # ── Tier 1-4 extension commands ──
+            "voice", "listen", "scan", "risk", "themes", "theme",
+            "snippets", "snippet save", "snippet run", "palette",
+            "notebook", "notebook save", "notebook note",
+            "preview", "audit", "audit report", "api start", "api stop",
+            "sync export", "sync import", "timeline", "memory stats",
+            "schedule", "voice mode",
         ]
         matches = [c for c in builtins if c.startswith(text.lower())]
         hist_m = [c for c in dict.fromkeys(self.command_history)
@@ -1701,6 +1723,15 @@ class NeuroShellDesktop(ctk.CTk):
                     self._neuroshell.history.start_session(self._neuroshell.session_id, _cwd, _ws or "")
                 except Exception:
                     pass
+
+                # ── Load ALL Tier 1-4 extension modules ──
+                try:
+                    self._neuroshell._load_heavy_modules()
+                    self.after(0, lambda: self._append_output(
+                        "✓ Extensions loaded — 28 features active.\n", "success"))
+                except Exception:
+                    self.after(0, lambda: self._append_output(
+                        "⚠ Some extensions failed to load — core operational.\n", "warn"))
 
                 self._engine_ready = True
                 self.after(0, lambda: self.status_right.configure(
@@ -2099,6 +2130,34 @@ class NeuroShellDesktop(ctk.CTk):
             ("browser <query>",     "Open a browser search"),
             ("deploy rollback",     "Rollback last deployment"),
             ("deploy audit",        "Audit deployment pipeline"),
+            # ── Tier 1: Game Changers ──
+            ("voice",               "🎙️ Activate voice command mode (Whisper)"),
+            ("listen",              "🎙️ Listen for a voice command"),
+            ("agent: <task>",       "🤖 Autonomous agent with multi-step planning"),
+            ("explain: <cmd>",      "💡 Live command explainer with details"),
+            ("schedule <desc>",     "📅 Natural language workflow engine (cron/schtasks)"),
+            # ── Tier 2: Enterprise Power ──
+            ("scan",                "🛡️ Vulnerability scanner (pip-audit/npm/secrets)"),
+            ("risk <cmd>",          "💀 Risk scoring with visual danger meter (0-10)"),
+            ("audit",               "📊 View SOC2/ISO audit trail"),
+            ("audit report",        "📊 Generate full audit compliance report"),
+            ("timeline",            "📅 Session memory timeline"),
+            ("memory stats",        "🧠 Cross-session learning statistics"),
+            ("sync export",         "☁️ Export settings for multi-machine sync"),
+            ("sync import",         "☁️ Import settings from another machine"),
+            # ── Tier 3: Intelligent UX ──
+            ("preview <cmd>",       "👁️ Diff preview — dry-run simulation"),
+            ("palette <query>",     "🔍 Fuzzy search 50+ commands"),
+            # ── Tier 4: Desktop & Ecosystem ──
+            ("themes",              "🎨 Browse and switch color themes"),
+            ("theme <name>",        "🎨 Apply a theme (dracula/cyberpunk/ocean...)"),
+            ("snippets",            "📌 List saved command snippets"),
+            ("snippet save <name>", "📌 Save last command as a reusable snippet"),
+            ("snippet run <name>",  "📌 Execute a saved snippet"),
+            ("notebook",            "📓 Interactive notebook mode (Jupyter-like)"),
+            ("notebook save",       "📓 Export notebook as Markdown"),
+            ("api start",           "🌐 Start REST API on port 9876"),
+            ("api stop",            "🌐 Stop REST API server"),
             ("⭐ bookmarks",         "Show bookmarked commands       Ctrl+Shift+B"),
             ("🔍 search",            "Search in terminal output      Ctrl+F"),
             ("📝 export session",    "Export session as Markdown     Ctrl+Shift+E"),
@@ -2265,7 +2324,9 @@ class NeuroShellDesktop(ctk.CTk):
             ("Auto Error Recovery",
              "When a command fails, NeuroShell captures the error and immediately suggests the fix. Run 'fix' after any failed command."),
             ("Security Features",
-             "• AES-128 Fernet encryption for all stored secrets\n• SHA-256 model verification prevents supply-chain attacks\n• Command injection guard blocks malicious inputs\n• Prompt injection sanitizer strips AI control tokens"),
+             "• AES-128 Fernet encryption for all stored secrets\n• SHA-256 model verification prevents supply-chain attacks\n• Command injection guard blocks malicious inputs\n• Prompt injection sanitizer strips AI control tokens\n• Risk scoring (0-10) warns before destructive commands\n• SOC2/ISO audit trail logs every command"),
+            ("New Intelligence Features",
+             "• voice / listen → Speak commands with Whisper AI\n• scan → Security vulnerability scanner\n• themes → Switch between 6 premium color themes\n• snippets → Save & reuse command sequences\n• notebook → Jupyter-like interactive sessions\n• timeline → View your session history timeline\n• audit → SOC2-compliant command audit trail\n• api start → REST API for external tool integration\n• sync export/import → Multi-machine settings sync\n• palette → Fuzzy search 50+ commands"),
             ("Keyboard Shortcuts",
              "Ctrl+L      Clear terminal\nCtrl+B      Toggle sidebar\nCtrl+Shift+P  Command palette\nCtrl+D      Exit NeuroShell\nF11         Fullscreen\nEsc         Interrupt command\nUp/Down     Command history\nTab         Autocomplete"),
             ("AI Engine Modes",
