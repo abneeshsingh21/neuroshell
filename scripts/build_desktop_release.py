@@ -45,6 +45,10 @@ def build_command(project_root: Path, dist_dir: Path, work_dir: Path, system_nam
         data_spec_intel,
         "--collect-submodules",
         "rich",
+        "--collect-submodules",
+        "extensions",
+        "--add-data",
+        f"{project_root / 'extensions'}{sep}extensions",
     ]
 
     if icon_path.exists() and system_name.startswith("win"):
