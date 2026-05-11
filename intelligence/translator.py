@@ -297,6 +297,94 @@ LOCAL_PATTERNS = {
     r"(?:terraform|tf)\s+(?:apply)": "terraform apply",
     r"(?:terraform|tf)\s+(?:destroy)": "terraform destroy",
     r"(?:terraform|tf)\s+(?:show|state)": "terraform show",
+
+    # ── Security & forensics ──
+    r"(?:hash|checksum|sha256)\s+(?:of\s+)?(\S+)": "sha256sum {0}",
+    r"(?:md5)\s+(?:of\s+)?(\S+)": "md5sum {0}",
+    r"(?:encrypt)\s+(?:file\s+)?(\S+)": "openssl enc -aes-256-cbc -salt -in {0} -out {0}.enc",
+    r"(?:decrypt)\s+(?:file\s+)?(\S+)": "openssl enc -aes-256-cbc -d -in {0} -out {0}.dec",
+    r"(?:check|verify)\s+(?:ssl|tls)\s+(?:cert(?:ificate)?\s+)?(?:for\s+)?(\S+)": "openssl s_client -connect {0}:443 -servername {0} 2>/dev/null | openssl x509 -noout -dates -subject",
+    r"(?:create|generate)\s+(?:self[- ]?signed\s+)?(?:ssl\s+)?cert(?:ificate)?": "openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes",
+    r"(?:find)\s+(?:all\s+)?(?:world[- ]?writable|777)\s+files?": "find / -type f -perm -o+w 2>/dev/null",
+    r"(?:find)\s+(?:all\s+)?suid\s+files?": "find / -perm -4000 -type f 2>/dev/null",
+    r"(?:scan|check)\s+(?:open\s+)?ports?\s+(?:on\s+)?(\S+)": "nmap -sT {0}",
+    r"(?:show|find)\s+(?:failed|bad)\s+(?:login|ssh)\s+attempts?": "grep -i 'failed' /var/log/auth.log | tail -20",
+    r"(?:show|list)\s+(?:all\s+)?(?:listening)\s+(?:ports?|sockets?)": "ss -tulpn",
+    r"(?:monitor|watch)\s+(?:network\s+)?(?:traffic|packets?)(?:\s+on\s+(\S+))?": "tcpdump -i {0}",
+    r"(?:show|check)\s+(?:file\s+)?(?:permissions?|perms?)\s+(?:of\s+)?(\S+)": "ls -la {0}",
+
+    # ── Database operations ──
+    r"(?:show|list)\s+(?:all\s+)?(?:mysql\s+)?databases?": "mysql -e 'SHOW DATABASES;'",
+    r"(?:show|list)\s+(?:all\s+)?(?:mysql\s+)?tables?\s+(?:in\s+)?(\S+)": "mysql -e 'USE {0}; SHOW TABLES;'",
+    r"(?:show|list)\s+(?:all\s+)?(?:postgres|pg)\s+databases?": "psql -l",
+    r"(?:show|list)\s+(?:all\s+)?(?:postgres|pg)\s+tables?": "psql -c '\\dt'",
+    r"(?:check|show)\s+(?:postgres|pg|mysql|db)\s+(?:database\s+)?size": "psql -c \"SELECT pg_database.datname, pg_size_pretty(pg_database_size(pg_database.datname)) FROM pg_database;\"",
+    r"(?:dump|backup)\s+(?:database\s+)?(\S+)\s+(?:to\s+)?(\S+)": "pg_dump {0} > {1}",
+    r"(?:restore)\s+(?:database\s+)?(\S+)\s+(?:from\s+)?(\S+)": "psql {0} < {1}",
+    r"(?:show|list)\s+(?:redis)\s+keys?": "redis-cli KEYS '*'",
+    r"(?:show|check)\s+(?:redis)\s+(?:info|status)": "redis-cli INFO",
+    r"(?:show|list)\s+(?:mongo(?:db)?\s+)?(?:databases?|collections?)": "mongosh --eval 'show dbs'",
+
+    # ── AWS CLI ──
+    r"(?:list|show)\s+(?:all\s+)?(?:aws\s+)?s3\s+buckets?": "aws s3 ls",
+    r"(?:list|show)\s+(?:aws\s+)?s3\s+(?:contents?\s+of\s+)?(\S+)": "aws s3 ls s3://{0}",
+    r"(?:upload|copy)\s+(\S+)\s+(?:to\s+)?(?:aws\s+)?s3[:/]+(\S+)": "aws s3 cp {0} s3://{1}",
+    r"(?:download|copy)\s+(?:from\s+)?(?:aws\s+)?s3[:/]+(\S+)\s+(?:to\s+)?(\S+)": "aws s3 cp s3://{0} {1}",
+    r"(?:list|show)\s+(?:all\s+)?(?:aws\s+)?ec2\s+instances?": "aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId,State.Name,InstanceType]' --output table",
+    r"(?:list|show)\s+(?:all\s+)?(?:aws\s+)?lambda\s+functions?": "aws lambda list-functions --query 'Functions[*].FunctionName' --output table",
+    r"(?:show|check)\s+(?:aws\s+)?(?:iam\s+)?(?:who am i|identity|caller)": "aws sts get-caller-identity",
+
+    # ── Performance & monitoring ──
+    r"(?:monitor|watch)\s+(?:cpu|system)\s+(?:usage\s+)?(?:in\s+)?(?:real[- ]?time|live)": "top",
+    r"(?:monitor|watch)\s+(?:disk\s+)?(?:io|i/o)\s+(?:in\s+)?(?:real[- ]?time|live)?": "iostat -x 1",
+    r"(?:monitor|watch)\s+(?:network\s+)?(?:io|bandwidth|traffic)": "iftop",
+    r"(?:show|check)\s+(?:system\s+)?load\s+(?:average)?": "uptime",
+    r"(?:benchmark|test)\s+(?:disk\s+)?(?:speed|io|performance)": "dd if=/dev/zero of=testfile bs=1M count=1024 oflag=direct 2>&1; rm -f testfile",
+    r"(?:show|list)\s+(?:all\s+)?(?:open\s+)?files?\s+(?:by|for)\s+(?:process\s+)?(\S+)": "lsof -p {0}",
+    r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:minutes?|mins?)": "find . -mmin -{0} -type f",
+    r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:hours?)": "find . -mmin -{0}*60 -type f",
+    r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:days?)": "find . -mtime -{0} -type f",
+    r"(?:count)\s+(?:files?\s+in)\s+(\S+)": "find {0} -type f | wc -l",
+
+    # ── Advanced Docker ──
+    r"(?:show|list)\s+(?:all\s+)?(?:docker\s+)?(?:networks?)": "docker network ls",
+    r"(?:show|list)\s+(?:all\s+)?(?:docker\s+)?volumes?": "docker volume ls",
+    r"(?:show|check)\s+(?:docker\s+)?(?:container\s+)?(?:resource\s+)?(?:usage|stats)": "docker stats --no-stream",
+    r"(?:inspect)\s+(?:docker\s+)?(?:container\s+)?(\S+)": "docker inspect {0}",
+    r"(?:exec|enter|shell)\s+(?:into\s+)?(?:docker\s+)?(?:container\s+)?(\S+)": "docker exec -it {0} /bin/sh",
+    r"(?:build)\s+(?:docker\s+)?image\s+(?:from\s+)?(?:dockerfile)?(?:\s+(?:tagged?|named?)\s+(\S+))?": "docker build -t {0} .",
+    r"(?:push)\s+(?:docker\s+)?image\s+(\S+)": "docker push {0}",
+    r"(?:pull)\s+(?:docker\s+)?image\s+(\S+)": "docker pull {0}",
+    r"(?:prune|clean)\s+(?:all\s+)?(?:docker\s+)?(?:unused\s+)?(?:images?|containers?|volumes?)": "docker system prune -f",
+    r"(?:show|view)\s+(?:docker\s+)?(?:compose\s+)?(?:running\s+)?(?:services?)": "docker compose ps",
+
+    # ── Log analysis ──
+    r"(?:show|tail|follow)\s+(?:the\s+)?(?:last\s+)?(\d+)\s+(?:lines?\s+)?(?:of\s+)?(?:log\s+)?(\S+)": "tail -n {0} {1}",
+    r"(?:follow|watch|tail)\s+(?:log\s+)?(\S+)\s+(?:in\s+)?(?:real[- ]?time|live)": "tail -f {0}",
+    r"(?:search|find|grep)\s+(?:for\s+)?(?:errors?|failures?)\s+(?:in\s+)?(\S+)": "grep -i 'error\\|fail\\|exception' {0} | tail -20",
+    r"(?:count)\s+(?:errors?\s+)?(?:in\s+)?(?:log\s+)?(\S+)": "grep -ci 'error\\|fail\\|exception' {0}",
+    r"(?:show|analyze)\s+(?:access\s+)?(?:log\s+)?(?:top\s+)?(?:ips?|visitors?)(?:\s+in\s+(\S+))?": "awk '{print $1}' {0} | sort | uniq -c | sort -rn | head -20",
+
+    # ── Backup & rsync ──
+    r"(?:rsync|sync)\s+(\S+)\s+(?:to\s+)?(\S+)": "rsync -avz --progress {0} {1}",
+    r"(?:backup)\s+(\S+)\s+(?:to\s+)?(\S+)": "rsync -avz --progress {0} {1}",
+    r"(?:mirror|clone)\s+(?:directory\s+)?(\S+)\s+(?:to\s+)?(\S+)": "rsync -avz --delete {0}/ {1}/",
+
+    # ── Advanced git ──
+    r"(?:show|find)\s+(?:who\s+)?(?:last\s+)?(?:modified|changed|edited)\s+(\S+)": "git log -1 --format='%an %ad' -- {0}",
+    r"(?:show|list)\s+(?:all\s+)?(?:git\s+)?(?:conflicts?|merge\s+conflicts?)": "git diff --name-only --diff-filter=U",
+    r"(?:squash|combine)\s+(?:last\s+)?(\d+)\s+commits?": "git rebase -i HEAD~{0}",
+    r"(?:show|view)\s+(?:git\s+)?(?:commit\s+)?(?:graph|tree)": "git log --oneline --graph --all --decorate",
+    r"(?:cherry[- ]?pick)\s+(?:commit\s+)?(\S+)": "git cherry-pick {0}",
+    r"(?:show|list)\s+(?:git\s+)?stash(?:es)?": "git stash list",
+    r"(?:rebase)\s+(?:onto\s+)?(\S+)": "git rebase {0}",
+    r"(?:show|view)\s+(?:git\s+)?(?:file\s+)?history\s+(?:of\s+)?(\S+)": "git log --follow -p -- {0}",
+
+    # ── Process management ──
+    r"(?:show|find)\s+(?:process(?:es)?\s+)?(?:using|on)\s+port\s+(\d+)": "lsof -i :{0}",
+    r"(?:show)\s+(?:top|highest)\s+(\d+)\s+(?:cpu|memory|ram)\s+(?:consuming\s+)?processes?": "ps aux --sort=-%cpu | head -n {0}",
+    r"(?:run)\s+(\S+)\s+(?:in\s+)?(?:the\s+)?background": "nohup {0} &",
+    r"(?:show|list)\s+(?:all\s+)?(?:background\s+)?jobs": "jobs -l",
 }
 
 # Windows-specific pattern overrides
@@ -388,6 +476,49 @@ WINDOWS_OVERRIDES = {
     # Clipboard
     r"(?:copy|save)\s+(?:output|result)\s+(?:to\s+)?clipboard": "| clip",
     r"(?:show|paste|view)\s+clipboard(?:\s+content)?": 'powershell -NoProfile -Command "Get-Clipboard"',
+
+    # ── Security & hashing (Windows) ──
+    r"(?:hash|checksum|sha256)\s+(?:of\s+)?(\S+)": "certutil -hashfile {0} SHA256",
+    r"(?:md5)\s+(?:of\s+)?(\S+)": "certutil -hashfile {0} MD5",
+    r"(?:check|verify)\s+(?:ssl|tls)\s+(?:cert(?:ificate)?\s+)?(?:for\s+)?(\S+)": 'powershell -NoProfile -Command "$r=[Net.HttpWebRequest]::Create(\'https://{0}\');$r.GetResponse()|Out-Null;$c=$r.ServicePoint.Certificate;$c.Subject;$c.GetExpirationDateString()"',
+    r"(?:show|list)\s+(?:all\s+)?(?:installed\s+)?certificates?": 'powershell -NoProfile -Command "Get-ChildItem Cert:\\LocalMachine\\My | Format-Table Subject, NotAfter, Thumbprint"',
+    r"(?:scan|check)\s+(?:open\s+)?ports?\s+(?:on\s+)?(\S+)": 'powershell -NoProfile -Command "1..1024 | ForEach-Object { $t=New-Object Net.Sockets.TcpClient; try{$t.Connect(\'{0}\',$_);Write-Host \"Port $_ open\"}catch{}finally{$t.Close()}}"',
+    r"(?:show|check)\s+(?:file\s+)?(?:permissions?|perms?|acl)\s+(?:of\s+)?(\S+)": 'powershell -NoProfile -Command "Get-Acl {0} | Format-List"',
+    r"(?:find)\s+(?:all\s+)?(?:world[- ]?writable|everyone)\s+files?": 'powershell -NoProfile -Command "Get-ChildItem -Recurse | Get-Acl | Where-Object {$_.AccessToString -match \"Everyone\"} | Select-Object Path"',
+
+    # ── Event logs ──
+    r"(?:show|view)\s+(?:system\s+)?(?:event\s+)?logs?": 'powershell -NoProfile -Command "Get-EventLog -LogName System -Newest 20 | Format-Table TimeGenerated, EntryType, Source, Message -Wrap"',
+    r"(?:show|view)\s+(?:security\s+)?(?:event\s+)?(?:audit\s+)?logs?": 'powershell -NoProfile -Command "Get-EventLog -LogName Security -Newest 20 | Format-Table TimeGenerated, EntryType, Message -Wrap"',
+    r"(?:show|find)\s+(?:failed|bad)\s+(?:login|logon)\s+attempts?": 'powershell -NoProfile -Command "Get-EventLog -LogName Security -InstanceId 4625 -Newest 20 | Format-Table TimeGenerated, Message -Wrap"',
+    r"(?:show|view)\s+(?:application\s+)?error\s+logs?": 'powershell -NoProfile -Command "Get-EventLog -LogName Application -EntryType Error -Newest 20 | Format-Table TimeGenerated, Source, Message -Wrap"',
+
+    # ── Scheduled tasks ──
+    r"(?:show|list)\s+(?:all\s+)?scheduled\s+tasks?": "schtasks /query /fo TABLE",
+    r"(?:show|list)\s+(?:my\s+)?(?:cron\s+)?(?:jobs|crontab|scheduled\s+tasks?)": "schtasks /query /fo TABLE",
+    r"(?:create)\s+scheduled\s+task\s+(\S+)\s+(?:to\s+)?run\s+(\S+)": 'schtasks /create /tn "{0}" /tr "{1}" /sc daily',
+    r"(?:delete|remove)\s+scheduled\s+task\s+(\S+)": 'schtasks /delete /tn "{0}" /f',
+
+    # ── Registry ──
+    r"(?:show|query)\s+(?:registry|reg)\s+(\S+)": "reg query {0}",
+
+    # ── Advanced monitoring (Windows) ──
+    r"(?:monitor|watch)\s+(?:cpu|system)\s+(?:usage\s+)?(?:in\s+)?(?:real[- ]?time|live)": 'powershell -NoProfile -Command "while($true){Get-Process|Sort CPU -Desc|Select -First 5 Name,CPU,@{N=''MB'';E={[math]::Round($_.WS/1MB)}};Start-Sleep 2;Clear-Host}"',
+    r"(?:show|find)\s+(?:process(?:es)?\s+)?(?:using|on)\s+port\s+(\d+)": "netstat -ano | findstr :{0}",
+    r"(?:show)\s+(?:top|highest)\s+(\d+)\s+(?:cpu|memory|ram)\s+(?:consuming\s+)?processes?": 'powershell -NoProfile -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First {0} Name, CPU, @{N=''RAM_MB'';E={[math]::Round($_.WorkingSet/1MB,1)}}"',
+    r"(?:monitor|watch)\s+(?:disk\s+)?(?:io|i/o)\s+(?:in\s+)?(?:real[- ]?time|live)?": 'powershell -NoProfile -Command "Get-Counter ''\\PhysicalDisk(*)\\Disk Reads/sec'',''\\PhysicalDisk(*)\\Disk Writes/sec'' -SampleInterval 1 -MaxSamples 5"',
+    r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:days?)": 'powershell -NoProfile -Command "Get-ChildItem -Recurse | Where-Object {$_.LastWriteTime -gt (Get-Date).AddDays(-{0})} | Select-Object FullName, LastWriteTime"',
+    r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:hours?)": 'powershell -NoProfile -Command "Get-ChildItem -Recurse | Where-Object {$_.LastWriteTime -gt (Get-Date).AddHours(-{0})} | Select-Object FullName, LastWriteTime"',
+    r"(?:count)\s+(?:files?\s+in)\s+(\S+)": 'powershell -NoProfile -Command "(Get-ChildItem -Path {0} -Recurse -File).Count"',
+    r"(?:show|check)\s+(?:system\s+)?load\s+(?:average)?": 'powershell -NoProfile -Command "Get-Counter ''\\Processor(_Total)\\% Processor Time'' -SampleInterval 1 -MaxSamples 3"',
+    r"(?:benchmark|test)\s+(?:disk\s+)?(?:speed|io|performance)": 'powershell -NoProfile -Command "$f=''disktest.tmp'';$sw=[Diagnostics.Stopwatch]::StartNew();[IO.File]::WriteAllBytes($f,(New-Object byte[] 104857600));$sw.Stop();$mb=100/$sw.Elapsed.TotalSeconds;Remove-Item $f;Write-Host \"Write speed: $([math]::Round($mb,1)) MB/s\""',
+
+    # ── Windows-specific open ──
+    r"(?:open)\s+(?:file\s+)?(?:explorer|manager)": "explorer .",
+    r"(?:open)\s+(?:control\s+)?panel": "control",
+    r"(?:open)\s+(?:device\s+)?manager": "devmgmt.msc",
+    r"(?:open)\s+(?:task\s+)?manager": "taskmgr",
+    r"(?:open)\s+(?:registry\s+)?editor": "regedit",
+    r"(?:open)\s+(?:disk\s+)?management": "diskmgmt.msc",
 }
 
 LINUX_OVERRIDES = {
