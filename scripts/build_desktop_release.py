@@ -22,6 +22,7 @@ def build_command(project_root: Path, dist_dir: Path, work_dir: Path, system_nam
 
     icon_path = project_root / "assets" / "icon.ico"
     data_spec = f"{project_root / 'assets'}{sep}assets"
+    data_spec_intel = f"{project_root / 'intelligence'}{sep}intelligence"
 
     cmd = [
         sys.executable,
@@ -40,6 +41,8 @@ def build_command(project_root: Path, dist_dir: Path, work_dir: Path, system_nam
         str(work_dir),
         "--add-data",
         data_spec,
+        "--add-data",
+        data_spec_intel,
         "--collect-submodules",
         "rich",
     ]

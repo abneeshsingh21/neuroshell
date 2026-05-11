@@ -63,15 +63,22 @@ class TranslationResult:
 # Common Command Patterns (for fast local translation)
 # ═══════════════════════════════════════════════════════════
 
-def _get_telemetry_cmd(arg: str) -> str:
+def _get_internal_cmd(script_name: str, arg: str) -> str:
     import sys
     import os
-    if hasattr(sys, "_MEIPASS"):
-        # PyInstaller places the intelligence folder inside _internal
-        script_path = os.path.join(sys._MEIPASS, "intelligence", "ui_telemetry.py")
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        script_path = os.path.join(sys._MEIPASS, "intelligence", script_name)
     else:
-        script_path = "intelligence/ui_telemetry.py"
+        # Use absolute path based on this file's location to be independent of cwd
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(base_dir, script_name)
     return f'python "{script_path}" {arg}'
+
+def _get_telemetry_cmd(arg: str) -> str:
+    return _get_internal_cmd("ui_telemetry.py", arg)
+
+def _get_deep_search_cmd(arg: str) -> str:
+    return _get_internal_cmd("deep_search.py", arg)
 
 
 LOCAL_PATTERNS = {
@@ -225,7 +232,7 @@ LOCAL_PATTERNS = {
 WINDOWS_OVERRIDES = {
     # File operations
     r"(?:show|list|view)\s+(?:all\s+)?files?": "dir",
-    r"(?:deep\s+)?(?:find|search|locate)\s+(?:for\s+)?(?:files?\s+)?(?:named?\s+)?(.+)": 'python intelligence/deep_search.py "{0}"',
+    r"(?:deep\s+)?(?:find|search|locate)\s+(?:for\s+)?(?:files?\s+)?(?:named?\s+)?(.+)": _get_deep_search_cmd('"{0}"'),
     r"(?:deep\s+)?(?:search|grep|find)\s+(?:for\s+)?['\"](.+?)['\"]\s+(?:in\s+)?(?:all\s+)?files?": 'findstr /s /i "{0}" *',
     r"(?:deep\s+)?(?:search|find)\s+(?:in\s+)?(?:explorer|file explorer|windows)\s+(?:for\s+)?(.+)": 'explorer "search-ms:query={0}"',
     r"(?:deep\s+)?(?:search|grep|find)\s+(?:for\s+)?(.+?)\s+(?:in\s+)?(?:explorer|file explorer|windows)": 'explorer "search-ms:query={0}"',
@@ -544,6 +551,7 @@ class Translator:
         # Pass 2 removed: Prefix matching overrides complex natural language queries.
         # By removing this, incomplete/complex sentences naturally fall through to the LLM.
 
+        is_windows = os_name == "Windows"
         dynamic = self._try_local_dynamic_patterns(user_input, is_windows)
         if dynamic:
             return TranslationResult(
