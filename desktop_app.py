@@ -649,6 +649,14 @@ class NeuroShellDesktop(ctk.CTk):
             ("🚀  Deploy Status",       "deploy status"),
             ("📋  Policy Audit",        "policy"),
             ("💡  AI Suggestions",      "suggest"),
+            ("🛡️  Security Scan",      "scan"),
+            ("🎨  Themes",             "themes"),
+            ("📌  Snippets",            "snippets"),
+            ("📓  Notebook",            "notebook"),
+            ("🔍  Command Palette",     "palette "),
+            ("📅  Timeline",            "timeline"),
+            ("📊  Audit Report",        "audit"),
+            ("🌐  Start API",           "api start"),
         ]
 
         for label, cmd in quick_commands:
@@ -1302,6 +1310,27 @@ class NeuroShellDesktop(ctk.CTk):
             # Audible bell for long-running commands (>5s)
             if duration_ms > 5000:
                 self.after(0, lambda: self.bell())
+            # Smart desktop notification for long commands
+            try:
+                if hasattr(self._neuroshell, 'ext_notifications'):
+                    self._neuroshell.ext_notifications.on_command_complete(cmd, 0, duration_ms)
+            except Exception:
+                pass
+            # Record to ext_memory for learning
+            try:
+                if hasattr(self._neuroshell, 'ext_memory'):
+                    self._neuroshell.ext_memory.record(cmd, cmd, True, os.getcwd())
+                if hasattr(self._neuroshell, 'ext_notebook'):
+                    captured = stream.get_captured_text().strip()
+                    self._neuroshell.ext_notebook.add_command(cmd, captured[:500], 0, duration_ms)
+            except Exception:
+                pass
+            # Log to audit trail
+            try:
+                if hasattr(self._neuroshell, 'ext_audit'):
+                    self._neuroshell.ext_audit.log(cmd, 0, 'executed', os.getcwd(), duration_ms, 0)
+            except Exception:
+                pass
             self.after(0, lambda: self.status_right.configure(
                 text=f"● OK  {(time.perf_counter()-t0)*1000:.0f}ms",
                 text_color=COLORS["accent_green"]))
@@ -1312,9 +1341,18 @@ class NeuroShellDesktop(ctk.CTk):
             self._last_error = err
             self.command_error_count += 1
             self._error_samples.append(1)
+            duration_ms = (time.perf_counter() - t0) * 1000
             self.after(0, lambda e=str(e): self._append_output(f"✗ {e}\n", "err"))
             self.after(0, lambda: self.status_right.configure(
                 text="● Error", text_color=COLORS["accent_red"]))
+            # Notify on failed long commands
+            try:
+                if hasattr(self._neuroshell, 'ext_notifications'):
+                    self._neuroshell.ext_notifications.on_command_complete(cmd, 1, duration_ms)
+                if hasattr(self._neuroshell, 'ext_audit'):
+                    self._neuroshell.ext_audit.log(cmd, 5, 'error', os.getcwd(), duration_ms, 1)
+            except Exception:
+                pass
         finally:
             # Sync memory if utilizing the synchronous Builder stream
             if self.mode == "Builder" and hasattr(self._neuroshell, "session_memory"):
