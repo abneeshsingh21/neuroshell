@@ -226,6 +226,77 @@ LOCAL_PATTERNS = {
     r"(?:show|what)\s+(?:is\s+)?(?:the\s+)?(?:weather)": "curl wttr.in",
     r"(?:show|what(?:'s| is))\s+(?:the\s+)?(?:current\s+)?(?:time|date)\s+(?:in\s+)?(\S+)": "TZ={0} date",
     r"(?:calculate|calc|math)\s+(.+)": "python -c \"print({0})\"",
+
+    # ── Permissions & ownership ──
+    r"(?:change|set)\s+(?:permissions?\s+(?:of\s+)?)?(\S+)\s+(?:to\s+)?(\d{3})": "chmod {1} {0}",
+    r"(?:change|set)\s+owner\s+(?:of\s+)?(\S+)\s+(?:to\s+)?(\S+)": "chown {1} {0}",
+    r"(?:change|set)\s+group\s+(?:of\s+)?(\S+)\s+(?:to\s+)?(\S+)": "chgrp {1} {0}",
+
+    # ── Archives & compression ──
+    r"(?:create|make)\s+(?:a\s+)?tar(?:ball)?\s+(?:of\s+)?(\S+)": "tar -czf {0}.tar.gz {0}",
+    r"(?:extract|untar)\s+(\S+\.tar\.gz)": "tar -xzf {0}",
+    r"(?:extract|untar)\s+(\S+\.tar\.bz2)": "tar -xjf {0}",
+    r"(?:extract|untar)\s+(\S+\.tar)": "tar -xf {0}",
+    r"(?:create|make)\s+(?:a\s+)?zip\s+(?:of\s+)?(\S+)": "zip -r {0}.zip {0}",
+    r"(?:extract|unzip)\s+(\S+\.zip)": "unzip {0}",
+
+    # ── SSH & Remote ──
+    r"(?:ssh|connect)\s+(?:to\s+)?(\S+@\S+)": "ssh {0}",
+    r"(?:copy|scp|transfer)\s+(\S+)\s+(?:to\s+)?(?:remote\s+)?(\S+@\S+:\S+)": "scp {0} {1}",
+    r"(?:copy|scp)\s+(?:from\s+)?(?:remote\s+)?(\S+@\S+:\S+)\s+(?:to\s+)?(\S+)": "scp {0} {1}",
+    r"(?:generate|create)\s+(?:ssh\s+)?key(?:pair)?": "ssh-keygen -t ed25519",
+
+    # ── Cron & scheduling ──
+    r"(?:show|list|view)\s+(?:my\s+)?(?:cron\s+)?(?:jobs|crontab|scheduled\s+tasks?)": "crontab -l",
+    r"(?:edit)\s+(?:my\s+)?(?:cron\s+)?(?:jobs|crontab)": "crontab -e",
+
+    # ── Text & data processing ──
+    r"(?:sort)\s+(?:the\s+)?(?:file\s+)?(\S+)": "sort {0}",
+    r"(?:sort)\s+(\S+)\s+(?:uniquely|unique)": "sort -u {0}",
+    r"(?:remove|delete)\s+(?:duplicate|dup)\s+(?:lines?\s+)?(?:in|from)\s+(\S+)": "sort -u {0}",
+    r"(?:count)\s+(?:words?\s+in)\s+(\S+)": "wc -w {0}",
+    r"(?:replace|substitute)\s+['\"](.+?)['\"]\s+(?:with)\s+['\"](.+?)['\"]\s+(?:in)\s+(\S+)": "sed -i 's/{0}/{1}/g' {2}",
+    r"(?:show|print)\s+(?:line\s+)?(\d+)\s+(?:of|from|in)\s+(\S+)": "sed -n '{0}p' {1}",
+    r"(?:reverse|tac)\s+(?:the\s+)?(?:file\s+)?(\S+)": "tac {0}",
+    r"(?:show|print)\s+(?:unique|distinct)\s+(?:lines?\s+)?(?:in|from)\s+(\S+)": "sort -u {0}",
+    r"(?:cut|extract)\s+(?:column|field)\s+(\d+)\s+(?:from|in|of)\s+(\S+)": "cut -f{0} {1}",
+
+    # ── Disk & storage ──
+    r"(?:check|show)\s+(?:disk\s+)?(?:usage|size)\s+(?:of\s+)?(\S+)": "du -sh {0}",
+    r"(?:show|find)\s+(?:top|largest|biggest)\s+(\d+)\s+files?": "find . -type f -exec du -h {{}} + | sort -rh | head -n {0}",
+    r"(?:show|find)\s+(?:files?\s+)?(?:larger|bigger)\s+(?:than)\s+(\S+)": "find . -size +{0} -type f",
+    r"(?:show|check)\s+(?:inode|inodes)\s+(?:usage)?": "df -i",
+
+    # ── User & session ──
+    r"(?:show|who)\s+(?:is\s+)?(?:logged\s+in|online)": "who",
+    r"(?:show|view)\s+(?:login\s+)?history": "last",
+    r"(?:add|create)\s+(?:a\s+)?(?:new\s+)?user\s+(\S+)": "sudo useradd {0}",
+    r"(?:delete|remove)\s+user\s+(\S+)": "sudo userdel {0}",
+    r"(?:change|set|reset)\s+password\s+(?:for\s+)?(\S+)": "sudo passwd {0}",
+
+    # ── Hardware & performance ──
+    r"(?:show|check)\s+(?:cpu|processor)\s+(?:info|details?)": "lscpu",
+    r"(?:show|check)\s+(?:gpu|graphics)\s+(?:info|details?)": "lspci | grep -i vga",
+    r"(?:show|check)\s+(?:usb)\s+(?:devices?)": "lsusb",
+    r"(?:show|check)\s+(?:pci)\s+(?:devices?)": "lspci",
+    r"(?:show|check)\s+(?:block\s+)?(?:devices?|disks?)": "lsblk",
+    r"(?:show|check)\s+(?:hardware)\s+(?:info|details?)": "lshw",
+
+    # ── Kubernetes ──
+    r"(?:show|list|get)\s+(?:all\s+)?(?:k8s\s+|kube\s+)?pods?": "kubectl get pods",
+    r"(?:show|list|get)\s+(?:all\s+)?(?:k8s\s+|kube\s+)?services?": "kubectl get svc",
+    r"(?:show|list|get)\s+(?:all\s+)?(?:k8s\s+|kube\s+)?(?:deployments?|deploys?)": "kubectl get deployments",
+    r"(?:show|list|get)\s+(?:all\s+)?(?:k8s\s+|kube\s+)?(?:namespaces?|ns)": "kubectl get ns",
+    r"(?:show|view)\s+(?:k8s\s+|kube\s+)?(?:pod\s+)?logs?\s+(?:for\s+)?(\S+)": "kubectl logs {0}",
+    r"(?:describe)\s+(?:k8s\s+|kube\s+)?pod\s+(\S+)": "kubectl describe pod {0}",
+    r"(?:exec|shell)\s+(?:into\s+)?(?:k8s\s+|kube\s+)?pod\s+(\S+)": "kubectl exec -it {0} -- /bin/sh",
+
+    # ── Terraform ──
+    r"(?:terraform|tf)\s+(?:init|initialize)": "terraform init",
+    r"(?:terraform|tf)\s+(?:plan|preview)": "terraform plan",
+    r"(?:terraform|tf)\s+(?:apply)": "terraform apply",
+    r"(?:terraform|tf)\s+(?:destroy)": "terraform destroy",
+    r"(?:terraform|tf)\s+(?:show|state)": "terraform show",
 }
 
 # Windows-specific pattern overrides
@@ -339,7 +410,45 @@ LINUX_OVERRIDES = {
     r"(?:show|view)\s+(?:system\s+)?(?:info|information)": "uname -a",
     r"(?:restart|reboot)\s+(?:the\s+)?(?:computer|system|pc|machine)": "sudo reboot",
     r"(?:shutdown|turn off|power off)\s+(?:the\s+)?(?:computer|system|pc|machine)": "sudo shutdown -h now",
-    
+
+    # ── Systemd services ──
+    r"(?:show|list)\s+(?:all\s+)?(?:running\s+)?services?": "systemctl list-units --type=service --state=running",
+    r"(?:start)\s+service\s+(\S+)": "sudo systemctl start {0}",
+    r"(?:stop)\s+service\s+(\S+)": "sudo systemctl stop {0}",
+    r"(?:restart)\s+service\s+(\S+)": "sudo systemctl restart {0}",
+    r"(?:status|check)\s+(?:of\s+)?service\s+(\S+)": "systemctl status {0}",
+    r"(?:enable)\s+service\s+(\S+)": "sudo systemctl enable {0}",
+    r"(?:disable)\s+service\s+(\S+)": "sudo systemctl disable {0}",
+
+    # ── Journal / logs ──
+    r"(?:show|view)\s+(?:system\s+)?(?:logs?|journal)": "journalctl -xe --no-pager | tail -50",
+    r"(?:show|view)\s+(?:logs?\s+)?(?:for\s+)?service\s+(\S+)": "journalctl -u {0} --no-pager | tail -30",
+    r"(?:follow|tail)\s+(?:system\s+)?(?:logs?|journal)": "journalctl -f",
+
+    # ── Firewall (ufw) ──
+    r"(?:show|check)\s+(?:firewall|fw|ufw)\s+(?:status|rules?)": "sudo ufw status verbose",
+    r"(?:allow|open)\s+(?:port\s+)?(\d+)": "sudo ufw allow {0}",
+    r"(?:deny|block|close)\s+(?:port\s+)?(\d+)": "sudo ufw deny {0}",
+    r"(?:enable)\s+(?:the\s+)?firewall": "sudo ufw enable",
+    r"(?:disable)\s+(?:the\s+)?firewall": "sudo ufw disable",
+
+    # ── Package managers ──
+    r"(?:install)\s+(\S+)\s+(?:with|using)\s+apt": "sudo apt install -y {0}",
+    r"(?:remove|uninstall)\s+(\S+)\s+(?:with|using)\s+apt": "sudo apt remove {0}",
+    r"(?:search|find)\s+(\S+)\s+(?:in|on|with)\s+apt": "apt search {0}",
+    r"(?:install)\s+(\S+)\s+(?:with|using)\s+(?:dnf|yum)": "sudo dnf install -y {0}",
+    r"(?:install)\s+(\S+)\s+(?:with|using)\s+pacman": "sudo pacman -S {0}",
+
+    # ── Hardware ──
+    r"(?:show|check)\s+(?:cpu|processor)\s+(?:info|details?)": "lscpu",
+    r"(?:show|check)\s+(?:hardware)\s+(?:info|details?)": "sudo lshw -short",
+    r"(?:show|check)\s+(?:battery|power)\s+(?:status|level|info)": "upower -i /org/freedesktop/UPower/devices/battery_BAT0",
+
+    # ── Network ──
+    r"(?:show|list)\s+(?:open\s+)?(?:network\s+)?ports": "ss -tulpn",
+    r"(?:flush|clear)\s+(?:dns|DNS)\s+(?:cache)?": "sudo systemd-resolve --flush-caches",
+    r"(?:show|view)\s+(?:network\s+)?(?:adapters?|interfaces?)": "ip link show",
+
     # Virtual Env
     r"(?:activate)\s+(?:the\s+)?(?:virtual\s+)?(?:env|environment|venv)": "source .venv/bin/activate",
 
@@ -354,13 +463,65 @@ MACOS_OVERRIDES = {
     r"(?:show|what)\s+(?:is\s+)?memory\s+usage": "vm_stat",
     r"(?:find|show)\s+(?:my\s+)?(?:ip|IP)\s+(?:address)?": "ifconfig",
     r"(?:update|upgrade)\s+(?:the\s+)?system": "brew update && brew upgrade",
-    
+    r"(?:show|view)\s+(?:system\s+)?(?:info|information)": "system_profiler SPSoftwareDataType",
+    r"(?:restart|reboot)\s+(?:the\s+)?(?:computer|system|pc|machine)": "sudo shutdown -r now",
+    r"(?:shutdown|turn off|power off)\s+(?:the\s+)?(?:computer|system|pc|machine)": "sudo shutdown -h now",
+
+    # ── Homebrew ──
+    r"(?:install)\s+(\S+)\s+(?:with|using)\s+(?:brew|homebrew)": "brew install {0}",
+    r"(?:remove|uninstall)\s+(\S+)\s+(?:with|using)\s+(?:brew|homebrew)": "brew uninstall {0}",
+    r"(?:search|find)\s+(\S+)\s+(?:in|on|with)\s+(?:brew|homebrew)": "brew search {0}",
+    r"(?:list|show)\s+(?:installed\s+)?(?:brew|homebrew)\s+packages?": "brew list",
+    r"(?:show|list)\s+(?:outdated|upgradable)\s+(?:brew\s+)?packages?": "brew outdated",
+    r"(?:cleanup)\s+(?:brew|homebrew)": "brew cleanup",
+
+    # ── Services (launchctl) ──
+    r"(?:show|list)\s+(?:all\s+)?(?:running\s+)?services?": "launchctl list",
+    r"(?:start)\s+service\s+(\S+)": "launchctl start {0}",
+    r"(?:stop)\s+service\s+(\S+)": "launchctl stop {0}",
+
+    # ── Hardware & battery ──
+    r"(?:show|check)\s+(?:cpu|processor)\s+(?:info|details?)": "sysctl -n machdep.cpu.brand_string",
+    r"(?:show|check)\s+(?:hardware)\s+(?:info|details?)": "system_profiler SPHardwareDataType",
+    r"(?:show|check)\s+(?:battery|power)\s+(?:status|level|info)": "pmset -g batt",
+    r"(?:show|check)\s+(?:usb)\s+(?:devices?)": "system_profiler SPUSBDataType",
+
+    # ── Network ──
+    r"(?:show|list)\s+(?:open\s+)?(?:network\s+)?ports": "lsof -i -P -n | grep LISTEN",
+    r"(?:show|view)\s+(?:network\s+)?(?:adapters?|interfaces?)": "ifconfig",
+    r"(?:show|list)\s+(?:all\s+)?(?:saved\s+)?wifi(?:s)?\s+(?:networks?|profiles?)": "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s",
+
+    # ── Spotlight search ──
+    r"(?:deep\s+)?(?:find|search|locate)\s+(?:for\s+)?(?:files?\s+)?(?:named?\s+)?(.+)": 'mdfind -name "{0}"',
+
+    # ── Open/launch ──
+    r"(?:open)\s+(?:finder|file\s+manager)": "open .",
+    r"(?:open)\s+(\S+)\s+(?:in|with)\s+(\S+)": "open -a {1} {0}",
+
     # DNS
     r"(?:flush|clear)\s+(?:dns|DNS)\s+(?:cache)?": "sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder",
+
+    # ── Firewall ──
+    r"(?:show|check)\s+(?:firewall|fw)\s+(?:status|rules?)": "sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate",
+    r"(?:enable)\s+(?:the\s+)?firewall": "sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on",
+    r"(?:disable)\s+(?:the\s+)?firewall": "sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off",
+
+    # Virtual Env
+    r"(?:activate)\s+(?:the\s+)?(?:virtual\s+)?(?:env|environment|venv)": "source .venv/bin/activate",
 
     # Clipboard
     r"(?:copy|save)\s+(?:output|result)\s+(?:to\s+)?clipboard": "| pbcopy",
     r"(?:show|paste|view)\s+clipboard(?:\s+content)?": "pbpaste",
+
+    # ── Screen & display ──
+    r"(?:take\s+(?:a\s+)?)?screenshot": "screencapture ~/Desktop/screenshot.png",
+    r"(?:show|check)\s+(?:screen\s+)?resolution": "system_profiler SPDisplaysDataType | grep Resolution",
+    r"(?:lock)\s+(?:the\s+)?(?:screen|computer)": "pmset displaysleepnow",
+
+    # ── Disk ──
+    r"(?:show|list)\s+(?:all\s+)?(?:drives?|disks?|volumes?)": "diskutil list",
+    r"(?:eject)\s+(\S+)": "diskutil eject {0}",
+    r"(?:empty|clear)\s+(?:the\s+)?(?:trash|bin)": "rm -rf ~/.Trash/*",
 }
 
 
@@ -373,7 +534,7 @@ class Translator:
     Production-grade NL → command translator.
 
     Features:
-    - Local pattern matching for common commands (~50 patterns)
+    - Local pattern matching for common commands (~250+ patterns)
     - OS-aware translations (Linux vs Windows)
     - Multi-step command generation
     - Disambiguation for ambiguous requests
@@ -577,6 +738,9 @@ class Translator:
             (r"(?:show|list|view)\s+(?:all\s+)?files?(?:\s+in\s+(.+))?", lambda g: self._build_cmd(["dir" if is_windows else "ls", g[0].strip()] if g and g[0] else ["dir" if is_windows else "ls"])),
             (r"(?:make|create)\s+(?:a\s+)?(?:directory|folder|dir)\s+(?:(?:called|name|named)\s+)?(\S+)", lambda g: self._build_cmd(["mkdir", g[0]])),
             (r"(?:delete|remove)\s+(?:the\s+)?(?:file|directory|folder)\s+(\S+)", lambda g: self._build_cmd(["rm", g[0]])),
+            # Folder copy / backup — "create a copy of X folder in Y", "backup X to Y", "copy X folder to Y"
+            (r"(?:create\s+(?:a\s+)?(?:copy|backup)\s+of\s+(?:the\s+)?(.+?)\s+(?:folder\s+)?(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+folder)?)\s*$", lambda g: self._build_cmd(["robocopy", g[0].strip(), g[1].strip(), "/E", "/DCOPY:T"]) if is_windows else self._build_cmd(["cp", "-r", g[0].strip(), g[1].strip()])),
+            (r"(?:copy|backup)\s+(?:the\s+)?(.+?)\s+(?:folder|directory)\s+(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s*$", lambda g: self._build_cmd(["robocopy", g[0].strip(), g[1].strip(), "/E", "/DCOPY:T"]) if is_windows else self._build_cmd(["cp", "-r", g[0].strip(), g[1].strip()])),
             (r"(?:copy|cp)\s+(\S+)\s+(?:to\s+)?(\S+)", lambda g: self._build_cmd(["cp", g[0], g[1]])),
             (r"(?:move|mv|rename)\s+(\S+)\s+(?:to\s+)?(\S+)", lambda g: self._build_cmd(["mv", g[0], g[1]])),
             (r"(?:show|display|cat|view)\s+(?:the\s+)?(?:contents?\s+of\s+)?(\S+)", lambda g: self._build_cmd(["cat", g[0]])),
