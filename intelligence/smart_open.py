@@ -1185,14 +1185,28 @@ class SmartOpenTool(BaseTool):
             # Fire and forget the command
             try:
                 import sys
-                cmd_args = ["cmd.exe", "/c", result.command] if sys.platform == "win32" else ["sh", "-c", result.command]
-                subprocess.Popen(
-                    cmd_args,
-                    shell=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True
-                )
+                if sys.platform == "win32":
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    si.wShowWindow = 0
+                    cmd_args = ["cmd.exe", "/c", result.command]
+                    subprocess.Popen(
+                        cmd_args,
+                        shell=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        startupinfo=si,
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        start_new_session=True,
+                    )
+                else:
+                    subprocess.Popen(
+                        ["sh", "-c", result.command],
+                        shell=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
                 return result
             except Exception as e:
                 raise RuntimeError(f"Failed to launch {result.command}: {e}")

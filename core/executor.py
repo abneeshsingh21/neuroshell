@@ -293,7 +293,7 @@ class ShellExecutor:
                 shell=False,
                 text=True,
                 bufsize=1,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if self._system == "Windows" else 0,
+                creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW) if self._system == "Windows" else 0,
             )
             self._active_process = process
 
@@ -472,6 +472,7 @@ class ShellExecutor:
                 env=self._build_env(),
                 shell=False,
                 text=True,
+                creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW) if self._system == "Windows" else 0,
             )
 
             self._job_counter += 1

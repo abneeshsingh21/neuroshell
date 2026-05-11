@@ -2,7 +2,7 @@
 # Proprietary and Confidential - see LICENSE.txt
 #!/usr/bin/env python3
 """
-NeuroShell Desktop v5.0 — Professional AI Terminal GUI
+NeuroShell Desktop v5.2.0 — Professional AI Terminal GUI
 Premium dark glassmorphism interface with real-time telemetry,
 security indicators, AI pipeline routing, and multi-panel cockpit.
 """
@@ -18,6 +18,7 @@ import math
 import traceback
 import platform
 import subprocess
+import webbrowser
 import threading
 import importlib
 from collections import deque
@@ -26,7 +27,7 @@ import customtkinter as ctk  # type: ignore[import]
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import NEUROSHELL_DIR  # type: ignore[import]
+from config import NEUROSHELL_DIR, Config  # type: ignore[import]
 from core.events import neuro_events  # type: ignore[import]
 from ui.wizard import FirstRunWizard, needs_first_run, SettingsPanel
 from config import load_config
@@ -165,6 +166,11 @@ class _GUIOutputStream:
 
     def flush(self): pass
     def isatty(self): return False
+    def fileno(self): raise io.UnsupportedOperation('fileno')
+    @property
+    def encoding(self): return 'utf-8'
+    @property
+    def errors(self): return 'replace'
 
 
 class _GUIMockStdin:
@@ -179,6 +185,10 @@ class _GUIMockStdin:
     def fileno(self): raise io.UnsupportedOperation('fileno')
     def flush(self): pass
     def close(self): pass
+    @property
+    def encoding(self): return 'utf-8'
+    @property
+    def errors(self): return 'replace'
     def __iter__(self): return self
     def __next__(self): return 'y\n'
 
@@ -200,7 +210,7 @@ def _gui_safe_input(prompt=''):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class NeuroShellDesktop(ctk.CTk):
-    """NeuroShell v5.0 — Professional AI-Powered Terminal Desktop Application."""
+    """NeuroShell v5.2.0 — Professional AI-Powered Terminal Desktop Application."""
 
     # Theme definitions — keys must be consistent across all themes
     _THEMES = {
@@ -230,10 +240,16 @@ class NeuroShellDesktop(ctk.CTk):
         super().__init__()
 
         # ── Window Setup ──
-        self.title("NeuroShell v5.0 — AI Terminal")
+        self.title("NeuroShell v5.2.0 — AI Terminal")
         self.geometry("1440x860")
         self.minsize(1100, 660)
         self.configure(fg_color=COLORS["bg_root"])
+
+        # ── App Config ──
+        try:
+            self._app_config = load_config()
+        except Exception:
+            self._app_config = Config()
 
         try:
             icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.ico")
@@ -261,7 +277,8 @@ class NeuroShellDesktop(ctk.CTk):
         self._engine_ready        = False
         self._init_lock           = threading.Lock()
         self._last_error          = ""
-        self._last_command        = ""
+        self._last_command         = ""
+        self._saved_input_text     = ""   # preserves typed text during history nav
         self.mode                 = "Builder"
         self.experience_level     = "Guided"
         self.ai_mode              = "Fast LLM"
@@ -289,6 +306,15 @@ class NeuroShellDesktop(ctk.CTk):
         self._crash_dir = NEUROSHELL_DIR / "crash_reports"
         self._crash_dir.mkdir(parents=True, exist_ok=True)
 
+        # Bookmarks
+        self._bookmarks: list[str] = []
+        self._load_bookmarks()
+
+        # Search overlay state
+        self._search_bar = None
+        self._search_matches: list = []
+        self._search_index = 0
+
         # Brand assets
         self._brand_logo_source = None
         self._brand_images: dict[int, ctk.CTkImage] = {}
@@ -307,7 +333,16 @@ class NeuroShellDesktop(ctk.CTk):
         self.bind("<Control-Shift-P>", lambda e: self._show_command_palette())
         self.bind("<Control-Shift-p>", lambda e: self._show_command_palette())
         self.bind("<Control-g>",       lambda e: self._show_command_graph())
-        self.bind("<Escape>",          lambda e: self._interrupt_command())
+        self.bind("<Control-d>",       lambda e: self._on_close())
+        self.bind("<Control-a>",       lambda e: self._select_all_input())
+        self.bind("<Control-f>",       lambda e: self._toggle_search_bar())
+        self.bind("<Control-Shift-C>", lambda e: self._copy_selection())
+        self.bind("<Control-Shift-c>", lambda e: self._copy_selection())
+        self.bind("<Control-Shift-E>", lambda e: self._export_session_markdown())
+        self.bind("<Control-Shift-e>", lambda e: self._export_session_markdown())
+        self.bind("<Control-Shift-B>", lambda e: self._bookmark_last_command())
+        self.bind("<Control-Shift-b>", lambda e: self._bookmark_last_command())
+        self.bind("<Escape>",          lambda e: self._on_escape())
 
         # ── Close handler — clean teardown ──
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -397,7 +432,7 @@ class NeuroShellDesktop(ctk.CTk):
         # ── Left: Brand ──
         left = ctk.CTkFrame(self.titlebar, fg_color="transparent")
         left.pack(side="left", padx=14, pady=0)
-        self._brand_badge(left, size=28, title_size=15, subtitle="v4.2  •  AI Terminal").pack(side="left")
+        self._brand_badge(left, size=28, title_size=15, subtitle="v5.2.0  •  AI Terminal").pack(side="left")
 
         # ── Center: Selectors ──
         center = ctk.CTkFrame(self.titlebar, fg_color="transparent")
@@ -472,6 +507,7 @@ class NeuroShellDesktop(ctk.CTk):
             ("📊 Monitor",     self._show_process_monitor,  COLORS["text_secondary"]),
             ("🛡️ Security",   self._show_security_panel,   COLORS["accent_green"]),
             ("🎨 Theme",       self._cycle_theme,           COLORS["text_secondary"]),
+            ("⚙️ Settings",   self._show_settings,         COLORS["text_secondary"]),
             ("⌫ Clear",        self._clear_terminal,        COLORS["text_secondary"]),
             ("—",             self.iconify,                COLORS["text_muted"]),
             ("⛶",             self._toggle_fullscreen,     COLORS["text_muted"]),
@@ -707,6 +743,13 @@ class NeuroShellDesktop(ctk.CTk):
         )
         self.shell_indicator.pack(side="right", padx=10)
 
+        self.cwd_label = ctk.CTkLabel(
+            tab_bar, text=f"📂 {os.path.basename(os.getcwd())}",
+            font=ctk.CTkFont(family=FONT_UI, size=9),
+            text_color=COLORS["text_muted"],
+        )
+        self.cwd_label.pack(side="right", padx=10)
+
         # ── Terminal Shell ──
         terminal_shell = ctk.CTkFrame(
             self.terminal_container,
@@ -732,6 +775,7 @@ class NeuroShellDesktop(ctk.CTk):
         )
         self.output_text.pack(fill="both", expand=True, padx=8, pady=(8, 0))
         self._setup_output_tags()
+        self._setup_context_menu()
 
         # Glowing divider
         ctk.CTkFrame(terminal_shell, height=1,
@@ -996,23 +1040,24 @@ class NeuroShellDesktop(ctk.CTk):
             ("🚀 Deploy",    lambda: self._quick_command("deploy status"), COLORS["accent_green"]),
             ("🛡️ Audit",    self._show_security_panel,   COLORS["accent_yellow"]),
             ("📉 Monitor",  self._show_process_monitor,  COLORS["accent_purple"]),
+            ("⭐ Bookmarks", self._show_bookmarks_dialog, COLORS["accent_cyan"]),
+            ("🔍 Search",    self._toggle_search_bar,    COLORS["accent_blue"]),
         ]
+        _row = None
         for i, (text, cmd, color) in enumerate(cockpit_btns):
-            col = i % 2
-            row_frame = btns_frame if col else ctk.CTkFrame(btns_frame, fg_color="transparent")
-            if col == 0:
-                row_frame = ctk.CTkFrame(btns_frame, fg_color="transparent")
-                row_frame.pack(fill="x", pady=2)
+            if i % 2 == 0:
+                _row = ctk.CTkFrame(btns_frame, fg_color="transparent")
+                _row.pack(fill="x", pady=2)
 
             ctk.CTkButton(
-                row_frame, text=text, command=cmd,
+                _row, text=text, command=cmd,
                 height=28, corner_radius=8,
                 fg_color=COLORS["bg_elevated"],
                 hover_color=COLORS["bg_hover"],
                 border_width=1, border_color=COLORS["border_soft"],
                 text_color=color,
                 font=ctk.CTkFont(family=FONT_UI, size=10, weight="bold"),
-            ).pack(side="left", fill="x", expand=True, padx=(0 if col else 0, 3 if col == 0 else 0))
+            ).pack(side="left", fill="x", expand=True, padx=2)
 
     def _cockpit_card(self, parent, **kw):
         c = ctk.CTkFrame(
@@ -1059,7 +1104,7 @@ class NeuroShellDesktop(ctk.CTk):
 
         self.status_left = ctk.CTkLabel(
             self.statusbar,
-            text=f"  NeuroShell v5.0  •  Session #{self.session_id}  •  {platform.system()} {platform.machine()}",
+            text=f"  NeuroShell v5.2.0  •  Session #{self.session_id}  •  {platform.system()} {platform.machine()}",
             font=sf, text_color=COLORS["text_muted"], anchor="w",
         )
         self.status_left.pack(side="left", padx=6)
@@ -1077,7 +1122,7 @@ class NeuroShellDesktop(ctk.CTk):
         self.status_swarm.pack(side="right", padx=15)
 
         self.status_center = ctk.CTkLabel(
-            self.statusbar, text="",
+            self.statusbar, text="Ctrl+L Clear  Ctrl+B Side  Ctrl+Shift+P Palette  Tab Complete",
             font=sf, text_color=COLORS["text_muted"],
         )
         self.status_center.pack(side="right", padx=20)
@@ -1112,6 +1157,8 @@ class NeuroShellDesktop(ctk.CTk):
             self._render_ansi(tw, text)
         self.output_text.configure(state="disabled")
         self.output_text.see("end")
+        # Update line counter in statusbar
+        self._update_line_count()
 
     def _render_ansi(self, tw, text: str):
         """Parse and render ANSI escape codes as colored text tags."""
@@ -1136,19 +1183,20 @@ class NeuroShellDesktop(ctk.CTk):
         """Print the welcome banner to the terminal."""
         now = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
         banner = f"""
-╔══════════════════════════════════════════════════════════════════╗
-║           NeuroShell v5.0  —  AI-Powered Terminal                ║
-║  Secure  •  Intelligent  •  Production-Ready                     ║
-╚══════════════════════════════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════════════╗
+║            NeuroShell v5.2.0  —  AI-Powered Terminal             ║
+║   Secure  •  Intelligent  •  Production-Ready                    ║
+╚═══════════════════════════════════════════════════════════════════╝
 
   Session  #{self.session_id}   ·   {platform.node()}   ·   {now}
   Platform  {platform.system()} {platform.release()} ({platform.machine()})
   Security  AES-128 Fernet + SHA-256 verification + Injection Guards
 
   Type a command or plain English.  Use 'help' to see all features.
-  Keyboard  Ctrl+L Clear  Ctrl+B Sidebar  Ctrl+Shift+P Palette  F11 Full
+  Keyboard  Ctrl+L Clear  Ctrl+B Sidebar  Ctrl+D Exit  Tab Complete
+            Ctrl+Shift+P Palette  F11 Fullscreen  Esc Interrupt
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
         self._append_output(banner, "info")
 
@@ -1251,9 +1299,14 @@ class NeuroShellDesktop(ctk.CTk):
             self.after(0, self._update_hud)
             self.after(0, lambda d=duration_ms: self._append_output(
                 f"\n✓ Done in {d:.0f}ms\n", "success"))
+            # Audible bell for long-running commands (>5s)
+            if duration_ms > 5000:
+                self.after(0, lambda: self.bell())
             self.after(0, lambda: self.status_right.configure(
                 text=f"● OK  {(time.perf_counter()-t0)*1000:.0f}ms",
                 text_color=COLORS["accent_green"]))
+            # Update CWD in case command changed directory
+            self.after(100, self._update_cwd_label)
         except Exception as e:
             err = traceback.format_exc()
             self._last_error = err
@@ -1276,6 +1329,8 @@ class NeuroShellDesktop(ctk.CTk):
             _builtins.input  = old_input
             _GUI_INPUT_LOCK.release()   # release lock for next command
             self.after(0, self._update_telemetry_panel)
+            # Return focus to input entry
+            self.after(50, lambda: self.command_entry.focus_set())
 
     def _run_tool_stream(self, tool, query: str = ""):
         """
@@ -1315,9 +1370,12 @@ class NeuroShellDesktop(ctk.CTk):
 
     def _on_history_up(self, event):
         if self.command_history:
+            if self.history_index == -1:
+                self._saved_input_text = self.command_entry.get()
             self.history_index = min(self.history_index + 1, len(self.command_history) - 1)
             self.command_entry.delete(0, "end")
             self.command_entry.insert(0, self.command_history[self.history_index])
+        return "break"
 
     def _on_history_down(self, event):
         if self.history_index > 0:
@@ -1327,14 +1385,79 @@ class NeuroShellDesktop(ctk.CTk):
         elif self.history_index == 0:
             self.history_index = -1
             self.command_entry.delete(0, "end")
+            self.command_entry.insert(0, self._saved_input_text)
+        return "break"
 
     def _on_tab(self, event):
+        """Tab completion — match commands from built-ins and history."""
+        text = self.command_entry.get().strip()
+        if not text:
+            return "break"
+        builtins = [
+            "help", "fix", "undo", "clear", "dashboard", "stats", "aliases",
+            "models", "config", "config show", "config reset", "config keys",
+            "policy", "policy audit", "deploy status", "deploy rollback",
+            "deploy audit", "history export", "history import", "env",
+            "cheatsheet", "playbook", "pipelines", "suggest", "explain:",
+            "agent:", "script:", "browser", "github",
+        ]
+        matches = [c for c in builtins if c.startswith(text.lower())]
+        hist_m = [c for c in dict.fromkeys(self.command_history)
+                  if c.lower().startswith(text.lower()) and c not in matches]
+        all_m = matches + hist_m[:10]
+        if len(all_m) == 1:
+            self.command_entry.delete(0, "end")
+            self.command_entry.insert(0, all_m[0])
+        elif all_m:
+            self._show_autocomplete_popup(all_m[:12])
         return "break"
+
+    def _show_autocomplete_popup(self, items: list):
+        """Show a floating autocomplete dropdown below the input."""
+        if hasattr(self, "_ac_popup") and self._ac_popup and self._ac_popup.winfo_exists():
+            self._ac_popup.destroy()
+        entry = self.command_entry
+        x = entry.winfo_rootx()
+        y = entry.winfo_rooty() + entry.winfo_height() + 4
+        popup = ctk.CTkToplevel(self)
+        popup.overrideredirect(True)
+        popup.geometry(f"+{x}+{y}")
+        popup.configure(fg_color=COLORS["bg_elevated"])
+        popup.attributes("-topmost", True)
+        self._ac_popup = popup
+        for item in items:
+            ctk.CTkButton(
+                popup, text=item, anchor="w", height=26, corner_radius=4,
+                fg_color="transparent", hover_color=COLORS["bg_hover"],
+                text_color=COLORS["text_primary"],
+                font=ctk.CTkFont(family=FONT_MONO, size=11),
+                command=lambda t=item: self._pick_autocomplete(t),
+            ).pack(fill="x", padx=4, pady=1)
+        popup.bind("<FocusOut>", lambda e: popup.destroy())
+        popup.focus_set()
+
+    def _pick_autocomplete(self, text: str):
+        """Insert selected autocomplete item and close popup."""
+        self.command_entry.delete(0, "end")
+        self.command_entry.insert(0, text)
+        self.command_entry.focus_set()
+        if hasattr(self, "_ac_popup") and self._ac_popup and self._ac_popup.winfo_exists():
+            self._ac_popup.destroy()
+
+    _CMD_PREFIXES = {
+        'ls', 'cd', 'dir', 'git', 'python', 'python3', 'npm', 'npx', 'node',
+        'docker', 'pip', 'pip3', 'mkdir', 'rm', 'rmdir', 'cat', 'echo', 'cp',
+        'mv', 'curl', 'wget', 'java', 'javac', 'cargo', 'make', 'cmake',
+        'go', 'ruby', 'powershell', 'cmd', 'ssh', 'scp', 'tar', 'zip',
+        'unzip', 'grep', 'find', 'awk', 'sed', 'chmod', 'chown', 'sudo',
+        'apt', 'brew', 'choco', 'winget', 'dotnet', 'rustc', 'gcc', 'g++',
+    }
 
     def _on_key_release(self, event):
         """Real-time input feedback — update AI badge if text looks like NL."""
         text = self.command_entry.get()
-        if text and not any(text.startswith(c) for c in ['ls', 'cd', 'git', 'python', 'npm', 'docker', 'pip']):
+        first_word = text.split()[0].lower() if text.strip() else ""
+        if text and first_word not in self._CMD_PREFIXES:
             self.ai_badge.configure(text="⚡ AI", text_color=COLORS["accent_cyan"])
         else:
             self.ai_badge.configure(text="⬡ CMD", text_color=COLORS["accent_blue"])
@@ -1442,10 +1565,12 @@ class NeuroShellDesktop(ctk.CTk):
             pass
 
         posture = "● Active  —  All systems nominal" if err_rate < 0.1 else "⚠ Degraded  —  Elevated errors"
-        try:
-            self.mission_posture.configure(text=posture)
-        except Exception:
-            pass
+        # Only update posture if not in a custom mode
+        if self.mode == "Builder":
+            try:
+                self.mission_posture.configure(text=posture)
+            except Exception:
+                pass
 
     # ═════════════════════════════════════════════════════════════════════════
     # FEED HELPERS
@@ -1475,6 +1600,7 @@ class NeuroShellDesktop(ctk.CTk):
 
     def _on_startup(self):
         self._print_welcome()
+        self._load_history()
         sys.stdout = _GUIOutputStream(self)
         sys.stderr = _GUIOutputStream(self)
         self._detect_project()
@@ -1506,6 +1632,7 @@ class NeuroShellDesktop(ctk.CTk):
                 text=f"📂 {basename}\nNo framework detected",
                 text_color=COLORS["text_secondary"],
             )
+        self._update_cwd_label()
 
     def _init_engine(self):
         with self._init_lock:
@@ -1551,8 +1678,7 @@ class NeuroShellDesktop(ctk.CTk):
                     from intelligence.voice.audio_capture import AudioCapture
                     self._audio_capture = AudioCapture()
                     self.is_recording = False
-                except Exception as ex:
-                    self.logger.warn("voice_init_failed", error=str(ex))
+                except Exception:
                     self._audio_capture = None
                     self.is_recording = False
                     
@@ -1586,6 +1712,21 @@ class NeuroShellDesktop(ctk.CTk):
             except Exception:
                 pass
         self._open_windows.clear()
+        # Close autocomplete popup if open
+        if hasattr(self, "_ac_popup") and self._ac_popup:
+            try:
+                self._ac_popup.destroy()
+            except Exception:
+                pass
+        # Save command history
+        self._save_history()
+        self._save_bookmarks()
+        # Close search bar if open
+        if self._search_bar and self._search_bar.winfo_exists():
+            try:
+                self._search_bar.destroy()
+            except Exception:
+                pass
         # Graceful engine shutdown
         if self._neuroshell:
             try:
@@ -1654,16 +1795,32 @@ class NeuroShellDesktop(ctk.CTk):
         self._print_welcome()
 
     def _interrupt_command(self):
+        """Interrupt any running command — kills subprocess or releases semaphore."""
+        interrupted = False
         if self._current_process:
             try:
                 self._current_process.terminate()
-                self._append_output("\n⛔ Command interrupted.\n", "warn")
+                interrupted = True
+            except Exception:
+                pass
+        # Also try to release the input lock if stuck
+        if not _GUI_INPUT_LOCK.acquire(blocking=False):
+            # Lock is held — a command is running
+            interrupted = True
+        else:
+            _GUI_INPUT_LOCK.release()  # wasn't actually locked
+        if interrupted:
+            self._append_output("\n⛔ Command interrupted.\n", "warn")
+            self.status_right.configure(text="● Interrupted", text_color=COLORS["accent_yellow"])
+        # Close autocomplete popup if open
+        if hasattr(self, "_ac_popup") and self._ac_popup:
+            try:
+                self._ac_popup.destroy()
             except Exception:
                 pass
 
     def _toggle_fullscreen(self):
-        import sys
-        if sys.platform == "win32":
+        if platform.system() == "Windows":
             if self.state() == "zoomed":
                 self.state("normal")
             else:
@@ -1691,11 +1848,25 @@ class NeuroShellDesktop(ctk.CTk):
     # ═════════════════════════════════════════════════════════════════════════
 
     def _show_toast(self, msg: str, kind: str = "info"):
+        """Show a floating toast notification that auto-dismisses."""
         colors = {"info": COLORS["accent_blue"], "warn": COLORS["accent_yellow"],
                   "error": COLORS["accent_red"], "success": COLORS["accent_green"]}
         color = colors.get(kind, COLORS["accent_blue"])
         tag   = {"info": "info", "warn": "warn", "error": "err", "success": "success"}.get(kind, "info")
         self._append_output(f"  {msg}\n", tag)
+        # Also show a floating visual toast
+        try:
+            toast = ctk.CTkLabel(
+                self, text=f"  {msg}  ",
+                font=ctk.CTkFont(family=FONT_UI, size=11, weight="bold"),
+                text_color=COLORS["bg_root"],
+                fg_color=color, corner_radius=8,
+                padx=12, pady=6,
+            )
+            toast.place(relx=0.5, rely=0.02, anchor="n")
+            self.after(3000, lambda: toast.destroy() if toast.winfo_exists() else None)
+        except Exception:
+            pass
 
     def _show_dashboard(self):
         key = "dashboard"
@@ -1874,7 +2045,39 @@ class NeuroShellDesktop(ctk.CTk):
             ("aliases",             "Manage command aliases"),
             ("env list",            "Show environment variables"),
             ("model switch",        "Switch the active AI model"),
+            ("stats",               "View session statistics and metrics"),
+            ("models",              "List all available AI models"),
+            ("cheatsheet",          "Quick command reference card"),
+            ("playbook",            "Interactive operational runbook"),
+            ("config",              "View current configuration"),
+            ("config reset",        "Reset configuration to defaults"),
+            ("config keys",         "Show all configuration keys"),
+            ("policy audit",        "Run a full security policy audit"),
+            ("time <cmd>",          "Measure command execution time"),
+            ("history export",      "Export command history to file"),
+            ("history import",      "Import command history from file"),
+            ("agent: <task>",       "Assign task to AI agent"),
+            ("script: <desc>",      "Generate a script from description"),
+            ("browser <query>",     "Open a browser search"),
+            ("deploy rollback",     "Rollback last deployment"),
+            ("deploy audit",        "Audit deployment pipeline"),
+            ("⭐ bookmarks",         "Show bookmarked commands       Ctrl+Shift+B"),
+            ("🔍 search",            "Search in terminal output      Ctrl+F"),
+            ("📝 export session",    "Export session as Markdown     Ctrl+Shift+E"),
         ]
+
+        def _run_palette_cmd(cmd):
+            """Handle special palette commands that aren't CLI commands."""
+            win.destroy()
+            self._open_windows.pop(key, None)
+            if cmd == "⭐ bookmarks":
+                self._show_bookmarks_dialog()
+            elif cmd == "🔍 search":
+                self._toggle_search_bar()
+            elif cmd == "📝 export session":
+                self._export_session_markdown()
+            else:
+                self._quick_command(cmd)
 
         def populate(filter_text=""):
             for w in results_frame.winfo_children():
@@ -1894,7 +2097,7 @@ class NeuroShellDesktop(ctk.CTk):
                                   font=ctk.CTkFont(size=10),
                                   fg_color=COLORS["accent_cyan"], hover_color="#00b0a8",
                                   text_color=COLORS["bg_root"], corner_radius=6,
-                                  command=lambda c=cmd: (win.destroy(), self._quick_command(c))
+                                  command=lambda c=cmd: _run_palette_cmd(c)
                                   ).pack(side="right", padx=8)
 
         populate()
@@ -2026,7 +2229,7 @@ class NeuroShellDesktop(ctk.CTk):
             ("Security Features",
              "• AES-128 Fernet encryption for all stored secrets\n• SHA-256 model verification prevents supply-chain attacks\n• Command injection guard blocks malicious inputs\n• Prompt injection sanitizer strips AI control tokens"),
             ("Keyboard Shortcuts",
-             "Ctrl+L      Clear terminal\nCtrl+B      Toggle sidebar\nCtrl+Shift+P  Command palette\nF11         Fullscreen\nUp/Down     Command history\nTab         Autocomplete"),
+             "Ctrl+L      Clear terminal\nCtrl+B      Toggle sidebar\nCtrl+Shift+P  Command palette\nCtrl+D      Exit NeuroShell\nF11         Fullscreen\nEsc         Interrupt command\nUp/Down     Command history\nTab         Autocomplete"),
             ("AI Engine Modes",
              "Fast LLM  →  Groq Cloud (fastest, requires internet)\nLocal AI   →  Ollama (offline, requires local model)\nSwarm      →  Multi-agent deep analysis mode"),
         ]
@@ -2162,6 +2365,33 @@ class NeuroShellDesktop(ctk.CTk):
         except Exception:
             pass
 
+        # ── 10. Reconfigure command entry + input box ──
+        try:
+            _safe(self.command_entry, fg_color=COLORS.get("bg_input", root_bg),
+                  text_color=text_pri, border_color=COLORS.get("bg_input", root_bg))
+        except Exception:
+            pass
+
+        # ── 11. Reconfigure statusbar ──
+        try:
+            _safe(self.statusbar, fg_color=panel_bg)
+            _safe(self.status_left, text_color=COLORS.get("text_muted", text_sec))
+            _safe(self.status_right, text_color=acc1)
+        except Exception:
+            pass
+
+        # ── 12. Reconfigure CWD label ──
+        try:
+            _safe(self.cwd_label, text_color=COLORS.get("text_muted", text_sec))
+        except Exception:
+            pass
+
+        # ── 13. Reconfigure sidebar content area ──
+        try:
+            _safe(self.sidebar_content, fg_color="transparent")
+        except Exception:
+            pass
+
         self._show_toast(f"🎨 Theme: {name}", "success")
 
     def _show_github_repo_dialog(self):
@@ -2183,10 +2413,451 @@ class NeuroShellDesktop(ctk.CTk):
                       text_color=COLORS["bg_root"],
                       font=ctk.CTkFont(family=FONT_UI, size=11, weight="bold"),
                       command=lambda: (
-                          subprocess.Popen(["cmd.exe", "/c", "start", "", entry.get()], shell=False),
+                          webbrowser.open(entry.get()),
                           win.destroy()
                       )).pack(padx=20, pady=4)
 
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # NEW FEATURES — Context Menu, Settings, CWD
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _setup_context_menu(self):
+        """Create right-click context menu for the terminal output."""
+        import tkinter as tk
+        self._ctx_menu = tk.Menu(
+            self, tearoff=0,
+            bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
+            activebackground=COLORS["accent_cyan"],
+            activeforeground=COLORS["bg_root"],
+            font=(FONT_UI, 10),
+            bd=1, relief="flat",
+        )
+        self._ctx_menu.add_command(label="📋 Copy",       command=self._copy_selection)
+        self._ctx_menu.add_command(label="📋 Select All",  command=self._select_all_output)
+        self._ctx_menu.add_separator()
+        self._ctx_menu.add_command(label="⌫  Clear",       command=self._clear_terminal)
+        self._ctx_menu.add_command(label="💾 Export",      command=self._export_output)
+        self.output_text._textbox.bind("<Button-3>", self._show_context_menu)
+
+    def _show_context_menu(self, event):
+        """Display context menu at cursor position."""
+        try:
+            self._ctx_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._ctx_menu.grab_release()
+
+    def _copy_selection(self):
+        """Copy selected text from terminal output to clipboard."""
+        try:
+            tw = self.output_text._textbox
+            selected = tw.get("sel.first", "sel.last")
+            self.clipboard_clear()
+            self.clipboard_append(selected)
+            self._show_toast("Copied to clipboard.", "success")
+        except Exception:
+            self._show_toast("No text selected.", "warn")
+
+    def _select_all_output(self):
+        """Select all text in terminal output."""
+        tw = self.output_text._textbox
+        tw.tag_add("sel", "1.0", "end")
+
+    def _export_output(self):
+        """Export terminal output to a text file."""
+        try:
+            from tkinter import filedialog
+            path = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
+                title="Export Terminal Output",
+            )
+            if path:
+                content = self.output_text._textbox.get("1.0", "end")
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                self._show_toast(f"Output exported to {os.path.basename(path)}", "success")
+        except Exception as e:
+            self._show_toast(f"Export failed: {e}", "error")
+
+    def _show_settings(self):
+        """Open the Settings panel."""
+        key = "settings"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift()
+            return
+        try:
+            def _on_settings_save(cfg):
+                self._app_config = cfg
+                self._show_toast("Settings saved successfully", "success")
+
+            win = SettingsPanel(self, config=self._app_config, on_save=_on_settings_save)
+            self._open_windows[key] = win
+            win.protocol("WM_DELETE_WINDOW", lambda: (
+                self._open_windows.pop(key, None), win.destroy()))
+        except Exception as e:
+            self._show_toast(f"Settings panel error: {e}", "error")
+
+    def _update_cwd_label(self):
+        """Refresh the CWD breadcrumb in the tab bar."""
+        try:
+            cwd = os.getcwd()
+            self.cwd_label.configure(text=f"📂 {os.path.basename(cwd)}")
+        except Exception:
+            pass
+
+    def _select_all_input(self):
+        """Select all text in the command entry (Ctrl+A)."""
+        self.command_entry.select_range(0, "end")
+        self.command_entry.icursor("end")
+        return "break"
+
+    def _save_history(self):
+        """Persist command history to disk for next session."""
+        try:
+            hist_file = NEUROSHELL_DIR / "command_history.json"
+            data = self.command_history[:500]  # cap at 500
+            hist_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _load_history(self):
+        """Load command history from previous session."""
+        try:
+            hist_file = NEUROSHELL_DIR / "command_history.json"
+            if hist_file.exists():
+                data = json.loads(hist_file.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    self.command_history = data[:500]
+        except Exception:
+            pass
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SEARCH IN OUTPUT (Ctrl+F)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _toggle_search_bar(self):
+        """Toggle the Ctrl+F search overlay above the terminal."""
+        if self._search_bar and self._search_bar.winfo_exists():
+            self._close_search_bar()
+            return
+
+        bar = ctk.CTkFrame(
+            self.terminal_container, height=36,
+            fg_color=COLORS["bg_elevated"], corner_radius=0,
+            border_width=1, border_color=COLORS["border_focus"],
+        )
+        bar.pack(fill="x", side="top", before=self.output_text)
+        bar.pack_propagate(False)
+
+        ctk.CTkLabel(bar, text="🔍", font=ctk.CTkFont(size=13),
+                     text_color=COLORS["accent_cyan"]).pack(side="left", padx=(8, 4))
+
+        entry = ctk.CTkEntry(
+            bar, placeholder_text="Search output...", width=300,
+            font=ctk.CTkFont(family=FONT_MONO, size=11),
+            fg_color=COLORS["bg_input"], text_color=COLORS["text_primary"],
+            border_color=COLORS["border_focus"], border_width=1,
+        )
+        entry.pack(side="left", padx=4, pady=4)
+        entry.focus_set()
+        entry.bind("<Return>", lambda e: self._search_next(entry.get()))
+        entry.bind("<Shift-Return>", lambda e: self._search_prev(entry.get()))
+        entry.bind("<Escape>", lambda e: self._close_search_bar())
+
+        self._search_match_label = ctk.CTkLabel(
+            bar, text="", font=ctk.CTkFont(family=FONT_UI, size=10),
+            text_color=COLORS["text_muted"],
+        )
+        self._search_match_label.pack(side="left", padx=6)
+
+        ctk.CTkButton(bar, text="▲", width=28, height=24, corner_radius=6,
+                      fg_color=COLORS["bg_panel"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["text_primary"],
+                      font=ctk.CTkFont(size=11),
+                      command=lambda: self._search_prev(entry.get())).pack(side="left", padx=1)
+        ctk.CTkButton(bar, text="▼", width=28, height=24, corner_radius=6,
+                      fg_color=COLORS["bg_panel"], hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["text_primary"],
+                      font=ctk.CTkFont(size=11),
+                      command=lambda: self._search_next(entry.get())).pack(side="left", padx=1)
+        ctk.CTkButton(bar, text="✕", width=28, height=24, corner_radius=6,
+                      fg_color="transparent", hover_color=COLORS["bg_hover"],
+                      text_color=COLORS["text_secondary"],
+                      font=ctk.CTkFont(size=12),
+                      command=self._close_search_bar).pack(side="right", padx=4)
+
+        self._search_bar = bar
+        self._search_entry = entry
+
+    def _search_next(self, query: str):
+        """Find and highlight the next match in terminal output."""
+        if not query:
+            return
+        tw = self.output_text._textbox
+        tw.tag_remove("search_hl", "1.0", "end")
+        tw.tag_configure("search_hl", background=COLORS["accent_yellow"], foreground=COLORS["bg_root"])
+        tw.tag_configure("search_cur", background=COLORS["accent_cyan"], foreground=COLORS["bg_root"])
+
+        # Collect all matches
+        self._search_matches = []
+        start = "1.0"
+        while True:
+            pos = tw.search(query, start, stopindex="end", nocase=True)
+            if not pos:
+                break
+            end = f"{pos}+{len(query)}c"
+            self._search_matches.append((pos, end))
+            tw.tag_add("search_hl", pos, end)
+            start = end
+
+        if not self._search_matches:
+            self._search_match_label.configure(text="No matches")
+            return
+
+        self._search_index = (self._search_index + 1) % len(self._search_matches)
+        pos, end = self._search_matches[self._search_index]
+        tw.tag_remove("search_cur", "1.0", "end")
+        tw.tag_add("search_cur", pos, end)
+        tw.see(pos)
+        self._search_match_label.configure(
+            text=f"{self._search_index + 1}/{len(self._search_matches)}")
+
+    def _search_prev(self, query: str):
+        """Find and highlight the previous match."""
+        if not self._search_matches:
+            self._search_next(query)
+            return
+        tw = self.output_text._textbox
+        self._search_index = (self._search_index - 1) % len(self._search_matches)
+        tw.tag_remove("search_cur", "1.0", "end")
+        pos, end = self._search_matches[self._search_index]
+        tw.tag_add("search_cur", pos, end)
+        tw.see(pos)
+        self._search_match_label.configure(
+            text=f"{self._search_index + 1}/{len(self._search_matches)}")
+
+    def _close_search_bar(self):
+        """Close search overlay and clear highlights."""
+        if self._search_bar and self._search_bar.winfo_exists():
+            self._search_bar.destroy()
+        self._search_bar = None
+        self._search_matches = []
+        self._search_index = 0
+        try:
+            tw = self.output_text._textbox
+            tw.tag_remove("search_hl", "1.0", "end")
+            tw.tag_remove("search_cur", "1.0", "end")
+        except Exception:
+            pass
+        self.command_entry.focus_set()
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # ESCAPE KEY (multi-function)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _on_escape(self):
+        """Escape key: close search bar → close autocomplete → interrupt command."""
+        if self._search_bar and self._search_bar.winfo_exists():
+            self._close_search_bar()
+            return
+        self._interrupt_command()
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # COMMAND BOOKMARKS (Ctrl+Shift+B)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _bookmark_last_command(self):
+        """Bookmark the last executed command for quick reuse."""
+        cmd = self._last_command
+        if not cmd:
+            self._show_toast("No command to bookmark.", "warn")
+            return
+        if cmd in self._bookmarks:
+            self._show_toast(f"Already bookmarked: {cmd}", "info")
+            return
+        self._bookmarks.insert(0, cmd)
+        if len(self._bookmarks) > 50:
+            self._bookmarks = self._bookmarks[:50]
+        self._save_bookmarks()
+        self._show_toast(f"⭐ Bookmarked: {cmd}", "success")
+
+    def _save_bookmarks(self):
+        """Persist bookmarks to disk."""
+        try:
+            bk_file = NEUROSHELL_DIR / "bookmarks.json"
+            bk_file.write_text(json.dumps(self._bookmarks, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _load_bookmarks(self):
+        """Load bookmarks from previous session."""
+        try:
+            bk_file = NEUROSHELL_DIR / "bookmarks.json"
+            if bk_file.exists():
+                data = json.loads(bk_file.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    self._bookmarks = data[:50]
+        except Exception:
+            pass
+
+    def _show_bookmarks_dialog(self):
+        """Show bookmarks in a selectable dialog."""
+        key = "bookmarks"
+        if key in self._open_windows and self._open_windows[key].winfo_exists():
+            self._open_windows[key].lift()
+            return
+        win = ctk.CTkToplevel(self)
+        self._open_windows[key] = win
+        win.protocol("WM_DELETE_WINDOW", lambda: (self._open_windows.pop(key, None), win.destroy()))
+        win.title("⭐ Command Bookmarks")
+        win.geometry("500x400")
+        win.configure(fg_color=COLORS["bg_dark"])
+        win.grab_set()
+
+        ctk.CTkLabel(win, text="⭐ Bookmarked Commands",
+                     font=ctk.CTkFont(family=FONT_UI, size=14, weight="bold"),
+                     text_color=COLORS["accent_cyan"]).pack(pady=(16, 8))
+
+        if not self._bookmarks:
+            ctk.CTkLabel(win, text="No bookmarks yet.\nUse Ctrl+Shift+B to bookmark the last command.",
+                         font=ctk.CTkFont(family=FONT_UI, size=11),
+                         text_color=COLORS["text_muted"]).pack(expand=True)
+            return
+
+        scroll = ctk.CTkScrollableFrame(win, fg_color=COLORS["bg_card"], corner_radius=10)
+        scroll.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+
+        for i, cmd in enumerate(self._bookmarks):
+            row = ctk.CTkFrame(scroll, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            ctk.CTkButton(
+                row, text=cmd, anchor="w",
+                font=ctk.CTkFont(family=FONT_MONO, size=10),
+                fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
+                text_color=COLORS["text_primary"], corner_radius=6, height=30,
+                command=lambda c=cmd: (self._quick_command(c), win.destroy()),
+            ).pack(side="left", fill="x", expand=True, padx=(4, 2))
+            ctk.CTkButton(
+                row, text="✕", width=28, height=28, corner_radius=6,
+                fg_color="transparent", hover_color=COLORS["accent_red"],
+                text_color=COLORS["text_muted"],
+                command=lambda idx=i: self._remove_bookmark(idx, win),
+            ).pack(side="right", padx=2)
+
+    def _remove_bookmark(self, idx: int, win):
+        """Remove a bookmark and refresh the dialog."""
+        try:
+            self._bookmarks.pop(idx)
+            self._save_bookmarks()
+        except Exception:
+            pass
+        win.destroy()
+        self._open_windows.pop("bookmarks", None)
+        self._show_bookmarks_dialog()
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SESSION EXPORT AS MARKDOWN (Ctrl+Shift+E)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _export_session_markdown(self):
+        """Export the full session as a professional Markdown report."""
+        try:
+            from tkinter import filedialog
+            path = filedialog.asksaveasfilename(
+                defaultextension=".md",
+                filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All Files", "*.*")],
+                title="Export Session Report",
+                initialfile=f"neuroshell_session_{self.session_id}.md",
+            )
+            if not path:
+                return
+
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            elapsed = (datetime.now() - self._boot_time).seconds
+            mins, secs = divmod(elapsed, 60)
+            avg_ms = (sum(self._perf_samples) / len(self._perf_samples)) if self._perf_samples else 0
+
+            content = self.output_text._textbox.get("1.0", "end").strip()
+
+            md = f"""# NeuroShell Session Report
+
+**Session ID**: `{self.session_id}`
+**Date**: {now}
+**Platform**: {platform.system()} {platform.release()} ({platform.machine()})
+**Duration**: {mins}m {secs}s
+
+---
+
+## Session Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total Commands | {self.command_count} |
+| Successful | {self.command_success_count} |
+| Errors | {self.command_error_count} |
+| Success Rate | {(self.command_success_count / max(self.command_count, 1) * 100):.1f}% |
+| Avg Latency | {avg_ms:.0f}ms |
+| Security Blocks | {self._injection_blocks} |
+| AI Mode | {self.ai_mode} |
+| Execution Mode | {self.mode} |
+
+## Command History
+
+```
+{chr(10).join(reversed(self.command_history[:50]))}
+```
+
+## Terminal Output
+
+```
+{content[:50000]}
+```
+
+---
+*Generated by NeuroShell v5.2.0 — AI-Powered Terminal*
+"""
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(md)
+            self._show_toast(f"📝 Session exported → {os.path.basename(path)}", "success")
+        except Exception as e:
+            self._show_toast(f"Export failed: {e}", "error")
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # OUTPUT LINE COUNTER (statusbar)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _update_line_count(self):
+        """Update output line count in statusbar — called after each append."""
+        try:
+            tw = self.output_text._textbox
+            line_count = int(tw.index("end-1c").split(".")[0])
+            self.status_center.configure(
+                text=f"Lines: {line_count}  │  Ctrl+F Search  Ctrl+Shift+B Bookmarks")
+        except Exception:
+            pass
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # EXIT SESSION SUMMARY
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _show_exit_summary(self):
+        """Show a brief session summary before closing."""
+        elapsed = (datetime.now() - self._boot_time).seconds
+        mins, secs = divmod(elapsed, 60)
+        avg_ms = (sum(self._perf_samples) / len(self._perf_samples)) if self._perf_samples else 0
+        rate = (self.command_success_count / max(self.command_count, 1)) * 100
+
+        summary = (
+            f"Session #{self.session_id} Summary\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Duration:      {mins}m {secs}s\n"
+            f"Commands:      {self.command_count}\n"
+            f"Success Rate:  {rate:.0f}%\n"
+            f"Avg Latency:   {avg_ms:.0f}ms\n"
+            f"Sec Blocks:    {self._injection_blocks}\n"
+        )
+        self._append_output(f"\n{summary}\n", "info")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ENTRY POINT

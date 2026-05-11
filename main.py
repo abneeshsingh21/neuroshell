@@ -1381,14 +1381,26 @@ class NeuroShell:
             self._handle_shell_command(result.command, self.tracer.start_trace())
             return
 
-        # ── 2. No smart match — fall back to shell 'start' ──
-        import subprocess
+        # ── 2. No smart match — fall back to native OS open ──
         try:
-            subprocess.Popen(["cmd.exe", "/c", "start", "", target], shell=False)
+            os.startfile(target)  # Windows-native, no console flash
             self.ui.print_info(f"  ✅ Attempting to open: {target}")
-        except Exception as e:
-            self.ui.print_error(f"  ❌ Could not open '{target}': {e}")
-            self.ui.print_info(f"  💡 Tip: Type 'fix' to auto-fix that error")
+        except OSError:
+            # Fallback for edge cases — hide the console window
+            import subprocess
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            try:
+                subprocess.Popen(
+                    ["cmd.exe", "/c", "start", "", target],
+                    startupinfo=si,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+                self.ui.print_info(f"  ✅ Attempting to open: {target}")
+            except Exception as e:
+                self.ui.print_error(f"  ❌ Could not open '{target}': {e}")
+                self.ui.print_info(f"  💡 Tip: Type 'fix' to auto-fix that error")
 
     def _handle_shell_command(self, command: str, cid: str):
         """Execute shell command through safety pipeline."""

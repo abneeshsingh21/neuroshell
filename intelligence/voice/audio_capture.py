@@ -32,7 +32,11 @@ class AudioCapture:
         ]
         
         try:
-            self.process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            import sys
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            self.process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kwargs)
             threading.Thread(target=self._read_loop, daemon=True).start()
         except FileNotFoundError:
             self.is_recording = False

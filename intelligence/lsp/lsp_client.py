@@ -20,13 +20,18 @@ class LSPClient:
         self._lock = threading.Lock()
         
     def start(self):
+        import sys
+        kwargs = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         self.process = subprocess.Popen(
             self.server_command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=1
+            bufsize=1,
+            **kwargs,
         )
         # Background thread to read responses
         self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)

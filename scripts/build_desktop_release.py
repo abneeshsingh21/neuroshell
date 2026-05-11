@@ -40,6 +40,8 @@ def build_command(project_root: Path, dist_dir: Path, work_dir: Path, system_nam
         str(work_dir),
         "--add-data",
         data_spec,
+        "--collect-submodules",
+        "rich",
     ]
 
     if icon_path.exists() and system_name.startswith("win"):
