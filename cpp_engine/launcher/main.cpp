@@ -1254,18 +1254,8 @@ public:
     }
 
     void PrintBanner() {
-        std::cout << C_CYAN << "╭──────────────────────────────────────────────────────────────────────────╮\n"
-                  << "│  " << C_BOLD << C_WHITE << "⌬ NeuroShell" << C_RESET << C_MAGENTA " v5.5.4" 
-                  << C_CYAN " — Tier-1 Enterprise Flagship AI Terminal           │\n"
-                  << "│  " << C_MUTED << "C++20 Host • Universal ConPTY • Zero-Trust DLP • SHM Ring (" << activeProvider << ")" 
-                  << C_CYAN "  │\n"
-                  << "╰──────────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n";
-        
-        std::cout << C_MUTED << "  • Type in plain English • Pipe AI: 'cat file | @ai', 'pytest | @fix'\n"
-                  << "  • Command Palette: [F1 / Ctrl+P] or '/palette' • Reverse Search: [Ctrl+R]\n"
-                  << "  • Swarms: '@agent <task>' • Split Panes: 'vsplit', 'hsplit' • Cluster: '@cluster <cmd>'\n"
-                  << "  • DLP Masking: [Ctrl+U] to unmask/re-mask • Multi-Tabs: [Ctrl+T] / [Ctrl+W]\n"
-                  << "  • Settings: /api-key, /model, /theme, /dlp, /help\n\n" << C_RESET;
+        std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ " << C_BOLD << C_WHITE << "NeuroShell" << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Type plain English or press [F1] for Command Palette • /help for commands" << C_RESET << "\n\n";
     }
 
     void RenderTabBar() {
@@ -1968,16 +1958,49 @@ public:
         std::string lower = input;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
-        if (lower == "/help") {
-            std::cout << "\n" << C_BOLD << C_CYAN << "  📚 NeuroShell Slash Commands:" << C_RESET << "\n"
-                      << "  " << C_MAGENTA << "/api-key" << C_RESET << "   • Interactive Arrow-Key LLM Provider & Key Setup\n"
-                      << "  " << C_MAGENTA << "/model" << C_RESET << "     • Switch active AI model with arrow keys\n"
-                      << "  " << C_MAGENTA << "/theme" << C_RESET << "     • Select Cyberpunk terminal theme with arrow keys\n"
-                      << "  " << C_MAGENTA << "/swarm" << C_RESET << "     • Launch autonomous multi-agent task swarm\n"
-                      << "  " << C_MAGENTA << "/plan" << C_RESET << "      • Interactive multi-step execution planner\n"
-                      << "  " << C_MAGENTA << "/stats" << C_RESET << "     • View token consumption and latency metrics\n"
-                      << "  " << C_MAGENTA << "/clear" << C_RESET << "     • Clear terminal screen\n"
-                      << "  " << C_MAGENTA << "/help" << C_RESET << "      • Display this help menu\n\n";
+        if (lower == "/help" || lower == "help") {
+            std::cout << "\n" << C_BOLD << C_CYAN << "╭── ⌬ NeuroShell Enterprise Command Reference ─────────────────────────╮" << C_RESET << "\n"
+                      << C_CYAN << "│" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << " 🧠 Natural Language & AI Directives" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "<plain english>" << C_RESET << "       Translate natural language to shell command\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "<cmd> | @ai <query>" << C_RESET << "    Pipe command output to AI assistant\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "<cmd> | @fix" << C_RESET << "          Diagnose and auto-fix failing pipeline\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "@agent <goal>" << C_RESET << "         Autonomous multi-step agent planner\n"
+                      << C_CYAN << "│\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << " 🧪 Parallel Test Orchestrator" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "test" << C_RESET << "                  Run parallel test suite across all CPU cores\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "test changed" << C_RESET << "          Run tests only for modified git files\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "test <python|node|rust>" << C_RESET << " Run language-specific test suite in polyglot repo\n"
+                      << C_CYAN << "│\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << " 🚀 Multi-Process Task Supervisor" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "start <svc1> and <svc2>" << C_RESET << " Run multiple services concurrently in parallel\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "tasks" << C_RESET << "                 View dashboard of running background workers\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "stop <name|id>" << C_RESET << "        Stop individual background service\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "restart <name|id>" << C_RESET << "     Restart individual background service\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "stop all" << C_RESET << "              Terminate all background processes (0 zombies)\n"
+                      << C_CYAN << "│\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << " ⚡ Navigation & Everyday Shortcuts" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "z <directory>" << C_RESET << "         Fuzzy jump to any directory\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << ".. / ... / ...." << C_RESET << "       Jump 1, 2, or 3 folder levels up\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "cd -" << C_RESET << "                 Return to previous directory\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "ports" << C_RESET << "                Show active listening TCP ports\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "wifi" << C_RESET << "                 Show saved Wi-Fi networks & passwords\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "specs" << C_RESET << "                Show CPU, RAM, and hardware telemetry\n"
+                      << C_CYAN << "│\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << " 🪟 Panes, Tabs & Hotkeys" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "vsplit / hsplit" << C_RESET << "      Split window vertically or horizontally\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "@cluster <cmd>" << C_RESET << "        Broadcast command across all open panes\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "[F1] / [Ctrl+P]" << C_RESET << "       Open in-terminal Command Palette\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "[Ctrl+R]" << C_RESET << "              Fuzzy interactive history search\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "[Ctrl+T] / [Ctrl+W]" << C_RESET << "   Create / Close terminal tab\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "[Ctrl+U]" << C_RESET << "              Toggle DLP sensitive data unmasking\n"
+                      << C_CYAN << "│\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << " ⚙️ Configuration & Security" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/api-key" << C_RESET << "             Configure AI providers (Groq, OpenAI, Ollama...)\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/model" << C_RESET << "               Switch active AI language model\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/theme" << C_RESET << "               Select terminal color theme\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/dlp" << C_RESET << "                 View DLP secret masking status\n"
+                      << C_CYAN << "╰─────────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
         }
         else if (lower == "/api-key") {
             HandleSlashApiKey();
@@ -2017,6 +2040,11 @@ public:
         // 2b. Viewport DLP & Secret Masker Commands
         std::string lowerTrim = input;
         std::transform(lowerTrim.begin(), lowerTrim.end(), lowerTrim.begin(), ::tolower);
+
+        if (lowerTrim == "help" || lowerTrim == "/help") {
+            HandleSlashCommand("/help");
+            return;
+        }
 
         if (lowerTrim == "/dlp" || lowerTrim == "dlp") {
             std::cout << "\n" << C_CYAN << "  🛡️ Viewport Secret DLP Status:\n" << C_RESET;
