@@ -1,4 +1,6 @@
 import pytest
+
+fastapi = pytest.importorskip("fastapi")
 import server
 from server import app, _dashboard_shell_name, _dashboard_history_count
 

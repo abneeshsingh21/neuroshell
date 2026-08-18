@@ -6,11 +6,11 @@ Streamlined onboarding for new users to configure LLM providers and API keys.
 Also provides a Settings panel accessible from the desktop app.
 """
 
+import contextlib
+import logging
 import os
 import sys
 import webbrowser
-import logging
-from pathlib import Path
 
 try:
     import customtkinter as ctk
@@ -44,7 +44,7 @@ except ImportError:
     ctk = _MockCTK()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import Config, NEUROSHELL_DIR, CONFIG_FILE
+from config import CONFIG_FILE, Config
 
 _log = logging.getLogger("neuroshell.wizard")
 
@@ -645,14 +645,10 @@ class SettingsPanel(ctk.CTkToplevel):
         self._config.llm.provider = self._provider_var.get()
         self._config.llm.model = self._model_var.get()
         self._config.llm.base_url = self._url_var.get()
-        try:
+        with contextlib.suppress(ValueError):
             self._config.llm.max_tokens = int(self._tokens_var.get())
-        except ValueError:
-            pass
-        try:
+        with contextlib.suppress(ValueError):
             self._config.llm.timeout = int(self._timeout_var.get())
-        except ValueError:
-            pass
         self._config.llm.temperature = round(self._temp_slider.get(), 2)
         self._config.llm.streaming = self._streaming_var.get()
         self._config.llm.cache_enabled = self._cache_var.get()
