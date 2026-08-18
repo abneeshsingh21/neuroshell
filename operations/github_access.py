@@ -118,6 +118,16 @@ class GitHubAccessManager:
             raise RuntimeError((cp.stderr or cp.stdout or "failed to view repo").strip())
         return json.loads(cp.stdout or "{}")
 
+    def repo_list(self, limit: int = 30) -> list[dict]:
+        """List GitHub repositories owned or accessible by user."""
+        cp = self._run_gh([
+            "repo", "list", "--limit", str(limit),
+            "--json", "nameWithOwner,isPrivate,isFork,updatedAt,description"
+        ])
+        if cp.returncode != 0:
+            raise RuntimeError((cp.stderr or cp.stdout or "failed to list repositories").strip())
+        return json.loads(cp.stdout or "[]")
+
     def pr_list(self, state: str = "open", limit: int = 20, repo: str | None = None) -> list[dict]:
         resolved_repo = self._resolve_repo(repo)
         cp = self._run_gh(self._with_repo([

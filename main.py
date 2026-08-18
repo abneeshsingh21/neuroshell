@@ -1413,6 +1413,13 @@ class NeuroShell:
             self.tracer.end_trace(cid)
             return
 
+        if lower in ("my repos", "repos", "list repos", "show repos", "my repositories", "list my repos", "show my repos", "gh repo list", "github repos"):
+            self._handle_repos_list()
+            total_ms = (time.time() - start_time) * 1000
+            self.metrics.record_latency("total_pipeline", total_ms)
+            self.tracer.end_trace(cid)
+            return
+
         if lower.startswith("github"):
             self._handle_github_command(user_input)
             total_ms = (time.time() - start_time) * 1000
@@ -1564,6 +1571,42 @@ class NeuroShell:
         self.ui.print_info("  • browser fetch <url>")
         self.ui.print_info("  • browser extract <url>")
         self.ui.print_info("  • browser screenshot <url> [output.png]")
+
+    def _handle_repos_list(self):
+        """Render GitHub repositories in an enterprise-grade formatted table."""
+        from rich.console import Console
+        from rich.table import Table
+        console = Console()
+
+        try:
+            if not hasattr(self, "github_access") or self.github_access is None:
+                from operations.github_access import GitHubAccessManager
+                from pathlib import Path
+                self.github_access = GitHubAccessManager(Path.cwd())
+
+            repos = self.github_access.repo_list(limit=30)
+            if not repos:
+                console.print("  [dim]No repositories found or not authenticated with 'gh auth login'.[/dim]")
+                return
+
+            table = Table(title="🐙 GitHub Repositories", title_style="bold cyan", border_style="cyan", show_lines=True)
+            table.add_column("#", style="dim", justify="right", width=4)
+            table.add_column("Repository", style="bold white", width=36)
+            table.add_column("Visibility", justify="center", width=12)
+            table.add_column("Updated", style="dim", justify="center", width=12)
+            table.add_column("Description", style="white", overflow="fold")
+
+            for i, r in enumerate(repos, 1):
+                name = r.get("nameWithOwner", "Unknown")
+                is_priv = r.get("isPrivate", False)
+                vis = "[magenta]private[/magenta]" if is_priv else "[green]public[/green]"
+                updated = (r.get("updatedAt") or "")[:10]
+                desc = r.get("description") or "-"
+                table.add_row(str(i), name, vis, updated, desc)
+
+            console.print(table)
+        except Exception as e:
+            console.print(f"  [red]❌ Failed to fetch repositories: {e}[/red]")
 
     def _handle_github_command(self, user_input: str):
         """Handle GitHub API-style commands via GitHub CLI."""

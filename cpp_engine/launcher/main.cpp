@@ -2071,6 +2071,125 @@ public:
         std::cout << "  " << C_GREEN << "🎨 Theme changed to: " << C_BOLD << C_WHITE << activeTheme << C_RESET << "\n\n";
     }
 
+    void HandleReposCommand() {
+        std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Fetching GitHub Repositories..." << C_RESET << "\n\n";
+
+        std::string ghCmd = "gh repo list --limit 30 --json nameWithOwner,isPrivate,isFork,updatedAt,description";
+#if defined(_WIN32)
+        FILE* pipe = _popen(ghCmd.c_str(), "r");
+#else
+        FILE* pipe = popen(ghCmd.c_str(), "r");
+#endif
+        if (!pipe) {
+            std::cout << "  " << C_RED << "❌ GitHub CLI (gh) not found. Install from https://cli.github.com/" << C_RESET << "\n\n";
+            return;
+        }
+
+        std::string jsonStr;
+        char buf[512];
+        while (fgets(buf, sizeof(buf), pipe)) {
+            jsonStr += buf;
+        }
+#if defined(_WIN32)
+        _pclose(pipe);
+#else
+        pclose(pipe);
+#endif
+
+        if (jsonStr.empty() || jsonStr.find("[") == std::string::npos || jsonStr == "[]") {
+            std::cout << "  " << C_MUTED << "No repositories found or not authenticated. Run 'gh auth login' to connect." << C_RESET << "\n\n";
+            return;
+        }
+
+        struct RepoEntry {
+            std::string name;
+            bool isPrivate = false;
+            std::string updated;
+            std::string desc;
+        };
+
+        std::vector<RepoEntry> repos;
+        size_t pos = 0;
+        while ((pos = jsonStr.find("{", pos)) != std::string::npos) {
+            size_t endObj = jsonStr.find("}", pos);
+            if (endObj == std::string::npos) break;
+            std::string obj = jsonStr.substr(pos, endObj - pos + 1);
+            pos = endObj + 1;
+
+            RepoEntry r;
+            size_t namePos = obj.find("\"nameWithOwner\":\"");
+            if (namePos != std::string::npos) {
+                size_t nameEnd = obj.find("\"", namePos + 17);
+                if (nameEnd != std::string::npos) r.name = obj.substr(namePos + 17, nameEnd - namePos - 17);
+            }
+            if (r.name.empty()) continue;
+
+            size_t privPos = obj.find("\"isPrivate\":");
+            if (privPos != std::string::npos) {
+                r.isPrivate = (obj.substr(privPos + 12, 4) == "true");
+            }
+
+            size_t upPos = obj.find("\"updatedAt\":\"");
+            if (upPos != std::string::npos) {
+                size_t upEnd = obj.find("\"", upPos + 13);
+                if (upEnd != std::string::npos) {
+                    std::string fullUp = obj.substr(upPos + 13, upEnd - upPos - 13);
+                    if (fullUp.size() >= 10) r.updated = fullUp.substr(0, 10);
+                    else r.updated = fullUp;
+                }
+            }
+
+            size_t descPos = obj.find("\"description\":\"");
+            if (descPos != std::string::npos) {
+                size_t descEnd = obj.find("\"", descPos + 15);
+                if (descEnd != std::string::npos) {
+                    r.desc = obj.substr(descPos + 15, descEnd - descPos - 15);
+                    for (char& c : r.desc) {
+                        if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+                    }
+                }
+            }
+            if (r.desc.empty()) r.desc = "-";
+
+            repos.push_back(r);
+        }
+
+        if (repos.empty()) {
+            std::cout << "  " << C_MUTED << "No repositories found." << C_RESET << "\n\n";
+            return;
+        }
+
+        // Draw Enterprise Aligned Box Table
+        std::cout << "  " << C_CYAN << "╭────┬──────────────────────────────────────┬────────────┬────────────┬──────────────────────────────────────────╮" << C_RESET << "\n";
+        std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << " # " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "REPOSITORY                             " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "VISIBILITY " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "UPDATED    " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "DESCRIPTION                                " << C_RESET << C_CYAN << "│" << C_RESET << "\n";
+        std::cout << "  " << C_CYAN << "├────┼──────────────────────────────────────┼────────────┼────────────┼──────────────────────────────────────────┤" << C_RESET << "\n";
+
+        for (size_t i = 0; i < repos.size(); ++i) {
+            const auto& r = repos[i];
+            char idxBuf[16];
+            snprintf(idxBuf, sizeof(idxBuf), "%2zu ", i + 1);
+
+            std::string namePad = r.name;
+            if (namePad.size() > 36) namePad = namePad.substr(0, 33) + "...";
+            while (namePad.size() < 36) namePad += " ";
+
+            std::string visStr = r.isPrivate ? "private   " : "public    ";
+            std::string visColor = r.isPrivate ? (std::string(C_MAGENTA) + visStr + C_RESET) : (std::string(C_GREEN) + visStr + C_RESET);
+
+            std::string upPad = r.updated;
+            while (upPad.size() < 10) upPad += " ";
+
+            std::string descPad = r.desc;
+            if (descPad.size() > 40) descPad = descPad.substr(0, 37) + "...";
+            while (descPad.size() < 40) descPad += " ";
+
+            std::cout << "  " << C_CYAN << "│ " << C_RESET << C_MUTED << idxBuf << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << namePad << C_RESET << C_CYAN << "│ " << visColor << C_CYAN << "│ " << C_MUTED << upPad << C_RESET << C_CYAN << "│ " << C_WHITE << descPad << C_RESET << C_CYAN << "│" << C_RESET << "\n";
+        }
+
+        std::cout << "  " << C_CYAN << "╰────┴──────────────────────────────────────┴────────────┴────────────┴──────────────────────────────────────────╯" << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Total Repositories: " << C_BOLD << C_WHITE << repos.size() << C_RESET << "\n\n";
+    }
+
     void HandleSlashCommand(const std::string& input) {
         std::string lower = input;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -2131,6 +2250,9 @@ public:
         }
         else if (lower == "/update" || lower == "update") {
             HandleSlashUpdate();
+        }
+        else if (lower == "/repos" || lower == "repos" || lower == "my repos") {
+            HandleReposCommand();
         }
         else {
             std::cout << C_MUTED << "  ℹ️ Executed slash command: " << input << C_RESET << "\n\n";
@@ -2365,6 +2487,10 @@ public:
         }
         if (lowerTrim == "specs" || lowerTrim == "hardware" || lowerTrim == "system specs") {
             ExecuteCommand("system specs");
+            return;
+        }
+        if (lowerTrim == "repos" || lowerTrim == "my repos" || lowerTrim == "list repos" || lowerTrim == "show repos" || lowerTrim == "my repositories" || lowerTrim == "list my repos" || lowerTrim == "show my repos" || lowerTrim == "gh repo list" || lowerTrim == "github repos") {
+            HandleReposCommand();
             return;
         }
 

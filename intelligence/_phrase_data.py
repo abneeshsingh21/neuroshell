@@ -7,6 +7,13 @@ Format: (English Phrase, Windows Command, Unix Command)
 """
 
 PHRASES = [
+    ("my repos", "repos", "repos"),
+    ("list my repos", "repos", "repos"),
+    ("show my repos", "repos", "repos"),
+    ("my repositories", "repos", "repos"),
+    ("list repos", "repos", "repos"),
+    ("show repos", "repos", "repos"),
+    ("github repos", "repos", "repos"),
     ("delete data.csv", "del data.csv", "rm data.csv"),
     ("please locate styles.css", "dir /s /b styles.css", "find . -name styles.css"),
     ("stop container db", "docker stop db", "docker stop db"),
