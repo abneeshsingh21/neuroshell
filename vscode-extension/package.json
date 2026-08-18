@@ -2,7 +2,7 @@
   "name": "neuroshell-vscode",
   "displayName": "NeuroShell — Autonomous AI Terminal",
   "description": "Enterprise AI terminal integration with sub-millisecond IPC, ConPTY fidelity, multi-LLM routing, and autonomous agent workflows.",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "publisher": "epl-lang",
   "license": "Apache-2.0",
   "engines": {
