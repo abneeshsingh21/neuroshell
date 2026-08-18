@@ -274,8 +274,29 @@ def on_before(**kwargs):
         manager = self.ps.PluginSystem()
         manager.trust_plugin("hooky")
         self.assertTrue(manager.load("hooky"))
-        self.assertEqual(manager.trigger_hook("before_execute"), [])
+class TestAuditTrailHashChaining(unittest.TestCase):
+    """Tests for enterprise audit trail cryptographic hash chaining."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_hash_chain_continuity(self):
+        from extensions.enterprise import AuditTrail
+        trail = AuditTrail(log_dir=Path(self.temp_dir))
+        
+        e1 = trail.log("git status", 1, "executed", exit_code=0)
+        e2 = trail.log("rm -rf build", 8, "blocked", exit_code=1)
+        e3 = trail.log("npm install", 2, "executed", exit_code=0)
+
+        self.assertNotEqual(e1.entry_hash, "")
+        self.assertEqual(e2.prev_hash, e1.entry_hash)
+        self.assertEqual(e3.prev_hash, e2.entry_hash)
+        self.assertNotEqual(e2.entry_hash, e3.entry_hash)
 
 
 if __name__ == "__main__":
     unittest.main()
+

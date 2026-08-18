@@ -23,11 +23,31 @@ def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+def _resolve_platform_cmd(entry: tuple) -> tuple[str, str]:
+    """Resolve (english, cmd) for current OS from 3-tuple or 4-tuple entry."""
+    eng = entry[0]
+    sys_name = platform.system()
+    if sys_name == "Windows":
+        cmd = entry[1]
+    elif sys_name == "Darwin":
+        if len(entry) >= 4:
+            cmd = entry[3]
+        else:
+            # Smart macOS dynamic fallback
+            cmd = entry[2]
+            if cmd == "free -m": cmd = "vm_stat"
+            elif "xclip" in cmd: cmd = cmd.replace("xclip -sel clip -o", "pbpaste").replace("| xclip -sel clip", "| pbcopy")
+            elif "ip a" in cmd: cmd = "ifconfig"
+    else:  # Linux / FreeBSD
+        cmd = entry[2]
+    return eng, cmd
+
+
 class PhraseDictionary:
     """Fast offline English→Shell translator using TF-IDF cosine similarity."""
 
     def __init__(self):
-        self._phrases: list[tuple[str, str, str]] = []  # (english, win_cmd, unix_cmd)
+        self._phrases: list[tuple] = []
         self._vocab: dict[str, int] = {}
         self._vectors: list[list[float]] = []
         self._built = False
@@ -41,8 +61,8 @@ class PhraseDictionary:
     def _build_index(self):
         vocab_set: set[str] = set()
         tokenized: list[list[str]] = []
-        for eng, _, _ in self._phrases:
-            toks = _tokenize(eng)
+        for entry in self._phrases:
+            toks = _tokenize(entry[0])
             tokenized.append(toks)
             vocab_set.update(toks)
 
@@ -115,8 +135,7 @@ class PhraseDictionary:
         if best_score < threshold or best_idx < 0:
             return None
 
-        eng, win_cmd, unix_cmd = self._phrases[best_idx]
-        cmd = win_cmd if _IS_WIN else unix_cmd
+        eng, cmd = _resolve_platform_cmd(self._phrases[best_idx])
         return {
             "command": cmd,
             "english": eng,
@@ -154,8 +173,7 @@ class PhraseDictionary:
         scored.sort(key=lambda x: x[1], reverse=True)
         results = []
         for idx, score in scored[:limit]:
-            eng, win_cmd, unix_cmd = self._phrases[idx]
-            cmd = win_cmd if _IS_WIN else unix_cmd
+            eng, cmd = _resolve_platform_cmd(self._phrases[idx])
             results.append({
                 "command": cmd,
                 "english": eng,

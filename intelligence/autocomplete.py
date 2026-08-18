@@ -124,6 +124,35 @@ COMMON_ENV_VARS = [
 
 # NeuroShell internal commands for completion
 NEUROSHELL_COMMANDS = {
+    # Slash Commands (Primary TUI)
+    "/api-key":     "Configure and encrypt LLM API keys interactively",
+    "/apikey":      "Configure and encrypt LLM API keys interactively",
+    "/model":       "List and switch active LLM models",
+    "/swarm":       "Multi-agent parallel task orchestrator with sandbox",
+    "/agent":       "Autonomous multi-step agent planner with recovery",
+    "/plan":        "Enter or manage safe architecture plan mode",
+    "/backup":      "Create, restore, or validate ops backups and retention",
+    "/record":      "Record, list, or replay terminal sessions",
+    "/clip":        "Copy, paste, or inspect cross-platform clipboard",
+    "/profile":     "Manage per-directory workspace configuration profiles",
+    "/jobs":        "List, monitor, or terminate background processes",
+    "/snapshots":   "View file snapshots and perform instant undo",
+    "/search":      "Deep recursive file and repository search",
+    "/find":        "Deep recursive file and repository search",
+    "/voice":       "Voice-to-command transcription engine",
+    "/git":         "Structured Git operations and GitHub search",
+    "/plugins":     "Discover, load, reload, and trust extension plugins",
+    "/dream":       "AutoDream memory consolidation and status",
+    "/update":      "Cryptographic update channel and binary manager",
+    "/notebook":    "Interactive session notebook and markdown export",
+    "/scan":        "Run project vulnerability and security scans",
+    "/security":    "Safety policy, RBAC profiles, and audit verification",
+    "/theme":       "List and switch terminal cyberpunk themes",
+    "/config":      "Interactive TOML config editor and key viewer",
+    "/stats":       "Session runtime metrics, latencies, and timers",
+    "/help":        "Show comprehensive NeuroShell command directory",
+
+    # Standard Commands
     "help":         "Show help for a topic",
     "fix":          "Auto-fix the last error",
     "explain:":     "Explain a command",

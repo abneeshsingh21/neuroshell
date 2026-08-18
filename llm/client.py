@@ -45,6 +45,9 @@ GROQ_MODEL_MAP = {
     "deepseek-r1": "deepseek-r1-distill-llama-70b",
 }
 
+# Module-level persistent thread pool for non-blocking hard timeouts
+_SHARED_TIMEOUT_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="llm_timeout_worker")
+
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -90,31 +93,50 @@ class TokenBudget:
     total_requests: int = 0
     total_failures: int = 0
     session_start: float = field(default_factory=time.time)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     @property
     def total_tokens(self) -> int:
-        return self.total_prompt_tokens + self.total_completion_tokens
+        with self._lock:
+            return self.total_prompt_tokens + self.total_completion_tokens
 
     @property
     def avg_tokens_per_request(self) -> float:
-        return self.total_tokens / max(1, self.total_requests)
+        with self._lock:
+            return self.total_tokens / max(1, self.total_requests)
 
     @property
     def success_rate(self) -> float:
-        total = self.total_requests + self.total_failures
-        return round(self.total_requests / max(1, total) * 100, 1)  # type: ignore[return-value]
+        with self._lock:
+            total = self.total_requests + self.total_failures
+            return round(self.total_requests / max(1, total) * 100, 1)  # type: ignore[return-value]
+
+    def record_usage(self, prompt: int = 0, completion: int = 0, success: bool = True):
+        with self._lock:
+            if success:
+                self.total_requests += 1
+                self.total_prompt_tokens += prompt
+                self.total_completion_tokens += completion
+            else:
+                self.total_failures += 1
 
     def to_dict(self) -> dict:
-        return {
-            "total_tokens": self.total_tokens,
-            "prompt_tokens": self.total_prompt_tokens,
-            "completion_tokens": self.total_completion_tokens,
-            "total_requests": self.total_requests,
-            "total_failures": self.total_failures,
-            "avg_tokens_per_request": round(self.avg_tokens_per_request),
-            "success_rate": self.success_rate,
-            "session_s": round(time.time() - self.session_start),
-        }
+        with self._lock:
+            total = self.total_prompt_tokens + self.total_completion_tokens
+            reqs = self.total_requests
+            fails = self.total_failures
+            avg = round(total / max(1, reqs))
+            rate = round(reqs / max(1, reqs + fails) * 100, 1)
+            return {
+                "total_tokens": total,
+                "prompt_tokens": self.total_prompt_tokens,
+                "completion_tokens": self.total_completion_tokens,
+                "total_requests": reqs,
+                "total_failures": fails,
+                "avg_tokens_per_request": avg,
+                "success_rate": rate,
+                "session_s": round(time.time() - self.session_start),
+            }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -362,17 +384,16 @@ class LLMClient:
     def _with_hard_timeout(self, func: Callable[..., Any], timeout: Optional[float] = None) -> Any:
         """Execute func with a hard wall-clock timeout to prevent shell freeze.
 
-        Uses ThreadPoolExecutor so the main thread is never blocked indefinitely.
+        Uses persistent ThreadPoolExecutor so the caller thread is never blocked on context manager exit.
         If the call exceeds the timeout, raises TimeoutError.
         """
         timeout = timeout or self._hard_timeout
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(func)
-            try:
-                return future.result(timeout=timeout)
-            except FuturesTimeout:
-                _llm_log.warning("LLM call timed out after %ds", timeout)
-                raise TimeoutError(f"LLM call exceeded hard timeout of {timeout}s")
+        future = _SHARED_TIMEOUT_POOL.submit(func)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeout:
+            _llm_log.warning("LLM call timed out after %ds", timeout)
+            raise TimeoutError(f"LLM call exceeded hard timeout of {timeout}s")
 
     @property
     def groq_model(self) -> str:
@@ -627,10 +648,6 @@ class LLMClient:
     def _groq_chat(self, user_message: str, system_prompt: str = "",
                    temperature: Optional[float] = None) -> LLMResponse:
         """Multi-turn chat via Groq (fallback)."""
-        self._conversation.append(ConversationMessage(role="user", content=user_message))
-        if len(self._conversation) > self.MAX_CONVERSATION_TURNS * 2:
-            self._conversation = self._conversation[-(self.MAX_CONVERSATION_TURNS * 2):]  # type: ignore[index]
-
         if not self._groq_client:
             return self._fallback_response("Groq API not configured")
 
@@ -650,11 +667,11 @@ class LLMClient:
 
             latency = (time.time() - start) * 1000
             text = response.choices[0].message.content if response.choices else ""
-            self._conversation.append(ConversationMessage(role="assistant", content=text))
 
             usage = response.usage
-            self._budget.total_requests += 1
-            self._budget.total_completion_tokens += (usage.completion_tokens if usage else 0)
+            prompt_tokens = usage.prompt_tokens if usage else 0
+            comp_tokens = usage.completion_tokens if usage else 0
+            self._budget.record_usage(prompt=prompt_tokens, completion=comp_tokens, success=True)
 
             return LLMResponse(
                 text=text,

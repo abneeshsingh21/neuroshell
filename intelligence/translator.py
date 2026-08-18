@@ -224,8 +224,7 @@ LOCAL_PATTERNS = {
     r"(?:what|which)\s+(?:shell|terminal)\s+(?:am i using|is this)": "echo $SHELL",
     r"(?:make|set)\s+(\S+)\s+(?:executable|runnable)": "chmod +x {0}",
     r"(?:show|what)\s+(?:is\s+)?(?:the\s+)?(?:weather)": "curl wttr.in",
-    r"(?:show|what(?:'s| is))\s+(?:the\s+)?(?:current\s+)?(?:time|date)\s+(?:in\s+)?(\S+)": "TZ={0} date",
-    r"(?:calculate|calc|math)\s+(.+)": "python -c \"print({0})\"",
+    r"(?:calculate|calc|math)\s+([\d\s\+\-\*\/\(\)\.\%\^]+)": "python -c \"print({0})\"",
 
     # ── Permissions & ownership ──
     r"(?:change|set)\s+(?:permissions?\s+(?:of\s+)?)?(\S+)\s+(?:to\s+)?(\d{3})": "chmod {1} {0}",
@@ -688,6 +687,8 @@ class Translator:
         self._feedback_corrections: dict[str, str] = {}  # user_input → corrected_cmd
         self._sanitizer = LLMSanitizer()
         self._smart_open = None  # Lazy-loaded to avoid startup cost
+        self.swarm = None  # Lazy-loaded swarm orchestrator
+        self._phrase_dict = None  # Lazy-loaded 2500+ offline phrase dictionary
 
     def translate(self, user_input: str, entities: Optional[dict[str, Any]] = None) -> TranslationResult:
         """
@@ -697,12 +698,12 @@ class Translator:
         1. Check feedback corrections
         2. Check history cache
         3. Try local pattern matching
+        3.5. Try 2554+ offline phrase dictionary
         4. Fall back to LLM translation
         """
         user_input_clean = user_input.strip()
         if not user_input_clean:
             return TranslationResult(command="", confidence=0, explanation="Empty input")
-
 
         # 1. Check if user previously corrected this
         if user_input_clean.lower() in self._feedback_corrections:
@@ -726,8 +727,6 @@ class Translator:
             return cached
 
         # 2.5. Route open/launch/power intents through SmartOpenEngine
-        #      (runs before local patterns so power commands e.g. 'lock screen'
-        #       get routed correctly instead of falling through to LLM)
         smart = self._try_smart_open(user_input_clean)
         if smart:
             return smart
@@ -737,12 +736,43 @@ class Translator:
         if local:
             return local
 
+        # 3.5. Try 2554+ Offline Phrase Dictionary (TF-IDF Cosine Matcher)
+        phrase_match = self._try_phrase_dictionary(user_input_clean)
+        if phrase_match:
+            return phrase_match
+
         # 4. Multi-step detection
         if self._is_multi_step(user_input_clean):
             return self._translate_multi_step(user_input_clean, entities)
 
         # 5. LLM translation
         return self._llm_translate(user_input_clean, entities)
+
+    def _try_phrase_dictionary(self, user_input: str) -> Optional[TranslationResult]:
+        """Query the 2,554+ offline phrase TF-IDF vector index (<0.5ms)."""
+        try:
+            if not self._phrase_dict:
+                from intelligence.phrase_dictionary import PhraseDictionary
+                self._phrase_dict = PhraseDictionary()
+                self._phrase_dict.load()
+
+            match = self._phrase_dict.translate(user_input, threshold=0.45)
+            if match and match.get("command"):
+                return TranslationResult(
+                    command=match["command"],
+                    confidence=float(match.get("confidence", 0.88)),
+                    explanation=f"Matched offline phrase: '{match.get('english', '')}'",
+                    source="offline-dictionary",
+                    provenance=ProvenanceTag(
+                        source=ProvenanceSource.LOCAL,
+                        confidence=float(match.get("confidence", 0.88)),
+                        detail="2500+ offline phrase dictionary",
+                        latency_ms=0.5,
+                    ),
+                )
+        except Exception:
+            pass
+        return None
 
     def translate_with_disambiguation(self, user_input: str, entities: Optional[dict[str, Any]] = None) -> TranslationResult:
         """Translate with disambiguation when ambiguous."""
@@ -764,17 +794,23 @@ class Translator:
         """Learn from user correction for future translations."""
         self._feedback_corrections[original_input.strip().lower()] = corrected_command
 
-    def _try_smart_open(self, user_input: str) -> Optional[TranslationResult]:
-        """Attempt to route through the SmartOpen Engine for URLs, apps, drives, and power commands."""
-        # Lazy load to prevent startup overhead if feature isn't used
+    def _get_smart_open_engine(self) -> Optional[Any]:
+        """Lazy-load SmartOpenEngine when path or app resolution is needed."""
         if self._smart_open is None:
             try:
                 from intelligence.smart_open import SmartOpenEngine
                 self._smart_open = SmartOpenEngine()
             except ImportError:
                 return None
+        return self._smart_open
 
-        result = self._smart_open.try_resolve(user_input)
+    def _try_smart_open(self, user_input: str) -> Optional[TranslationResult]:
+        """Attempt to route through the SmartOpen Engine for URLs, apps, drives, and power commands."""
+        engine = self._get_smart_open_engine()
+        if engine is None:
+            return None
+
+        result = engine.try_resolve(user_input)
         if result:
             return TranslationResult(
                 command=result.command,
@@ -869,8 +905,14 @@ class Translator:
             (r"(?:show|list|view)\s+(?:all\s+)?files?(?:\s+in\s+(.+))?", lambda g: self._build_cmd(["dir" if is_windows else "ls", g[0].strip()] if g and g[0] else ["dir" if is_windows else "ls"])),
             (r"(?:make|create)\s+(?:a\s+)?(?:directory|folder|dir)\s+(?:(?:called|name|named)\s+)?(\S+)", lambda g: self._build_cmd(["mkdir", g[0]])),
             (r"(?:delete|remove)\s+(?:the\s+)?(?:file|directory|folder)\s+(\S+)", lambda g: self._build_cmd(["rm", g[0]])),
+            # Windows folder copy / move with well-known source and destination roots.
+            # Accept both "from desktop folder to downloads folder" and
+            # "from desktop to downloads folder" phrasing.
+            (r"(?:create|make)\s+(?:a\s+|an\s+)?(?:copy|backup)\s+of\s+(?:the\s+)?(.+?)\s+(?:folder|directory)\s+from\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s+(?:to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s*$", lambda g: self._build_windows_folder_copy_command(g[0].strip(), g[1].strip(), g[2].strip()) if is_windows else None),
+            (r"(?:copy|backup)\s+(?:the\s+)?(.+?)\s+(?:folder|directory)\s+from\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s+(?:to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s*$", lambda g: self._build_windows_folder_copy_command(g[0].strip(), g[1].strip(), g[2].strip()) if is_windows else None),
+            (r"(?:move|transfer)\s+(?:the\s+)?(.+?)\s+(?:folder|directory)\s+from\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s+(?:to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s*$", lambda g: self._build_windows_folder_move_command(g[0].strip(), g[1].strip(), g[2].strip()) if is_windows else None),
             # Folder copy / backup — "create a copy of X folder in Y", "backup X to Y", "copy X folder to Y"
-            (r"(?:create\s+(?:a\s+)?(?:copy|backup)\s+of\s+(?:the\s+)?(.+?)\s+(?:folder\s+)?(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+folder)?)\s*$", lambda g: self._build_cmd(["robocopy", g[0].strip(), g[1].strip(), "/E", "/DCOPY:T"]) if is_windows else self._build_cmd(["cp", "-r", g[0].strip(), g[1].strip()])),
+            (r"(?:create\s+(?:a\s+|an\s+)?(?:copy|backup)\s+of\s+(?:the\s+)?(.+?)\s+(?:folder\s+)?(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+folder)?)\s*$", lambda g: self._build_cmd(["robocopy", g[0].strip(), g[1].strip(), "/E", "/DCOPY:T"]) if is_windows else self._build_cmd(["cp", "-r", g[0].strip(), g[1].strip()])),
             (r"(?:copy|backup)\s+(?:the\s+)?(.+?)\s+(?:folder|directory)\s+(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:folder|directory))?\s*$", lambda g: self._build_cmd(["robocopy", g[0].strip(), g[1].strip(), "/E", "/DCOPY:T"]) if is_windows else self._build_cmd(["cp", "-r", g[0].strip(), g[1].strip()])),
             (r"(?:copy|cp)\s+(\S+)\s+(?:to\s+)?(\S+)", lambda g: self._build_cmd(["cp", g[0], g[1]])),
             (r"(?:move|mv|rename)\s+(\S+)\s+(?:to\s+)?(\S+)", lambda g: self._build_cmd(["mv", g[0], g[1]])),
@@ -910,6 +952,53 @@ class Translator:
                 return re.sub(r'\s+', ' ', command).strip()
 
         return None
+
+    def _build_windows_folder_copy_command(self, source_name: str, source_base: str, dest_base: str) -> Optional[str]:
+        """Build a safe Windows folder copy command for resolved source/destination roots."""
+        return self._build_windows_folder_transfer_command(source_name, source_base, dest_base, move=False)
+
+    def _build_windows_folder_move_command(self, source_name: str, source_base: str, dest_base: str) -> Optional[str]:
+        """Build a safe Windows folder move command for resolved source/destination roots."""
+        return self._build_windows_folder_transfer_command(source_name, source_base, dest_base, move=True)
+
+    def _build_windows_folder_transfer_command(self, source_name: str, source_base: str, dest_base: str, move: bool = False) -> Optional[str]:
+        """Resolve well-known folder roots and generate a quoted PowerShell copy/move command."""
+        engine = self._get_smart_open_engine()
+        if engine is None:
+            return None
+
+        source_root = engine._resolve_folder(source_base)
+        dest_root = engine._resolve_folder(dest_base)
+        if not source_root or not dest_root:
+            return None
+
+        cleaned_name = re.sub(r'\s+(?:folder|directory|dir)$', '', source_name.strip(), flags=re.IGNORECASE)
+        source_path = engine._search_dir_for(source_root, cleaned_name.lower())
+        if not source_path:
+            candidate = os.path.join(source_root, cleaned_name)
+            if os.path.isdir(candidate):
+                source_path = candidate
+            else:
+                source_path = engine._fuzzy_find_folder(cleaned_name.lower(), search_root=source_root)
+
+        if not source_path:
+            return None
+
+        verb = "Move-Item" if move else "Copy-Item"
+        source_literal = self._powershell_literal(source_path)
+        dest_literal = self._powershell_literal(os.path.abspath(dest_root))
+        extra_args = "-Force" if move else "-Recurse -Force"
+        return self._build_cmd([
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            f"{verb} -LiteralPath {source_literal} -Destination {dest_literal} {extra_args}",
+        ])
+
+    @staticmethod
+    def _powershell_literal(value: str) -> str:
+        """Quote a PowerShell literal string using single-quote escaping."""
+        return "'" + value.replace("'", "''") + "'"
 
     def _build_cmd(self, parts: list[str]) -> str:
         """Build a shell command from parts with safe argument escaping."""
@@ -1084,6 +1173,16 @@ Return JSON:
         """Route complex intentions through the Swarm Orchestrator."""
         start = time.time()
         
+        if self.swarm is None:
+            try:
+                from neuroshell.intelligence.swarm import SwarmOrchestrator
+                self.swarm = SwarmOrchestrator(self.llm, self.context)
+            except Exception:
+                pass
+
+        if self.swarm is None:
+            return self._llm_translate(user_input, self.context)
+
         # Fire Swarm Pipeline
         swarm_res = self.swarm.route_task(user_input)
         latency = (time.time() - start) * 1000

@@ -51,9 +51,9 @@ class BrowserAccessManager:
 
     def extract_text(self, url: str, timeout_s: int = 20, max_chars: int = 3000) -> str:
         html = self.fetch_html(url, timeout_s=timeout_s)
-        cleaned = re.sub(r"<script[\\s\\S]*?</script>|<style[\\s\\S]*?</style>", " ", html, flags=re.IGNORECASE)
+        cleaned = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", html)
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-        cleaned = re.sub(r"\\s+", " ", cleaned).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
         if len(cleaned) > max_chars:
             cleaned = cleaned[:max_chars] + "..."
         return cleaned
@@ -74,9 +74,11 @@ class BrowserAccessManager:
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page(viewport={"width": 1440, "height": 900})
-            page.goto(url, wait_until="networkidle", timeout=timeout_ms)
-            page.screenshot(path=str(output_path), full_page=True)
-            browser.close()
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 900})
+                page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+                page.screenshot(path=str(output_path), full_page=True)
+            finally:
+                browser.close()
 
         return output_path

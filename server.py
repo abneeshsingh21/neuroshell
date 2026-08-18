@@ -8,12 +8,15 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import uvicorn
 
 import sys
 import os
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 # Ensure project root in path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,14 +32,20 @@ from pathlib import Path
 
 app = FastAPI(title="NeuroShell Terminal Server")
 
-# Allow CORS for dev environment
+# Allow CORS strictly for local dashboard interfaces
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://127.0.0.1:5173", "http://localhost:5173",
+        "http://127.0.0.1:8000", "http://localhost:8000",
+        "http://127.0.0.1:3000", "http://localhost:3000"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+SERVER_API_KEY = os.environ.get("NEUROSHELL_SERVER_KEY", "")
 
 # Core Telemetry state
 _last_telemetry = {
@@ -46,16 +55,33 @@ _last_telemetry = {
     "latency_samples": [],
 }
 
-# Serve built Vite frontend
-app.mount("/assets", StaticFiles(directory="neuroshell-web/dist/assets"), name="assets")
+# Serve built Vite frontend when available without failing server startup.
+_FRONTEND_DIST_DIR = Path("neuroshell-web/dist")
+_FRONTEND_ASSETS_DIR = _FRONTEND_DIST_DIR / "assets"
+_FRONTEND_INDEX_FILE = _FRONTEND_DIST_DIR / "index.html"
+
+if _FRONTEND_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_ASSETS_DIR)), name="assets")
+else:
+    logging.warning("Frontend assets directory not found: %s", _FRONTEND_ASSETS_DIR)
 
 @app.get("/")
 async def serve_frontend():
-    return FileResponse("neuroshell-web/dist/index.html", headers={
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
-    })
+    if _FRONTEND_INDEX_FILE.exists():
+        return FileResponse(str(_FRONTEND_INDEX_FILE), headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        })
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "frontend_unavailable",
+            "message": "Build the NeuroShell web frontend to serve the dashboard.",
+        },
+    )
+
+from intelligence.safety import SafetyChecker, RiskLevel
 
 # Initialize Core Services
 try:
@@ -65,10 +91,38 @@ try:
     context = ContextManager(config)
     history = HistoryStore(Path('history.db'))
     translator = Translator(llm_client, context, history)
+    safety = SafetyChecker(config, llm_client)
     logging.info("NeuroShell core engines loaded and ready.")
 except Exception as e:
     logging.error(f"Failed to initialize core engines: {e}")
     sys.exit(1)
+
+
+def _dashboard_shell_name() -> str:
+    try:
+        if isinstance(config, dict):
+            shell_name = config.get("shell") or config.get("default_shell")
+        else:
+            shell_name = getattr(config, "default_shell", None) or getattr(config, "shell", None)
+        return str(shell_name or "powershell").title()
+    except Exception:
+        return "Powershell"
+
+
+def _dashboard_history_count() -> int:
+    try:
+        if hasattr(history, "get_stats"):
+            stats = history.get_stats() or {}
+            total = stats.get("total_commands")
+            if total is not None:
+                return int(total)
+    except Exception:
+        pass
+
+    try:
+        return len(history._history) if hasattr(history, "_history") else 0
+    except Exception:
+        return 0
 
 
 class ConnectionManager:
@@ -173,14 +227,24 @@ async def dashboard_api():
     return {
         "session_id": "WS-Active",
         "commands": _last_telemetry["total_commands"],
-        "shell": config.get('shell', 'powershell').title(),
+        "shell": _dashboard_shell_name(),
         "cwd": cwd,
         "uptime": "Active",
-        "history": len(history._history) if hasattr(history, '_history') else 0
+        "history": _dashboard_history_count(),
     }
+
+from concurrent.futures import ThreadPoolExecutor
+_PIPELINE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ws_pipeline")
 
 @app.websocket("/ws/terminal")
 async def websocket_endpoint(websocket: WebSocket):
+    # Verify authentication token if configured
+    token = websocket.query_params.get("token") or websocket.headers.get("X-API-Key")
+    if SERVER_API_KEY and token != SERVER_API_KEY:
+        await websocket.close(code=1008)
+        logging.warning("Rejected unauthenticated WebSocket connection to /ws/terminal")
+        return
+
     await manager.connect(websocket)
     
     # Send a custom welcome line to the terminal
@@ -197,7 +261,6 @@ async def websocket_endpoint(websocket: WebSocket):
         # We put it in the async queue to be pushed to the websocket
         if text is not None:
             # Reformat text to ensure carriage return + newline for xterm.js
-            # Normalize all newlines to CRLF, and append CRLF if missing
             formatted = text.replace('\r\n', '\n').replace('\n', '\r\n')
             if not formatted.endswith('\r\n'):
                 formatted += '\r\n'
@@ -223,8 +286,7 @@ async def websocket_endpoint(websocket: WebSocket):
             logging.info(f"Terminal Command Received: {data}")
             try:
                 frame = json.loads(data)
-                with open('received.txt', 'a') as f:
-                    f.write(f"RECV: {frame}\n")
+                logging.debug("Terminal websocket frame received: %s", frame)
             except Exception as e:
                 logging.error(f"JSON Decode Error: {e}")
                 continue
@@ -254,11 +316,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         command_to_run = translation_result.command
                         
-                        # 2. Add some telemetry
+                        # 2. 4-Layer Safety Shield Verification
+                        safety_res = safety.check(command_to_run)
+                        if safety_res.risk == RiskLevel.BLOCKED:
+                            sync_stream_callback(f"\x1b[1;31m[4-Layer Safety Shield: BLOCKED] {safety_res.reason}\x1b[0m\n")
+                            return
+                        elif safety_res.risk == RiskLevel.DANGER:
+                            sync_stream_callback(f"\x1b[1;33m[4-Layer Safety Shield: DANGER WARNING] {safety_res.reason}\x1b[0m\n")
+
+                        # 3. Telemetry
                         sync_stream_callback(f"\x1b[38;5;240m[AI Translator] {translation_result.explanation}\x1b[0m\n")
                         sync_stream_callback(f"\x1b[1;36m$ {command_to_run}\x1b[0m\n")
 
-                        # 3. Execution
+                        # 4. Execution
                         res = executor.execute(
                             command=command_to_run,
                             stream_callback=sync_stream_callback,
@@ -273,8 +343,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     except Exception as e:
                         sync_stream_callback(f"\n\x1b[1;31m[CRITICAL ERROR] {str(e)}\x1b[0m\n")
 
-                # Run the pipeline in another thread to avoid blocking the websocket event loop
-                threading.Thread(target=execute_pipeline, args=(user_cmd,), daemon=True).start()
+                # Submit to worker pool instead of unbounded thread creation
+                _PIPELINE_POOL.submit(execute_pipeline, user_cmd)
 
     except Exception as e:
         logging.error(f"WS Disconnect or error: {e}")

@@ -273,17 +273,18 @@ class GitOps:
 
     def switch_branch(self, branch: str, create: bool = False) -> str:
         """Switch to `branch`. Optionally create it if it doesn't exist."""
-        args = ["switch", branch]
+        args = ["switch", "--", branch]
         if create:
-            args = ["switch", "-c", branch]
+            args = ["switch", "-c", branch, "--"]
         cp = self._run(args)
         return self._check(cp, f"switch {branch}")
 
     def merge(self, branch: str, fast_forward_only: bool = True) -> str:
         """Merge `branch` into the current branch."""
-        args = ["merge", branch]
+        args = ["merge"]
         if fast_forward_only:
             args.append("--ff-only")
+        args.extend(["--", branch])
         cp = self._run(args)
         return self._check(cp, f"merge {branch}")
 
@@ -470,6 +471,9 @@ class GitTool(BaseTool):
     Agentic interface for GitHub and Git operations.
     Conforms to the BaseTool streaming protocol.
     """
+    def __init__(self, git_ops: Optional[GitOps] = None):
+        self.git_ops = git_ops or GitOps()
+
     @property
     def name(self) -> str:
         return "git_tool"

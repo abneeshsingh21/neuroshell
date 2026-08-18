@@ -109,10 +109,14 @@ class SwarmOrchestrator:
             
         # Strip markdown fences if present
         if proposed_command.startswith("```"):
-            lines = proposed_command.split("\\n")
-            proposed_command = "\\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-            
-        proposed_command = proposed_command.strip()
+            lines = proposed_command.splitlines()
+            if len(lines) >= 2:
+                if lines[-1].strip().startswith("```"):
+                    proposed_command = "\n".join(lines[1:-1])
+                else:
+                    proposed_command = "\n".join(lines[1:])
+            else:
+                proposed_command = proposed_command.strip("`").strip()
 
         # Step 3: Verification (Adversarial Static Review)
         verification = self.verifier.execute(proposed_command, ctx_summary)

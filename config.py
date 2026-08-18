@@ -88,6 +88,7 @@ class LLMConfig:
     cache_enabled: bool = True
     cache_ttl: int = 3600
     streaming: bool = True
+    airgap_mode: bool = False
 
 
 @dataclass
@@ -279,7 +280,16 @@ class Config:
             if enc_version == 2 and HAS_FERNET:
                 # Current format: Fernet AES-128
                 token = base64.b64decode(envelope["data"])
-                self._secrets = json.loads(_fernet_decrypt(token).decode("utf-8"))
+                try:
+                    self._secrets = json.loads(_fernet_decrypt(token).decode("utf-8"))
+                except Exception:
+                    # Fallback to legacy deterministic derivation if master key was rotated
+                    try:
+                        legacy_f = Fernet(base64.urlsafe_b64encode(hashlib.sha256(_get_machine_identity().encode("utf-8")).digest()))
+                        self._secrets = json.loads(legacy_f.decrypt(token).decode("utf-8"))
+                        self._persist_secrets()
+                    except Exception:
+                        self._secrets = {}
 
             elif envelope.get("_encrypted"):
                 # Legacy v1 format: XOR — read and immediately re-encrypt with Fernet
@@ -360,8 +370,12 @@ class Config:
         self._secrets[key] = value
         self._persist_secrets()
 
+    def save_secret(self, key: str, value: str):
+        """Set and persist a secret (alias for set_secret)."""
+        return self.set_secret(key, value)
+
     def _persist_secrets(self):
-        """Write secrets to disk using the strongest available encryption."""
+        """Write secrets to disk using the strongest available encryption with atomic backup."""
         try:
             plaintext = json.dumps(self._secrets).encode("utf-8")
             if HAS_FERNET:
@@ -376,12 +390,28 @@ class Config:
                     "cryptography package not installed — falling back to XOR encryption. "
                     "Run: pip install cryptography"
                 )
-                key_bytes = _derive_machine_key()
-                encrypted = _xor_crypt(plaintext, key_bytes)
-                envelope = {"_encrypted": True, "data": base64.b64encode(encrypted).decode("ascii")}
-            SECRETS_FILE.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+                legacy_key = _derive_machine_key()
+                encrypted = _xor_crypt(plaintext, legacy_key)
+                envelope = {
+                    "_encrypted": True,
+                    "data": base64.b64encode(encrypted).decode("ascii"),
+                }
+
+            NEUROSHELL_DIR.mkdir(parents=True, exist_ok=True)
+            if SECRETS_FILE.exists():
+                try:
+                    import shutil
+                    shutil.copy2(SECRETS_FILE, SECRETS_FILE.with_suffix(".json.bak"))
+                except Exception:
+                    pass
+
+            data_bytes = json.dumps(envelope, indent=2).encode("utf-8")
             if platform.system() != "Windows":
-                os.chmod(SECRETS_FILE, 0o600)
+                fd = os.open(str(SECRETS_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with open(fd, "wb") as f:
+                    f.write(data_bytes)
+            else:
+                SECRETS_FILE.write_bytes(data_bytes)
         except Exception as exc:
             _config_log.error("Failed to save secrets: %s", exc)
 
@@ -418,8 +448,35 @@ class Config:
 # ═══════════════════════════════════════════════════════════
 
 def _get_machine_identity() -> str:
-    """Get a stable machine identity string. Safe in Docker/WSL/CI environments."""
-    # os.getlogin() raises OSError in containers and headless CI — use a safe fallback chain
+    """Get a stable machine identity string. Safe in Docker/WSL/CI/macOS environments."""
+    # Check for persistent OS machine UUID before node/hostname
+    machine_id = ""
+    sys_name = platform.system()
+    if sys_name == "Linux":
+        for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        machine_id = f.read().strip()
+                        if machine_id:
+                            break
+                except Exception:
+                    pass
+    elif sys_name == "Darwin":
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                text=True, timeout=2,
+                stderr=subprocess.DEVNULL
+            )
+            for line in out.splitlines():
+                if "IOPlatformUUID" in line:
+                    machine_id = line.split("=")[-1].strip().strip('"')
+                    break
+        except Exception:
+            pass
+
     try:
         username = os.getlogin()
     except (OSError, AttributeError):
@@ -429,7 +486,8 @@ def _get_machine_identity() -> str:
             or os.environ.get("LOGNAME")
             or "user"
         )
-    return f"{platform.node()}:{username}:{platform.system()}"
+    base_node = machine_id or platform.node()
+    return f"{base_node}:{username}:{sys_name}"
 
 
 def _derive_machine_key() -> bytes:
@@ -438,22 +496,57 @@ def _derive_machine_key() -> bytes:
     return hashlib.sha256(identity.encode("utf-8")).digest()
 
 
+def _get_master_seed() -> bytes:
+    """Retrieve or generate a cryptographically secure random master key seed."""
+    key_file = NEUROSHELL_DIR / ".master.key"
+    try:
+        if key_file.exists():
+            return key_file.read_bytes().strip()
+    except Exception:
+        pass
+    
+    # Generate 32 bytes of secure random material
+    raw_seed = base64.urlsafe_b64encode(os.urandom(32))
+    try:
+        NEUROSHELL_DIR.mkdir(parents=True, exist_ok=True)
+        if platform.system() != "Windows":
+            fd = os.open(str(key_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with open(fd, "wb") as f:
+                f.write(raw_seed)
+        else:
+            key_file.write_bytes(raw_seed)
+            try:
+                username = os.environ.get("USERNAME", "")
+                if username:
+                    import subprocess
+                    subprocess.run(
+                        ["icacls", str(key_file), "/inheritance:r", "/grant:r", f'"{username}":(R,W)'],
+                        capture_output=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+                    )
+            except Exception:
+                pass
+    except Exception as exc:
+        _config_log.warning("Could not persist .master.key with restricted permissions: %s", exc)
+    return raw_seed
+
+
 def _derive_fernet_key() -> bytes:
     """Derive a URL-safe base64 Fernet key using PBKDF2HMAC-SHA256.
 
-    Binds the key to the local machine identity so secrets are non-portable
-    without also being trivially weak (unlike bare XOR).
+    Binds the random master key to the local machine identity so secrets are
+    both non-portable and cryptographically strong.
     """
+    master_seed = _get_master_seed()
     identity = _get_machine_identity().encode("utf-8")
-    # Static salt derived from identity — deterministic but per-machine
-    salt = hashlib.sha256(b"neuroshell-salt-v1:" + identity).digest()
+    salt = hashlib.sha256(b"neuroshell-salt-v2:" + identity + b":" + master_seed).digest()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
         iterations=390_000,
     )
-    raw_key = kdf.derive(identity)
+    raw_key = kdf.derive(master_seed + identity)
     return base64.urlsafe_b64encode(raw_key)
 
 

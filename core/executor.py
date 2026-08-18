@@ -15,7 +15,10 @@ import time
 import uuid
 import shutil
 import threading
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Any
@@ -205,6 +208,9 @@ class ShellExecutor:
         self._total_commands = 0
         self._total_duration_ms = 0.0
 
+        # Temp files created by multi-line script wrapping, to clean post-exec
+        self._pending_temp_files: list[str] = []
+
     # ── Properties ────────────────────────────────────────
 
     @property
@@ -294,6 +300,7 @@ class ShellExecutor:
                 text=True,
                 bufsize=1,
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW) if self._system == "Windows" else 0,
+                start_new_session=(self._system != "Windows"),
             )
             self._active_process = process
 
@@ -330,6 +337,8 @@ class ShellExecutor:
             return self._make_error_result(
                 command, 1, str(e), start_time, shell
             )
+        finally:
+            self._cleanup_pending_temp_files()
 
     def _execute_with_streaming(
         self,
@@ -357,10 +366,23 @@ class ShellExecutor:
 
         # Real-time streaming mode
         if stream_callback and process.stdout:
+            stderr_chunks = []
+            def _drain_stderr():
+                if process.stderr:
+                    try:
+                        for err_line in process.stderr:
+                            stderr_chunks.append(err_line)
+                    except Exception:
+                        pass
+
+            err_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            err_thread.start()
+
             try:
                 for line in process.stdout:
                     if self._cancelled:
                         self._terminate_process(process)
+                        err_thread.join(timeout=0.5)
                         return self._make_cancelled_result(command, start_time, shell)
 
                     total_bytes += len(line)
@@ -368,14 +390,14 @@ class ShellExecutor:
                         stdout_lines.append(line)
                     stream_callback(line.rstrip("\n"))
 
-                stderr_output = process.stderr.read() if process.stderr else ""
-                stderr_lines = [stderr_output]
-
                 effective_timeout = timeout if timeout > 0 else None
                 process.wait(timeout=effective_timeout)
+                err_thread.join(timeout=1.0)
+                stderr_lines = stderr_chunks
 
             except subprocess.TimeoutExpired:
                 self._terminate_process(process)
+                err_thread.join(timeout=0.5)
                 return self._make_timeout_result(command, timeout, start_time, shell)
 
         else:
@@ -416,15 +438,46 @@ class ShellExecutor:
     def _terminate_process(self, process: subprocess.Popen):
         """Gracefully terminate a process with escalation to SIGKILL."""
         try:
+            if psutil and process.pid:
+                try:
+                    parent = psutil.Process(process.pid)
+                    children = parent.children(recursive=True)
+                    for child in children:
+                        try:
+                            child.terminate()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    parent.terminate()
+                    gone, alive = psutil.wait_procs(children + [parent], timeout=self.GRACEFUL_KILL_TIMEOUT)
+                    for p in alive:
+                        try:
+                            p.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    return
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
             if self._system == "Windows":
                 process.terminate()
             else:
-                process.send_signal(signal.SIGTERM)
+                try:
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except (ProcessLookupError, OSError):
+                    process.send_signal(signal.SIGTERM)
 
             try:
                 process.wait(timeout=self.GRACEFUL_KILL_TIMEOUT)
             except subprocess.TimeoutExpired:
-                process.kill()
+                if self._system != "Windows":
+                    try:
+                        pgid = os.getpgid(process.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    except (ProcessLookupError, OSError):
+                        process.kill()
+                else:
+                    process.kill()
                 process.wait(timeout=2)
         except (ProcessLookupError, OSError):
             pass
@@ -460,6 +513,20 @@ class ShellExecutor:
 
     def _launch_background(self, command: str, shell: str) -> ExecutionResult:
         """Launch a command in the background."""
+        # Reap any finished jobs so file descriptors are not retained
+        # by long-running daemons that never call list_jobs().
+        self._cleanup_finished_jobs()
+
+        max_jobs = getattr(getattr(self.config, "executor", None), "max_background_jobs", 10)
+        active_jobs = sum(1 for j in self._bg_jobs.values() if j.process.poll() is None)
+        if active_jobs >= max_jobs:
+            return ExecutionResult(
+                command=command,
+                exit_code=1,
+                stderr=f"Background job limit reached ({active_jobs}/{max_jobs}). Stop existing jobs first.",
+                duration_ms=0,
+            )
+
         shell_cmd, shell_executable = self._build_shell_command(command, shell)
         start_time = time.time()
 
@@ -473,6 +540,7 @@ class ShellExecutor:
                 shell=False,
                 text=True,
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW) if self._system == "Windows" else 0,
+                start_new_session=(self._system != "Windows"),
             )
 
             self._job_counter += 1
@@ -485,16 +553,20 @@ class ShellExecutor:
             )
             self._bg_jobs[job_id] = job
 
-            # Collect output in background thread
-            def _collect(job: BackgroundJob):
-                if job.process.stdout:
-                    for line in job.process.stdout:
-                        job.output_lines.append(line)
-                if job.process.stderr:
-                    for line in job.process.stderr:
-                        job.error_lines.append(line)
+            # Collect output with bounded 10,000-line rolling buffer to prevent memory leaks
+            def _drain(stream, buf):
+                if stream is None:
+                    return
+                try:
+                    for line in stream:
+                        buf.append(line)
+                        if len(buf) > 10000:
+                            del buf[:1000]
+                except (ValueError, OSError):
+                    pass  # stream closed
 
-            threading.Thread(target=_collect, args=(job,), daemon=True).start()
+            threading.Thread(target=_drain, args=(job.process.stdout, job.output_lines), daemon=True).start()
+            threading.Thread(target=_drain, args=(job.process.stderr, job.error_lines), daemon=True).start()
 
             return ExecutionResult(
                 command=command,
@@ -530,14 +602,27 @@ class ShellExecutor:
             return "".join(job.output_lines)
         return None
 
+    # Finished jobs are kept this long so the user can still read their output
+    _JOB_RETAIN_S = 300
+
     def _cleanup_finished_jobs(self):
-        """Remove long-finished jobs from tracking."""
+        """Remove finished jobs from tracking and release their pipe FDs."""
+        now = time.time()
         to_remove = []
         for jid, job in self._bg_jobs.items():
-            if not job.is_running and (time.time() - job.start_time) > 3600:
+            if not job.is_running and (now - job.start_time) > self._JOB_RETAIN_S:
                 to_remove.append(jid)
         for jid in to_remove:
-            del self._bg_jobs[jid]
+            job = self._bg_jobs.pop(jid, None)
+            if job is None:
+                continue
+            # Close pipes so we don't leak file descriptors
+            for stream in (job.process.stdout, job.process.stderr, job.process.stdin):
+                try:
+                    if stream is not None:
+                        stream.close()
+                except (OSError, ValueError):
+                    pass
 
     # ── Builtins & Directory Management ────────────────────
 
@@ -591,7 +676,9 @@ class ShellExecutor:
             if new_path.is_dir():
                 self._prev_cwd = self._cwd
                 self._cwd = str(new_path)
-                os.chdir(self._cwd)
+                # NOTE: Do not call os.chdir here — subprocesses inherit cwd via
+                # Popen(cwd=self._cwd). Mutating the process-global cwd races
+                # with concurrent execute() calls and breaks job tracking.
                 duration = (time.time() - start_time) * 1000
                 return ExecutionResult(
                     command=command, exit_code=0,
@@ -715,10 +802,27 @@ class ShellExecutor:
 
         Scans for patterns that strongly indicate shell injection, not legitimate
         shell usage. Returns an error message if injection is detected, else None.
+
+        Config knobs (on `self.config`):
+          - injection_guard_enabled (default True) — global on/off
+          - allow_command_substitution (default False) — when True, $() and
+            backtick patterns are not flagged (null byte and newline checks
+            still run; those are never legitimate in single-line commands).
         """
+        # Use explicit `is False` / `is True` so MagicMock-based tests (which
+        # return truthy MagicMock objects for any unset attribute) still see
+        # the intended defaults.
+        if getattr(self.config, "injection_guard_enabled", True) is False:
+            return None
+
+        allow_subst = getattr(self.config, "allow_command_substitution", False) is True
+        _exec_log = __import__('logging').getLogger('neuroshell.executor')
+
         for pattern, description in self._INJECTION_PATTERNS:
+            # When command substitution is explicitly allowed, skip subshell patterns
+            if allow_subst and ("subshell" in description):
+                continue
             if pattern.search(command):
-                _exec_log = __import__('logging').getLogger('neuroshell.executor')
                 _exec_log.warning("Injection guard triggered: %s | cmd=%r", description, command[:80])
                 return f"Security: {description} — command blocked"
         return None
@@ -797,32 +901,57 @@ class ShellExecutor:
         return command
 
     def _handle_multiline(self, script: str, shell: str) -> str:
-        """Save multi-line script to temp file and execute it."""
+        """Save multi-line script to temp file and execute it.
+
+        The temp file is tracked on the instance and deleted by
+        `_cleanup_pending_temp_files()` after the command completes.
+        Using delete=False is required because the spawned shell needs
+        to open the file by path; we own the cleanup explicitly.
+        """
         import tempfile
 
+        temp_dir = os.environ.get("TEMP") or tempfile.gettempdir()
+
         if shell in ("powershell", "pwsh"):
-            suffix = ".ps1"
             with tempfile.NamedTemporaryFile(
-                mode="w", suffix=suffix, delete=False, dir=os.environ.get("TEMP")
+                mode="w", suffix=".ps1", delete=False, dir=temp_dir
             ) as f:
                 f.write(script)
                 temp_path = f.name
+            self._pending_temp_files.append(temp_path)
             ps_exe = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
             return f'{ps_exe} -NoProfile -ExecutionPolicy Bypass -File "{temp_path}"'
         else:
-            suffix = ".bat"
             with tempfile.NamedTemporaryFile(
-                mode="w", suffix=suffix, delete=False, dir=os.environ.get("TEMP")
+                mode="w", suffix=".bat", delete=False, dir=temp_dir
             ) as f:
                 f.write("@echo off\n" + script)
                 temp_path = f.name
+            self._pending_temp_files.append(temp_path)
             return f'cmd /c "{temp_path}"'
+
+    def _cleanup_pending_temp_files(self):
+        """Delete temp files created by _handle_multiline. Called after execute()."""
+        if not self._pending_temp_files:
+            return
+        for path in self._pending_temp_files:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass  # best-effort; file may be locked on Windows
+        self._pending_temp_files.clear()
 
     # ── Shell Command Building ─────────────────────────────
 
     def _build_shell_command(self, command: str, shell: str) -> tuple:
         """Build platform-specific shell command."""
         if self._system == "Windows":
+            lower = command.strip().lower()
+            # If the command already explicitly invokes a shell, execute it as a raw string
+            # to prevent subprocess.Popen quote mangling and double-evaluation.
+            if lower.startswith("powershell ") or lower.startswith("pwsh ") or lower.startswith("cmd "):
+                return (command, None)
+
             if shell == "powershell" or shell == "pwsh":
                 ps_exe = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
                 return ([ps_exe, "-NoProfile", "-NonInteractive", "-Command", command], None)

@@ -14,6 +14,7 @@ import time
 import json
 import os
 from pathlib import Path
+from typing import Optional, Any, Tuple
 
 class AutoDreamDaemon:
     def __init__(self, session_memory, llm_client, magic_docs=None, ui_callback=None):
@@ -51,34 +52,54 @@ class AutoDreamDaemon:
                 continue
                 
             # System is idle! Let's check the queue.
-            queue = self._read_queue()
+            queue, proc_file = self._rotate_and_read_queue()
             if len(queue) >= self.min_queue_size:
                 if self.ui_callback:
                     self.ui_callback("AutoDream initialized: consolidating memory...")
-                self._process_queue(queue)
+                self._process_queue(queue, proc_file)
+            elif proc_file:
+                # If not enough items to process, rename back or keep for next batch
+                try:
+                    with open(self.queue_file, "a", encoding="utf-8") as f:
+                        for item in queue:
+                            f.write(json.dumps(item) + "\n")
+                    proc_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
-    def _read_queue(self) -> list:
-        if not self.queue_file.exists():
-            return []
-            
+    def _rotate_and_read_queue(self) -> tuple[list, Optional[Path]]:
+        """Atomically rotates queue file to prevent loss of turns added during processing."""
+        if not self.queue_file.exists() or self.queue_file.stat().st_size == 0:
+            return [], None
+
+        proc_file = self.queue_file.parent / f"dream_queue.processing.{int(time.time() * 1000)}.jsonl"
         try:
-            with open(self.queue_file, "r", encoding="utf-8") as f:
+            self.queue_file.rename(proc_file)
+        except Exception:
+            return [], None
+
+        try:
+            with open(proc_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
-            return [json.loads(line) for line in lines if line.strip()]
+            items = [json.loads(line) for line in lines if line.strip()]
+            return items, proc_file
         except Exception:
-            return []
-            
-    def _clear_queue(self):
-        try:
-            if self.queue_file.exists():
-                self.queue_file.write_text("")
-        except Exception:
-            pass
+            try:
+                proc_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return [], None
 
-    def _process_queue(self, queue: list):
+    def _process_queue(self, queue: list, proc_file: Optional[Path] = None):
         """Pass the queue to the LLM to get a compressed summary fact sheet."""
-        
-        # Build prompt from turns
+        if not queue:
+            if proc_file:
+                try:
+                    proc_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            return
+
         transcript = []
         for i, turn in enumerate(queue):
             role = turn.get("role", "user")
@@ -93,23 +114,16 @@ class AutoDreamDaemon:
         )
         
         try:
-            # We use process_llm synchronously since we're already in a background thread
-            # and want to ensure it completes before clearing queue
-            # Note: you should route this to a cheap model explicitly string (e.g. llama3 8b)
             summary = self.llm.generate(prompt, "You are a data compression AI.")
             
-            if summary:
-                # Append to Long Term Markdown
+            if summary and summary.text:
                 with open(self.long_term_file, "a", encoding="utf-8") as f:
                     f.write(f"\n### AutoDream Consolidation - {time.ctime()}\n")
-                    f.write(summary.strip() + "\n")
+                    f.write(summary.text.strip() + "\n")
                     
-                self._clear_queue()
-                
                 if self.ui_callback:
                     self.ui_callback("AutoDream active: 🧠 Memory compressed.")
                     
-                # Cascade hook into MagicDocs
                 if self.magic_docs:
                     if self.ui_callback:
                         self.ui_callback("AutoDream delegating to MagicDocs structural scan...")
@@ -117,4 +131,11 @@ class AutoDreamDaemon:
                     
         except Exception as e:
             if self.ui_callback:
-                self.ui_callback(f"AutoDream warn: Memory synthesis failed - {e}")
+                self.ui_callback(f"AutoDream processing error: {e}")
+        finally:
+            if proc_file:
+                try:
+                    proc_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                self.ui_callback(f"AutoDream memory synthesis failed - {e}")

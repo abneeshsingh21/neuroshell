@@ -121,24 +121,47 @@ class FastParser:
 
         return tokens
 
-    def _extract_redirects(self, command: str) -> tuple[list[dict], str]:
-        """Extract redirect operators from command."""
-        redirects = []
-        # Match >>, >, 2>, 2>>, <
-        pattern = re.compile(r'(2?)(>>?|<)\s*(\S+)')
-        
-        for match in pattern.finditer(command):
-            fd = match.group(1) or "1"
-            op = match.group(2)
-            target = match.group(3)
-            redirects.append({
-                "fd": int(fd) if fd.isdigit() else 1,
-                "mode": "append" if ">>" in op else ("read" if "<" in op else "write"),
-                "target": target,
-            })
+    tokenize = _tokenize
 
-        cleaned = pattern.sub("", command).strip()
-        return redirects, cleaned
+    def _extract_redirects(self, command: str) -> tuple[list[dict], str]:
+        """Extract redirect operators from command taking quotes into account."""
+        tokens = self._tokenize(command)
+        redirects = []
+        clean_tokens = []
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            # Standalone redirect token (e.g. > file.txt or >> log.txt)
+            match = re.match(r'^(2?)(>>?|<)$', tok)
+            if match:
+                fd = match.group(1) or "1"
+                op = match.group(2)
+                if i + 1 < len(tokens):
+                    target = tokens[i + 1]
+                    redirects.append({
+                        "fd": int(fd) if fd.isdigit() else 1,
+                        "mode": "append" if ">>" in op else ("read" if "<" in op else "write"),
+                        "target": target,
+                    })
+                    i += 2
+                    continue
+            # Combined redirect token (e.g. >file.txt or 2>err.log)
+            comb = re.match(r'^(2?)(>>?|<)(\S+)$', tok)
+            if comb and not (tok.startswith("'") or tok.startswith('"')):
+                fd = comb.group(1) or "1"
+                op = comb.group(2)
+                target = comb.group(3)
+                redirects.append({
+                    "fd": int(fd) if fd.isdigit() else 1,
+                    "mode": "append" if ">>" in op else ("read" if "<" in op else "write"),
+                    "target": target,
+                })
+                i += 1
+                continue
+            clean_tokens.append(tok)
+            i += 1
+
+        return redirects, " ".join(clean_tokens)
 
 
 # ═══════════════════════════════════════════════════════════

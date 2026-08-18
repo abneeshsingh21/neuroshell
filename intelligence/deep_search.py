@@ -1,10 +1,13 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
+from __future__ import annotations
+
 import sys
 import os
 import time
 import re
 from pathlib import Path
+from typing import Optional, List, Tuple
 
 # Cyberpunk ANSI Theme
 COLOR_PRIMARY = "\033[38;2;56;189;248m"  # Cyan
@@ -102,6 +105,50 @@ def scan_directory(directory: str, query: str, results: list, start_time: float,
     except OSError:
         pass # Skip unreadable dirs
 
+class DeepSearch:
+    """Programmatic deep search interface."""
+
+    def __init__(self, default_timeout: int = 10):
+        self.default_timeout = default_timeout
+
+    def search(self, query: str, directory: Optional[str] = None, timeout: Optional[int] = None) -> list[tuple[bool, str, str, str]]:
+        """Search recursively for matches."""
+        target_dir = directory or os.getcwd()
+        limit_timeout = timeout if timeout is not None else self.default_timeout
+        results = []
+        start_time = time.time()
+        scan_directory(target_dir, query, results, start_time, timeout=limit_timeout)
+        results.sort(key=lambda x: (not x[0], x[3].lower()))
+        return results
+
+    def format_results(self, query: str, results: list, start_dir: str = "", elapsed: float = 0.0) -> str:
+        """Format search results for terminal display."""
+        lines = [
+            f"\n{COLOR_SECONDARY}◈◈ N-SEARCH RESULTS ◈◈{COLOR_RESET}",
+            f"{COLOR_MUTED}Query:{COLOR_RESET} {COLOR_PRIMARY}{query}{COLOR_RESET}",
+            f"{COLOR_PRIMARY}TYPE{COLOR_RESET} | {COLOR_SUCCESS}SIZE{COLOR_RESET}      | {COLOR_SECONDARY}MATCH{COLOR_RESET}",
+            f"{COLOR_MUTED}{'-'*65}{COLOR_RESET}",
+        ]
+        for is_dir, size, path, name in results:
+            highlighted_name = re.sub(
+                f"({re.escape(query)})",
+                f"{COLOR_WARNING}\\1{COLOR_TEXT}",
+                name,
+                flags=re.IGNORECASE,
+            )
+            parent = os.path.dirname(path)
+            if len(parent) > 50:
+                parent = "..." + parent[-47:]
+            type_str = f"{COLOR_SECONDARY}[DIR]{COLOR_RESET} " if is_dir else f"{COLOR_PRIMARY}[FILE]{COLOR_RESET}"
+            size_str = f"{size:>8}"
+            lines.append(f"{type_str} | {COLOR_SUCCESS}{size_str}{COLOR_RESET} | {COLOR_TEXT}{highlighted_name}{COLOR_RESET}")
+            lines.append(f"       |          | {COLOR_MUTED}↳ {parent}{COLOR_RESET}")
+
+        lines.append(f"{COLOR_MUTED}{'-'*65}{COLOR_RESET}")
+        lines.append(f"{COLOR_PRIMARY}◈ Found {len(results)} matches in {elapsed:.2f}s{COLOR_RESET}\n")
+        return "\n".join(lines)
+
+
 def main():
     if len(sys.argv) < 2:
         print(f"{COLOR_WARNING}[!] No query provided.{COLOR_RESET}")
@@ -144,3 +191,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

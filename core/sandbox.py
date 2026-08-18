@@ -88,36 +88,66 @@ class GitSandbox:
             return ""
 
     def apply_to_primary(self) -> bool:
-        """Apply sandbox changes back to the primary workspace (Fast-Forward Merge)."""
+        """Apply sandbox changes back to the primary workspace.
+
+        Returns True only when changes were actually committed and merged
+        cleanly. Returns False on commit failure, merge conflict, or any
+        git error. "Nothing to commit" is reported as True (no-op success).
+        """
         if not self.sandbox_dir or not self.sandbox_branch:
             return False
 
-        _log.info(f"Committing sandbox changes and merging to primary.")
+        _log.info("Committing sandbox changes and merging to primary.")
         neuro_events.emit("swarm_update", "  ↳ [Sandbox Internal] git add . && git commit")
         try:
-            # Commit all changes in the sandbox
-            subprocess.run(["git", "add", "."], cwd=str(self.sandbox_dir), check=True)
-            res = subprocess.run(["git", "commit", "-m", "NeuroShell: Sandbox applied"], cwd=str(self.sandbox_dir), capture_output=True)
-            
-            if "nothing to commit" in res.stdout:
-                _log.info("No changes to apply.")
-                return True
-
-            # Switch back to primary and merge the sandbox branch
-            current_branch = subprocess.run(
-                ["git", "branch", "--show-current"], 
-                cwd=str(self.primary), capture_output=True, text=True
-            ).stdout.strip()
-
+            # Stage all changes
             subprocess.run(
-                ["git", "merge", self.sandbox_branch],
-                cwd=str(self.primary),
+                ["git", "add", "."],
+                cwd=str(self.sandbox_dir),
                 check=True,
-                capture_output=True
+                capture_output=True,
+                text=True,
             )
+
+            # Commit — do NOT use check=True; "nothing to commit" returns nonzero
+            # and is a legitimate no-op we want to detect explicitly.
+            res = subprocess.run(
+                ["git", "commit", "-m", "NeuroShell: Sandbox applied"],
+                cwd=str(self.sandbox_dir),
+                capture_output=True,
+                text=True,
+            )
+
+            if res.returncode != 0:
+                combined = (res.stdout or "") + (res.stderr or "")
+                if "nothing to commit" in combined.lower():
+                    _log.info("No changes to apply.")
+                    return True
+                # Real failure (e.g., pre-commit hook rejected, signing failure)
+                _log.error("Sandbox commit failed: %s", combined.strip())
+                return False
+
+            # Merge sandbox branch into primary; --no-ff keeps the boundary explicit
+            # and forces a real merge commit so failures are visible.
+            merge_res = subprocess.run(
+                ["git", "merge", "--no-ff", "--no-edit", self.sandbox_branch],
+                cwd=str(self.primary),
+                capture_output=True,
+                text=True,
+            )
+            if merge_res.returncode != 0:
+                combined = (merge_res.stdout or "") + (merge_res.stderr or "")
+                _log.error("Sandbox merge failed: %s", combined.strip())
+                # Abort the half-finished merge so the primary checkout is left clean
+                subprocess.run(
+                    ["git", "merge", "--abort"],
+                    cwd=str(self.primary),
+                    capture_output=True,
+                )
+                return False
             return True
         except subprocess.CalledProcessError as e:
-            _log.error(f"Failed to apply sandbox changes: {e}")
+            _log.error(f"Failed to apply sandbox changes: {e.stderr or e}")
             return False
 
     def cleanup(self):

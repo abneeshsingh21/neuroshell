@@ -73,14 +73,19 @@ class SafetyResult:
     dry_run_command: str = ""
     audit_id: str = ""
 
+    _BADGE_MAP = {
+        RiskLevel.SAFE: "✅ SAFE",
+        RiskLevel.CAUTION: "⚠️ CAUTION",
+        RiskLevel.DANGER: "⛔ DANGER",
+        RiskLevel.BLOCKED: "🚫 BLOCKED",
+    }
+
     def __post_init__(self):
-        badge_map = {
-            RiskLevel.SAFE: "✅ SAFE",
-            RiskLevel.CAUTION: "⚠️ CAUTION",
-            RiskLevel.DANGER: "⛔ DANGER",
-            RiskLevel.BLOCKED: "🚫 BLOCKED",
-        }
-        self.badge = badge_map.get(self.risk_level, "")
+        self.badge = self._BADGE_MAP.get(self.risk_level, "")
+
+    def _refresh_badge(self):
+        """Recompute badge after risk_level mutation (e.g. policy escalation)."""
+        self.badge = self._BADGE_MAP.get(self.risk_level, "")
 
     @property
     def should_block(self) -> bool:
@@ -132,6 +137,8 @@ class SafetyChecker:
     BLOCKED_PATTERNS = [
         (r"rm\s+-rf\s+/\s*$", "Recursive delete of root filesystem"),
         (r"rm\s+-rf\s+~\s*$", "Recursive delete of home directory"),
+        (r"rm\s+-rf\s+\$HOME\b", "Recursive delete of user home directory"),
+        (r"rm\s+-rf\s+/(?:etc|usr|var|bin|sbin|lib|lib64|opt|boot|root|System|Library|Volumes)(?:/|\s*$)", "Recursive delete of critical OS directory"),
         (r"rm\s+-rf\s+/\s", "Recursive delete from root path"),
         (r"rm\s+-rf\s+\*\s*$", "Recursive delete of all files"),
         (r"format\s+[a-zA-Z]:", "Disk format command"),
@@ -142,10 +149,15 @@ class SafetyChecker:
         (r":\(\)\{\s*:\|:\s*&\s*\};:", "Fork bomb"),
         (r"chmod\s+-R\s+777\s+/\s*$", "Recursive chmod 777 on root"),
         (r"chown\s+-R\s+.+\s+/\s*$", "Recursive chown on root"),
-        (r"curl\s+.+\|\s*sh", "Piped remote script execution"),
-        (r"wget\s+.+\|\s*sh", "Piped remote script execution"),
-        (r"curl\s+.+\|\s*bash", "Piped remote script execution"),
-        (r"eval\s+\"\$\(curl", "Remote code evaluation"),
+        # ChatML / Prompt Injection Special Tokens
+        (r"<\|(?:im_start|im_end|begin_of_text|end_of_text)\|>", "ChatML model prompt injection detected"),
+        (r"\[INST\]|\[/INST\]|<<SYS>>", "LLM control template injection detected"),
+        # Pipe-to-interpreter: cover all common shells and language runtimes.
+        (r"curl\s+.+\|\s*(?:ba|z|k|fi|c|pw)?sh\b", "Piped remote script execution"),
+        (r"wget\s+.+\|\s*(?:ba|z|k|fi|c|pw)?sh\b", "Piped remote script execution"),
+        (r"curl\s+.+\|\s*(?:python|python3|node|perl|ruby|php|lua)\b", "Piped remote code to interpreter"),
+        (r"wget\s+.+\|\s*(?:python|python3|node|perl|ruby|php|lua)\b", "Piped remote code to interpreter"),
+        (r"\beval\s+[\"']?\$\(\s*(?:curl|wget|fetch)\b", "Remote code evaluation"),
         (r"/dev/null\s*>\s*/etc/", "Overwrite system config"),
         (r"iptables\s+-F", "Flush all firewall rules"),
         (r"systemctl\s+disable\s+firewalld", "Disable firewall"),
@@ -197,7 +209,10 @@ class SafetyChecker:
         (r"\btar\s+.*--delete\b", "Archive deletion"),
         (r"\biptables\b", "Firewall modification"),
         (r"\bnetsh\b", "Network configuration"),
-        (r">", "File overwrite (redirect)"),
+        # Match output-overwrite redirection: a single `>` (not `>>`, not `&>`,
+        # not numeric fd-redirect like `2>`) followed by a file path token.
+        # Skips stderr-merges (`2>&1`) and append (`>>`).
+        (r"(?<![>&0-9])>(?!>)\s*[^\s&|]+", "File overwrite (redirect)"),
         (r"\|\s*tee\s+", "File overwrite via tee"),
     ]
 
@@ -232,6 +247,26 @@ class SafetyChecker:
     # Main API
     # ═══════════════════════════════════════════════════════
 
+    def _normalize_for_safety(self, command: str) -> str:
+        """Strip obfuscation quotes, backslashes, and normalize flags for AST safety checking."""
+        if not command:
+            return ""
+        norm = command.strip()
+        # Strip internal empty quotes: d""el -> del, r'm' -> rm
+        norm = re.sub(r"['\"]{2,}", "", norm)
+        norm = re.sub(r"(?<=\w)['\"](?=\w)", "", norm)
+        # Normalize escaped characters: \r\m -> rm
+        norm = re.sub(r"\\([a-zA-Z0-9])", r"\1", norm)
+        # Normalize rm flag permutations: rm -fr -> rm -rf, rm -r -f -> rm -rf
+        norm = re.sub(r"\brm\s+-fr\b", "rm -rf", norm)
+        norm = re.sub(r"\brm\s+-r\s+-f\b", "rm -rf", norm)
+        norm = re.sub(r"\brm\s+-f\s+-r\b", "rm -rf", norm)
+        # Normalize root wildcards: rm -rf /* -> rm -rf /
+        norm = re.sub(r"\brm\s+-rf\s+/\*\s*$", "rm -rf /", norm)
+        # Normalize windows del flags: del /q /s -> del /s /q
+        norm = re.sub(r"\bdel\s+/[qQ]\s+/[sS]\b", "del /s /q", norm)
+        return norm
+
     def check(self, command: str) -> SafetyResult:
         """Run comprehensive four-layer safety check."""
         if not self.config.enabled:
@@ -242,19 +277,23 @@ class SafetyChecker:
         if cmd_normalized in self._whitelist:
             return SafetyResult(risk_level=RiskLevel.SAFE, reason="Whitelisted command")
 
+        norm_cmd = self._normalize_for_safety(command)
+        cmds_to_test = [command] if norm_cmd == command else [command, norm_cmd]
+
         # Layer 1: BLOCKED patterns
-        for pattern, reason in self.BLOCKED_PATTERNS:
-            if re.search(pattern, command, re.IGNORECASE):
-                result = SafetyResult(
-                    risk_level=RiskLevel.BLOCKED,
-                    reason=f"🚫 BLOCKED: {reason}",
-                    is_reversible=False,
-                    needs_confirmation=True,
-                    affected=self._estimate_scope(command),
-                )
-                result = self._apply_policy_overrides(command, result)
-                self._log_audit(command, result)
-                return result
+        for c in cmds_to_test:
+            for pattern, reason in self.BLOCKED_PATTERNS:
+                if re.search(pattern, c, re.IGNORECASE):
+                    result = SafetyResult(
+                        risk_level=RiskLevel.BLOCKED,
+                        reason=f"🚫 BLOCKED: {reason}",
+                        is_reversible=False,
+                        needs_confirmation=True,
+                        affected=self._estimate_scope(command),
+                    )
+                    result = self._apply_policy_overrides(command, result)
+                    self._log_audit(command, result)
+                    return result
 
         # Layer 2: Chain analysis (pipes, &&, ;)
         chain_risks = self._analyze_chain(command)
@@ -376,7 +415,10 @@ class SafetyChecker:
         scope.recursive = bool(re.search(r'\s-[rR]f?\s|\s--recursive\s|\s/[sS]\s', command))
 
         # Detect system-wide operations
-        system_markers = ["/etc/", "/usr/", "/var/", "C:\\Windows", "HKLM\\", "/dev/"]
+        system_markers = [
+            "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/opt", "/boot",
+            "/root", "/System", "/Library", "/Volumes", "C:\\Windows", "HKLM\\", "/dev/"
+        ]
         scope.system_wide = any(m in command for m in system_markers)
 
         # Extract affected paths
@@ -470,7 +512,7 @@ class SafetyChecker:
             return True
         if command.count(";") > 2:
             return True
-        if "eval" in command:
+        if re.search(r"\beval\b", command):
             return True
         return False
 
@@ -817,6 +859,7 @@ class SafetyChecker:
                     result.risk_level = RiskLevel.DANGER
                     result.needs_confirmation = True
                     result.reason = f"⛔ [staging/{role}] Escalated from CAUTION: {result.reason}"
+                    result._refresh_badge()
             return result
 
         # Production profile: strict governance with role-based blocking.
@@ -826,6 +869,7 @@ class SafetyChecker:
                     result.risk_level = RiskLevel.BLOCKED
                     result.needs_confirmation = True
                     result.reason = f"🚫 [production/viewer] Non-read-only command blocked: {result.reason}"
+                    result._refresh_badge()
                     return result
 
             if role in {"developer", "operator"}:
@@ -833,11 +877,13 @@ class SafetyChecker:
                     result.risk_level = RiskLevel.DANGER
                     result.needs_confirmation = True
                     result.reason = f"⛔ [production/{role}] Escalated from CAUTION: {result.reason}"
+                    result._refresh_badge()
 
                 if result.risk_level == RiskLevel.DANGER and self._has_high_impact_markers(command):
                     result.risk_level = RiskLevel.BLOCKED
                     result.needs_confirmation = True
                     result.reason = f"🚫 [production/{role}] High-impact command blocked by policy"
+                    result._refresh_badge()
 
             # Admin retains explicit confirmation but is not auto-blocked by profile escalations.
             if role == "admin" and result.risk_level in {RiskLevel.CAUTION, RiskLevel.DANGER}:

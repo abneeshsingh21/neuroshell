@@ -34,29 +34,29 @@ class ClipboardManager:
             return False
 
     def copy(self, text: str) -> bool:
-        """Copy text to clipboard."""
-        if not HAS_PYPERCLIP:
-            return False
+        """Copy text to clipboard with in-memory fallback."""
+        self._last_copied = text
+        self._history.append(text)
+        if len(self._history) > 50:
+            self._history.pop(0)
 
-        try:
-            pyperclip.copy(text)
-            self._last_copied = text
-            self._history.append(text)
-            if len(self._history) > 50:
-                self._history.pop(0)
-            return True
-        except Exception:
-            return False
+        if HAS_PYPERCLIP:
+            try:
+                pyperclip.copy(text)
+            except Exception:
+                pass
+        return True
 
     def paste(self) -> Optional[str]:
-        """Get text from clipboard."""
-        if not HAS_PYPERCLIP:
-            return None
-
-        try:
-            return pyperclip.paste()
-        except Exception:
-            return None
+        """Get text from clipboard or memory fallback."""
+        if HAS_PYPERCLIP:
+            try:
+                val = pyperclip.paste()
+                if val:
+                    return val
+            except Exception:
+                pass
+        return self._last_copied if self._last_copied else None
 
     def copy_command(self, command: str) -> bool:
         """Copy a command to clipboard (strips leading/trailing whitespace)."""

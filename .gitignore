@@ -35,8 +35,12 @@ vscode-extension/out/
 cpp_engine/build/
 *.egg-info/
 
-# Large binaries
+# Large binaries & Build artifacts
 *.exe
+*.obj
+*.res
+*.pdb
+*.ilk
 *.msi
 msix_staging/NeuroShell.exe
 neuroshell-installer-temp/

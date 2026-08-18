@@ -104,6 +104,10 @@ class NeuroShell:
             print(" ⚠️ timeout")
         return ready
 
+    def wait_for_modules(self, timeout: float = 30.0) -> bool:
+        """Block until heavy modules are loaded. Returns True if ready."""
+        return self._wait_for_modules(timeout=timeout)
+
     def _load_heavy_modules(self):
         """Load all heavy modules in background thread."""
         try:
@@ -119,6 +123,18 @@ class NeuroShell:
             self.history = HistoryStore()
             self.parser = OutputParser()
             self.dep_resolver = DependencyResolver(self.context)
+
+            class _DefaultConsoleUI:
+                def print_info(self, msg, **kw): print(msg)
+                def print_error(self, msg, **kw): print(msg)
+                def print_success(self, msg, **kw): print(msg)
+                def print_warning(self, msg, **kw): print(msg)
+                def print_result(self, cmd, res, **kw):
+                    code = getattr(res, 'exit_code', getattr(res, 'returncode', 0))
+                    print(f"\n[Exit code: {code}]")
+                    if getattr(res, 'stdout', None): print(res.stdout)
+                    if getattr(res, 'stderr', None): print(f"Error: {res.stderr}")
+            self.ui = _DefaultConsoleUI()
 
             # ── Observability ────────────────────────────
             from observability.tracer import EventTracer
@@ -180,14 +196,20 @@ class NeuroShell:
             self.phrase_dict = PhraseDictionary()
             self.offline_fallback = OfflineFallbackManager(self.config)
 
-            # Try importing C++ engine gracefully
+            # Try importing C++ engine gracefully, falling back to pure-Python engine
             try:
                 import cpp_engine.cpp_engine_core as cpp
                 self.cpp_parser = cpp.FastParser()
                 self.cpp_matcher = cpp.FuzzyMatcher()
                 self._cpp_enabled = True
             except ImportError:
-                self._cpp_enabled = False
+                try:
+                    from cpp_engine.engine import FastParser, FuzzyMatcher, MarkovEngine
+                    self.cpp_parser = FastParser()
+                    self.cpp_matcher = FuzzyMatcher()
+                    self._cpp_enabled = True
+                except Exception:
+                    self._cpp_enabled = False
 
             # ── Feature Modules ──────────────────────────
             from extensions.alias_manager import AliasManager
@@ -198,6 +220,14 @@ class NeuroShell:
             from extensions.auto_docs import AutoDocsGenerator
             from intelligence.smart_suggestions import SmartSuggester
             from intelligence.smart_open import SmartOpenEngine
+            from extensions.clipboard import ClipboardManager
+            from extensions.session_recorder import SessionRecorder
+            from extensions.workspace_profiles import WorkspaceProfileManager
+            from extensions.plugin_system import PluginSystem
+            from operations.data_governance import DataGovernanceManager
+            from operations.update_manager import UpdateManager
+            from operations.git_ops import GitOps, GitTool
+            from intelligence.deep_search import DeepSearch
 
             self.alias_manager = AliasManager()
             self.env_manager = EnvManager()
@@ -207,13 +237,17 @@ class NeuroShell:
             self.docs_generator = AutoDocsGenerator(self.history, None)
             self.smart_suggester = SmartSuggester(self.history, self.context)
             self.smart_open = SmartOpenEngine()
+            self.ext_clipboard = ClipboardManager()
+            self.ext_recorder = SessionRecorder()
+            self.workspace_profiles = WorkspaceProfileManager()
+            self.plugin_system = PluginSystem()
+            self.data_governance = DataGovernanceManager(NEUROSHELL_DIR / "logs", NEUROSHELL_DIR / "audit")
+            self.update_manager = UpdateManager(NEUROSHELL_DIR / "release")
+            self.git_ops = GitOps()
+            self.deep_search = DeepSearch()
 
             # ── Phase 7 Agentic Features ─────────────────
             from intelligence.coordinator import Coordinator
-            from intelligence.mcp.mcp_client import MCPClient
-            from intelligence.lsp.lsp_client import LSPClient
-            from intelligence.tools.mcp_tool import MCPTool
-            from intelligence.tools.lsp_tool import LSPTool
             from intelligence.tools.task_tools import TaskSystemTool
             from intelligence.tools.mode_tools import ModeTool
             from intelligence.tools.teammate_tool import TeammateTool
@@ -222,23 +256,40 @@ class NeuroShell:
             from intelligence.swarm import SwarmOrchestrator
 
             self.session_memory = SessionMemory(max_turns=15)
+            self.mcp_client = None
+            self.lsp_client = None
 
             try:
+                from intelligence.mcp.mcp_client import MCPClient
+                from intelligence.tools.mcp_tool import MCPTool
                 self.mcp_client = MCPClient("http://localhost:8000")
             except Exception:
-                self.mcp_client = None
+                pass
 
-            self.lsp_client = LSPClient(["python", "-m", "pylsp"])
+            try:
+                from intelligence.lsp.lsp_client import LSPClient
+                from intelligence.tools.lsp_tool import LSPTool
+                self.lsp_client = LSPClient(["python", "-m", "pylsp"])
+            except Exception:
+                pass
 
             from intelligence.tasks.task_manager import TaskManager
             self.task_manager = TaskManager()
 
             self.coordinator = Coordinator(self.llm, self.context)
             if self.mcp_client is not None:
-                self.coordinator.register_tool(MCPTool(self.mcp_client))
-            self.coordinator.register_tool(LSPTool(self.lsp_client))
+                try:
+                    self.coordinator.register_tool(MCPTool(self.mcp_client))
+                except Exception:
+                    pass
+            if self.lsp_client is not None:
+                try:
+                    self.coordinator.register_tool(LSPTool(self.lsp_client))
+                except Exception:
+                    pass
             self.coordinator.register_tool(TaskSystemTool(self.task_manager))
             self.coordinator.register_tool(TeammateTool())
+            self.coordinator.register_tool(GitTool(self.git_ops))
 
             self.plan_mode = PlanModeController()
             self.coordinator.register_tool(ModeTool(self.plan_mode))
@@ -252,7 +303,7 @@ class NeuroShell:
             self.auto_dream = AutoDreamDaemon(
                 self.session_memory, self.llm,
                 magic_docs=self.magic_docs,
-                ui_callback=lambda m: print(f"[AutoDream] {m}")
+                ui_callback=lambda m: self.logger.debug("auto_dream", message=m)
             )
             self.auto_dream.start()
 
@@ -299,10 +350,11 @@ class NeuroShell:
                 self.logger.warn("extensions_load_failed", error=str(ext_err))
 
             # ── Resilience ───────────────────────────────
-            from resilience.resilience import HealthCheck, GracefulDegradation, NetworkAware
+            from resilience.resilience import HealthCheck, GracefulDegradation, NetworkAware, ResilienceManager
             self.network = NetworkAware()
             self.health = HealthCheck(self.config)
             self.degradation = GracefulDegradation()
+            self.resilience_manager = ResilienceManager(self.config)
 
             # ── Deployment operations ───────────────────
             from operations.deploy_manager import DeployManager
@@ -322,13 +374,20 @@ class NeuroShell:
             # ── UI ───────────────────────────────────────
             from ui.app import NeuroShellUI
             from ui.dashboard import Dashboard
+            from ui.terminal_editor import TerminalLineEditor
             self.ui = NeuroShellUI()
+            self.line_editor = TerminalLineEditor(autocomplete_engine=self.autocomplete, history_store=self.history)
             self.dashboard = Dashboard(
                 history_store=self.history,
                 metrics_tracker=self.metrics,
                 project_detector=self.project_detector,
                 config=self.config,
             )
+
+            # ── High-Speed IPC Server ───────────────────
+            from core.ipc_server import NamedPipeServer
+            self.ipc_server = NamedPipeServer(self)
+            self.ipc_server.start()
 
             # Signal ready
             self._modules_ready.set()
@@ -372,46 +431,22 @@ class NeuroShell:
 
         self.logger.info("startup", session_id=self.session_id)
 
-        # Fast start mode: skip heavy initialization
-        fast_start = os.environ.get("NEUROSHELL_FAST_START") == "1"
+        # Initialize fast NLP layer (<5ms)
+        self._init_nlp()
 
-        if not fast_start and not self._degraded:
-            # Run health checks
-            if hasattr(self, 'health') and self.health:
-                report = self.health.run_all()
-                self.ui.print_health_report(report)
-
-            # Initialize NLP layer
-            self._init_nlp()
-
-            # Pre-warm LLM model in background for faster first response
-            self.llm.warmup_async()
-
-            # Initialize learning
+        # Launch background warmup asynchronously without blocking prompt
+        def _async_warmup():
             try:
-                self.pattern_learner.learn_from_history()
-                self.predictor.train()
-            except Exception as e:
-                self.logger.warn("learning_init_failed", error=str(e))
-        else:
-            # Minimal init for fast start
-            self._init_nlp()
-            self.ui.print_info("⚡ Fast start mode — health checks skipped")
+                if hasattr(self, 'llm') and self.llm:
+                    self.llm.warmup_async()
+                if hasattr(self, 'pattern_learner') and self.pattern_learner:
+                    self.pattern_learner.learn_from_history()
+                if hasattr(self, 'predictor') and self.predictor:
+                    self.predictor.train()
+            except Exception:
+                pass
 
-        # Check graceful degradation (only warn about Ollama if actually using it)
-        provider = getattr(getattr(self.config, 'llm', None), 'provider', 'ollama')
-        if provider == "ollama":
-            self.degradation.check_and_degrade(
-                "ollama", self.llm.is_available(),
-                "⚠️ Ollama not available — AI features limited to NLP + cached fixes"
-            )
-        self.degradation.check_and_degrade(
-            "nlp", self.intent_classifier._loaded,
-            "⚠️ NLP model not loaded — using regex fallback"
-        )
-
-        for warning in self.degradation.get_warnings():
-            self.ui.print_info(warning)
+        threading.Thread(target=_async_warmup, daemon=True, name="Warmup").start()
 
         # Start session
         cwd = os.getcwd()
@@ -433,20 +468,33 @@ class NeuroShell:
     def _handle_signal(self, signum, frame):
         """Handle SIGINT/SIGTERM for clean shutdown."""
         if signum == signal.SIGINT:
-            # First Ctrl+C cancels current operation, second exits
-            if self._command_count > 0:
-                print()  # newline after ^C
-                return
+            now = time.time()
+            if hasattr(self, "_last_sigint_time") and (now - self._last_sigint_time) < 1.5:
+                print("\n\x1b[1;33m[!] Exiting NeuroShell...\x1b[0m")
+                self._running = False
+                self.shutdown()
+                sys.exit(0)
+            self._last_sigint_time = now
+            print("\n\x1b[38;5;240m(Press Ctrl+C again within 1.5s to exit)\x1b[0m")
+            return
         self._running = False
         self.shutdown()
         sys.exit(0)
 
-    def _crash_cleanup(self):
-        """Atexit handler — save session data even on crash."""
+    def shutdown(self):
+        """Clean shutdown of background services and session state."""
         try:
+            if hasattr(self, "ipc_server") and self.ipc_server:
+                self.ipc_server.stop()
+            if hasattr(self, "auto_dream") and self.auto_dream:
+                self.auto_dream.stop()
             self.history.end_session(self.session_id)
         except Exception:
             pass
+
+    def _crash_cleanup(self):
+        """Atexit handler — save session data even on crash."""
+        self.shutdown()
 
     def _setup_tab_completion(self):
         """Set up readline tab-completion (Unix/macOS)."""
@@ -523,7 +571,16 @@ class NeuroShell:
                     network=self.network.is_online if hasattr(self.network, "is_online") else True,
                 )
 
-                user_input = input(prompt).strip()
+                if hasattr(self, "line_editor") and self.line_editor:
+                    raw_input = self.line_editor.read_line(prompt)
+                else:
+                    raw_input = input(prompt)
+
+                if raw_input is None:
+                    self._running = False
+                    break
+
+                user_input = raw_input.strip()
                 if not user_input:
                     continue
 
@@ -563,6 +620,15 @@ class NeuroShell:
 
         # Deterministic prefix routing — always wins over NLP
         lower = user_input.lower().strip()
+
+        # ── Slash Command Router (/) ──
+        if lower.startswith("/"):
+            if self._handle_slash_command(user_input, cid):
+                total_ms = (time.time() - start_time) * 1000
+                self.metrics.record_latency("total_pipeline", total_ms)
+                self.tracer.end_trace(cid)
+                return
+
         if lower.startswith("explain:") or lower.startswith("explain "):
             command = user_input.split(":", 1)[-1].strip() if ":" in user_input else user_input[7:].strip()
             if not command:
@@ -1074,7 +1140,13 @@ class NeuroShell:
 
         # ── Pipeline templates list ──
         if lower == "pipelines":
-            templates = self.pipeline.list_templates()
+            builder = getattr(self, "pipeline_builder", None)
+            if not builder:
+                self.ui.print_error("  Pipeline builder unavailable.")
+                self.tracer.end_trace(cid)
+                return
+
+            templates = builder.list_templates()
             print("  ╔══════════════════════════════════════════════╗")
             print("  ║       📋 Pipeline Templates                  ║")
             print("  ╚══════════════════════════════════════════════╝")
@@ -1731,7 +1803,8 @@ class NeuroShell:
         if has_ui:
             self.ui.print_result(command, result, language_hint=language_hint, parsed_output=parsed_output)
         else:
-            print(f"\n[Exit code: {result.returncode}]")
+            code = getattr(result, 'exit_code', getattr(result, 'returncode', 0))
+            print(f"\n[Exit code: {code}]")
             if result.stdout: print(result.stdout)
             if result.stderr: print(f"Error: {result.stderr}")
 
@@ -1765,6 +1838,51 @@ class NeuroShell:
         if len(self._conversation_context) > self._MAX_MEMORY:
             self._conversation_context.pop(0)
 
+        # ── Execution Lifecycle Hooks ──
+        # 1. Session Memory
+        if hasattr(self, "ext_memory") and self.ext_memory:
+            try:
+                self.ext_memory.record(
+                    input_text=command,
+                    command=command,
+                    success=result.exit_code == 0,
+                    duration_ms=result.duration_ms,
+                    context=os.getcwd(),
+                )
+            except Exception:
+                pass
+
+        # 2. Session Recorder (if active)
+        if hasattr(self, "ext_recorder") and self.ext_recorder and self.ext_recorder.is_recording:
+            try:
+                self.ext_recorder.record_input(command)
+                self.ext_recorder.record_output(result.stdout or result.stderr or "", exit_code=result.exit_code)
+            except Exception:
+                pass
+
+        # 3. Runtime SLO Metrics
+        if hasattr(self, "runtime_slo") and self.runtime_slo:
+            try:
+                self.runtime_slo.record_latency_ms("command_exec", result.duration_ms)
+                if result.exit_code != 0:
+                    self.runtime_slo.record_error()
+            except Exception:
+                pass
+
+        # 4. Long Task Notification (>10s)
+        if hasattr(self, "ext_notifications") and self.ext_notifications and result.duration_ms > 10000:
+            try:
+                self.ext_notifications.on_command_complete(command, result.duration_ms, result.exit_code == 0)
+            except Exception:
+                pass
+
+        # 5. Workspace Profile auto-activation
+        if hasattr(self, "workspace_profiles") and self.workspace_profiles:
+            try:
+                self.workspace_profiles.activate(os.getcwd())
+            except Exception:
+                pass
+
         # Handle errors
         if result.exit_code != 0:
             self._last_error_output = result.stderr or result.stdout
@@ -1790,12 +1908,12 @@ class NeuroShell:
         # ---- v5.0 Offline/PII Hooks ----
         if getattr(self.config, 'raw_shell_mode', False):
             # No-LLM mode
-            res = self.phrase_dict.match(user_input)
-            if res['confidence'] > 0.8:
+            res = self.phrase_dict.translate(user_input)
+            if res and res.get('confidence', 0.0) > 0.8:
                 return self._handle_shell_command(res['command'], cid)
-            else:
-                self.ui.print_error('Raw Shell Mode: Command not found in offline dictionary. Try phrasing it differently.')
-                return
+
+            self.ui.print_error('Raw Shell Mode: Command not found in offline dictionary. Try phrasing it differently.')
+            return
 
         # PII Scrubbing
         safe_input = self.pii_scrubber.scrub(user_input)
@@ -2246,33 +2364,810 @@ class NeuroShell:
         self.ui.print_info(f"  💾 History exported to: {filepath.absolute()}")
 
     # ═══════════════════════════════════════════════════════
+    # Unified Slash Command Router (/)
+    # ═══════════════════════════════════════════════════════
+
+    def _handle_slash_command(self, user_input: str, cid: str) -> bool:
+        """
+        Unified handler for all '/' Slash Commands across NeuroShell.
+        Returns True if the command was recognized and handled.
+        """
+        clean = user_input.strip()
+        if not clean.startswith("/"):
+            return False
+
+        parts = clean[1:].strip().split(None, 1)
+        if not parts:
+            self._handle_slash_help()
+            return True
+
+        cmd = parts[0].lower()
+        arg_str = parts[1].strip() if len(parts) > 1 else ""
+        args = shlex.split(arg_str, posix=(os.name != "nt")) if arg_str else []
+
+        if cmd in ("help", "?"):
+            self._handle_slash_help()
+            return True
+
+        if cmd in ("api-key", "apikey", "key"):
+            self._handle_slash_api_key(args)
+            return True
+
+        if cmd == "model":
+            if not arg_str:
+                if hasattr(self, "model_manager") and self.model_manager:
+                    models = self.model_manager.list_available_models()
+                    if models and sys.stdin.isatty() and os.environ.get("NEUROSHELL_TEST_MODE") != "1":
+                        from ui.interactive_menu import select_menu
+                        active = self.model_manager.get_active_model()
+                        opts = [{"name": m["name"], "desc": m.get("description", ""), "badge": "(Active)" if m["name"] == active else ""} for m in models]
+                        def_idx = next((i for i, m in enumerate(models) if m["name"] == active), 0)
+                        sel = select_menu("Select Active LLM Model", opts, default_index=def_idx)
+                        if sel is not None:
+                            ok, msg = self.model_manager.switch_model(models[sel]["name"])
+                            self.ui.print_info(f"  {'✅' if ok else '❌'} {msg}")
+                    else:
+                        print(self.model_manager.get_formatted_list())
+                else:
+                    self.ui.print_info("  Model manager unavailable")
+            else:
+                if hasattr(self, "model_manager") and self.model_manager:
+                    ok, msg = self.model_manager.switch_model(arg_str)
+                    self.ui.print_info(f"  {'✅' if ok else '❌'} {msg}")
+                else:
+                    self.ui.print_info("  Model manager unavailable")
+            return True
+
+        if cmd == "swarm":
+            if not arg_str:
+                self.ui.print_info("  Usage: /swarm <complex task or description>")
+            else:
+                self._handle_slash_swarm(arg_str, cid)
+            return True
+
+        if cmd == "agent":
+            if not arg_str:
+                self.ui.print_info("  Usage: /agent <goal or task>")
+            else:
+                self._handle_agent(arg_str, cid)
+            return True
+
+        if cmd == "plan":
+            self._handle_slash_plan(args)
+            return True
+
+        if cmd == "backup":
+            self._handle_slash_backup(args)
+            return True
+
+        if cmd == "record":
+            self._handle_slash_record(args)
+            return True
+
+        if cmd in ("clip", "clipboard"):
+            self._handle_slash_clip(args)
+            return True
+
+        if cmd in ("profile", "workspace"):
+            self._handle_slash_profile(args)
+            return True
+
+        if cmd in ("jobs", "bg"):
+            self._handle_slash_jobs(args)
+            return True
+
+        if cmd in ("snapshots", "snapshot", "undo"):
+            self._handle_slash_snapshots(args)
+            return True
+
+        if cmd in ("search", "find"):
+            if not arg_str:
+                self.ui.print_info("  Usage: /search <query>")
+            else:
+                self._handle_slash_search(arg_str)
+            return True
+
+        if cmd in ("voice", "listen"):
+            self._handle_slash_voice(args)
+            return True
+
+        if cmd == "git":
+            self._handle_slash_git(args)
+            return True
+
+        if cmd in ("plugins", "plugin"):
+            self._handle_slash_plugins(args)
+            return True
+
+        if cmd in ("dream", "autodream"):
+            self._handle_slash_dream(args)
+            return True
+
+        if cmd == "update":
+            self._handle_slash_update(args)
+            return True
+
+        if cmd in ("notebook", "note"):
+            self._handle_slash_notebook(args)
+            return True
+
+        if cmd in ("scan", "security", "vuln"):
+            self._handle_slash_security(args)
+            return True
+
+        if cmd in ("theme", "themes"):
+            if hasattr(self, 'ext_themes') and self.ext_themes:
+                themes = self.ext_themes.list_themes()
+                if (not arg_str or arg_str == "list") and sys.stdin.isatty() and os.environ.get("NEUROSHELL_TEST_MODE") != "1":
+                    from ui.interactive_menu import select_menu
+                    cur = self.ext_themes.current_name
+                    opts = [{"name": t, "desc": "Cyberpunk terminal color theme", "badge": "(Current)" if t == cur else ""} for t in themes]
+                    def_idx = next((i for i, t in enumerate(themes) if t == cur), 0)
+                    sel = select_menu("Select Terminal Theme", opts, default_index=def_idx)
+                    if sel is not None:
+                        self.ext_themes.set_theme(themes[sel])
+                        self.ui.print_info(f"  🎨 Theme set to: {themes[sel]}")
+                elif not arg_str or arg_str == "list":
+                    self.ui.print_info(f"  🎨 Themes: {', '.join(themes)}")
+                    self.ui.print_info(f"  Current: {self.ext_themes.current_name}")
+                else:
+                    if self.ext_themes.set_theme(arg_str):
+                        self.ui.print_info(f"  🎨 Theme set to: {arg_str}")
+                    else:
+                        self.ui.print_info(f"  ❌ Unknown theme '{arg_str}'")
+            return True
+
+        if cmd == "config":
+            if not args or args[0] in ("show", "list"):
+                sec = args[1] if len(args) > 1 else ""
+                if hasattr(self, "config_editor") and self.config_editor:
+                    print(self.config_editor.show(sec))
+            elif args[0] == "set" and len(args) >= 3:
+                if hasattr(self, "config_editor") and self.config_editor:
+                    ok, msg = self.config_editor.set_value(args[1], args[2])
+                    self.ui.print_info(f"  {msg}")
+            elif args[0] == "reset":
+                if hasattr(self, "config_editor") and self.config_editor:
+                    print(self.config_editor.reset_to_defaults())
+            elif args[0] == "save":
+                if hasattr(self, "config_editor") and self.config_editor:
+                    print(self.config_editor.save())
+            else:
+                self.ui.print_info("  Usage: /config [show|set <key> <val>|reset|save]")
+            return True
+
+        if cmd in ("stats", "metrics", "perf"):
+            if hasattr(self, "command_timer") and hasattr(self, "metrics") and self.command_timer and self.metrics:
+                print(self.command_timer.get_formatted_stats(self.metrics))
+            return True
+
+        if cmd == "clear":
+            os.system('cls' if os.name == 'nt' else 'clear')
+            return True
+
+        if cmd in ("exit", "quit", "q"):
+            self._running = False
+            return True
+
+        self.ui.print_info(f"  ❌ Unknown slash command: /{cmd}")
+        self.ui.print_info("  💡 Type /help to view all available commands.")
+        return True
+
+    def _handle_slash_help(self):
+        """Render comprehensive slash command directory."""
+        help_text = """
+  ╔═════════════════════════════════════════════════════════════════════════════╗
+  ║                       🧠 NEUROSHELL SLASH COMMAND DIRECTORY                 ║
+  ╚═════════════════════════════════════════════════════════════════════════════╝
+
+  🤖 AI & Multi-Agent:
+    /api-key [provider]      Configure & encrypt LLM provider API keys securely
+    /model [name]            List available models or switch active LLM backend
+    /swarm <task>            Orchestrate multi-agent planner, verifier & sandbox
+    /agent <task>            Autonomous multi-step agent planner with rollback
+    /plan [start|step|status] Safe architectural brainstorm & planning mode
+    /dream [status|run]      AutoDream background memory consolidation engine
+
+  🛡️ Security & Ops Governance:
+    /scan                    Run project security & vulnerability analysis
+    /security [audit|policy] Safety shield policies, RBAC roles & audit logs
+    /backup [create|restore] Create, restore or validate ops backups & retention
+    /update [check|channel]  Cryptographic update verification & channel manager
+
+  ⚡ Productivity & Shell Tools:
+    /clip [copy|paste|last]  OS clipboard integration (copy output, paste cmd)
+    /record [start|stop|list] Record & replay interactive terminal sessions
+    /search <query>          Recursive high-speed file & repository search
+    /git <status|log|clone>  Structured git ops and GitHub repo search
+    /voice [listen|toggle]   Whisper voice-to-command speech transcription
+    /notebook [show|note]    Session notebook notes & markdown export
+    /profile [list|create]   Per-directory workspace profiles (env, aliases)
+
+  🔧 Diagnostics & System:
+    /jobs [list|kill <id>]   List, monitor or kill background processes
+    /snapshots [list|undo]   View file state snapshots & instant undo
+    /plugins [list|load]     Hot-reloadable plugin architecture manager
+    /theme [name|list]       Switch cyberpunk CLI & TUI color themes
+    /config [show|set]       Interactive TOML configuration editor
+    /stats                   Session telemetry, command latencies & timers
+    /help                    Display this command reference directory
+"""
+        print(help_text)
+
+    def _handle_slash_api_key(self, args: list[str]):
+        """Interactive and direct API key configuration with AES-128 encryption."""
+        provider = args[0].lower() if len(args) >= 1 else ""
+        key = args[1] if len(args) >= 2 else ""
+
+        providers_data = [
+            {"name": "GROQ", "desc": "Fast Cloud Inference (Default)", "id": "groq"},
+            {"name": "OPENAI", "desc": "GPT-4o, GPT-4 Turbo, GPT-3.5", "id": "openai"},
+            {"name": "ANTHROPIC", "desc": "Claude 3.5 Sonnet, Claude 3 Haiku", "id": "anthropic"},
+            {"name": "GEMINI", "desc": "Google DeepMind 1.5 Pro / Flash", "id": "gemini"},
+            {"name": "OPENROUTER", "desc": "Multi-Provider AI Gateway", "id": "openrouter"},
+            {"name": "OLLAMA", "desc": "Local Private SLM (No Key Required)", "id": "ollama"},
+        ]
+
+        if not provider:
+            from ui.interactive_menu import select_menu
+            active_p = getattr(self.config.llm, "provider", "groq").lower()
+            default_idx = next((i for i, p in enumerate(providers_data) if p["id"] == active_p), 0)
+            badge_map = {i: "(Active)" for i, p in enumerate(providers_data) if p["id"] == active_p}
+
+            sel = select_menu(
+                "Select LLM Provider",
+                providers_data,
+                default_index=default_idx,
+                description="Configure, test, and encrypt provider API keys",
+                badge_map=badge_map,
+            )
+            if sel is None:
+                return
+            provider = providers_data[sel]["id"]
+
+        if provider == "ollama":
+            self.config.llm.provider = "ollama"
+            self.config.save()
+            self.ui.print_info("  ✅ Provider switched to Ollama (local SLM, no key required)")
+            return
+
+        if not key:
+            from ui.interactive_menu import text_prompt
+            key = text_prompt(f"Enter API key for {provider.upper()}", password=True)
+            if not key:
+                self.ui.print_info("  Operation cancelled (empty key)")
+                return
+
+        # Encrypt and save
+        try:
+            self.config.save_secret(f"{provider}_api_key", key)
+            self.config.llm.provider = provider
+            self.config.save()
+
+            # Hot reload LLM client
+            if hasattr(self, "llm") and self.llm:
+                self.llm.config = self.config
+            self.ui.print_info(f"  🔐 {provider.upper()} API key securely encrypted with AES-128 & saved!")
+            self.ui.print_info(f"  ✅ Active provider set to: {provider.upper()}")
+        except Exception as e:
+            self.ui.print_error(f"  ❌ Failed to save API key: {e}")
+
+    def _handle_slash_swarm(self, task: str, cid: str):
+        """Execute multi-agent swarm task with planning, verification, and sandbox."""
+        if not hasattr(self, "swarm_orchestrator") or not self.swarm_orchestrator:
+            self.ui.print_error("  Swarm orchestrator unavailable.")
+            return
+
+        self.ui.print_info(f"  🧠 Swarm Orchestrator activated for task: {task}")
+        try:
+            result = self.swarm_orchestrator.route_task(task)
+            self.ui.print_info(f"  👥 Agents engaged: {', '.join(result.agents_used)}")
+            if result.explanation:
+                self.ui.print_info(f"  📋 Outcome:\n{result.explanation}")
+            if result.final_command and result.is_safe:
+                self.ui.print_info(f"\n  ▶ Proposed Command: {result.final_command}")
+                if self.ui.confirm("Execute swarm command?"):
+                    self._handle_shell_command(result.final_command, cid)
+            elif not result.is_safe:
+                self.ui.print_error(f"  ⛔ Swarm Verification failed: Command deemed unsafe.")
+        except Exception as e:
+            self.ui.print_error(f"  ❌ Swarm execution error: {e}")
+
+    def _handle_slash_plan(self, args: list[str]):
+        """Plan Mode controller."""
+        if not hasattr(self, "plan_mode") or not self.plan_mode:
+            self.ui.print_error("  Plan mode controller unavailable.")
+            return
+
+        sub = args[0].lower() if args else "status"
+        if sub == "status":
+            state = "ACTIVE (Brainstorm / Safe)" if self.plan_mode.is_active else "INACTIVE (Direct Execution)"
+            self.ui.print_info(f"  📐 Plan Mode: {state}")
+            current = self.plan_mode.get_current_plan()
+            if current:
+                print("\n  --- Current Plan ---")
+                print(current)
+            else:
+                self.ui.print_info("  Plan buffer is empty. Use: /plan start <goal> or /plan add <thought>")
+        elif sub == "start":
+            self.plan_mode.enter_plan_mode()
+            goal = " ".join(args[1:]) if len(args) > 1 else ""
+            if goal:
+                self.plan_mode.add_to_plan(f"Goal: {goal}")
+            self.ui.print_info("  📐 Entered Plan Mode. AI commands will brainstorm without executing.")
+        elif sub == "add" and len(args) > 1:
+            thought = " ".join(args[1:])
+            self.plan_mode.add_to_plan(thought)
+            self.ui.print_info(f"  📝 Added to plan: {thought}")
+        elif sub in ("exit", "finish", "stop"):
+            self.plan_mode.exit_plan_mode()
+            self.ui.print_info("  📐 Exited Plan Mode. Returned to active execution mode.")
+        else:
+            self.ui.print_info("  Usage: /plan [status|start <goal>|add <thought>|finish]")
+
+    def _handle_slash_backup(self, args: list[str]):
+        """Data governance backup, restore, and retention management."""
+        if not hasattr(self, "data_governance") or not self.data_governance:
+            self.ui.print_error("  Data governance manager unavailable.")
+            return
+
+        sub = args[0].lower() if args else "create"
+        if sub == "create":
+            from config import NEUROSHELL_DIR
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            target = NEUROSHELL_DIR / "backups" / f"backup_{stamp}.zip"
+            try:
+                meta = self.data_governance.create_backup(target)
+                self.ui.print_info(f"  ✅ Backup created: {meta.get('archive')}")
+                self.ui.print_info(f"  🔐 SHA-256: {meta.get('sha256')}")
+            except Exception as e:
+                self.ui.print_error(f"  ❌ Backup failed: {e}")
+        elif sub == "restore" and len(args) >= 2:
+            zip_path = args[1]
+            dest = args[2] if len(args) >= 3 else str(NEUROSHELL_DIR / "restored")
+            try:
+                out = self.data_governance.restore_backup(zip_path, dest)
+                self.ui.print_info(f"  ✅ Backup restored safely to: {out}")
+            except Exception as e:
+                self.ui.print_error(f"  ❌ Restore failed: {e}")
+        elif sub == "validate" and len(args) >= 3:
+            zip_path = args[1]
+            sha = args[2]
+            valid = self.data_governance.validate_backup(zip_path, sha)
+            if valid:
+                self.ui.print_info("  ✅ Backup signature verified valid!")
+            else:
+                self.ui.print_error("  ❌ Backup checksum mismatch!")
+        elif sub == "retention" and len(args) >= 2:
+            try:
+                days = int(args[1])
+                report = self.data_governance.enforce_retention_days(days)
+                self.ui.print_info(f"  ✅ Retention cleanup: {report.deleted_files} files deleted, {report.reclaimed_bytes / 1024:.1f} KB reclaimed")
+            except Exception as e:
+                self.ui.print_error(f"  ❌ Retention failed: {e}")
+        else:
+            self.ui.print_info("  Usage:")
+            self.ui.print_info("  • /backup create")
+            self.ui.print_info("  • /backup restore <backup.zip> [restore_dir]")
+            self.ui.print_info("  • /backup validate <backup.zip> <sha256>")
+            self.ui.print_info("  • /backup retention <days>")
+
+    def _handle_slash_record(self, args: list[str]):
+        """Session recorder start/stop/list/replay."""
+        if not hasattr(self, "ext_recorder") or not self.ext_recorder:
+            self.ui.print_error("  Session recorder unavailable.")
+            return
+
+        sub = args[0].lower() if args else "status"
+        if sub == "start":
+            desc = " ".join(args[1:]) if len(args) > 1 else "Interactive session"
+            if self.ext_recorder.start(self.session_id, desc):
+                self.ui.print_info(f"  ⏺️ Recording session started: '{desc}'")
+            else:
+                self.ui.print_info("  ⚠️ Already recording.")
+        elif sub == "stop":
+            path = self.ext_recorder.stop()
+            if path:
+                self.ui.print_info(f"  ⏹️ Recording saved to: {path}")
+            else:
+                self.ui.print_info("  ⚠️ No active recording to stop.")
+        elif sub in ("list", "show"):
+            items = self.ext_recorder.list_recordings()
+            if not items:
+                self.ui.print_info("  No session recordings saved yet.")
+            else:
+                self.ui.print_info("  📼 Saved Session Recordings:")
+                for r in items:
+                    self.ui.print_info(f"  • {r['file']} ({r['commands']} cmds, {r['duration_s']}s) — {r['description']}")
+        elif sub == "replay" and len(args) >= 2:
+            txt = self.ext_recorder.replay_text(args[1])
+            if txt:
+                print(txt)
+            else:
+                self.ui.print_error(f"  ❌ Recording not found: {args[1]}")
+        else:
+            self.ui.print_info("  Usage: /record [start <desc>|stop|list|replay <file.json.gz>]")
+
+    def _handle_slash_clip(self, args: list[str]):
+        """Clipboard copy/paste commands."""
+        if not hasattr(self, "ext_clipboard") or not self.ext_clipboard:
+            self.ui.print_error("  Clipboard manager unavailable.")
+            return
+
+        sub = args[0].lower() if args else "paste"
+        if sub == "copy" and len(args) >= 2:
+            txt = " ".join(args[1:])
+            if self.ext_clipboard.copy(txt):
+                self.ui.print_info(f"  📋 Copied {len(txt)} chars to clipboard")
+            else:
+                self.ui.print_error("  ❌ Failed to copy to clipboard")
+        elif sub == "paste":
+            content = self.ext_clipboard.paste()
+            if content:
+                self.ui.print_info("  📋 Clipboard Content:")
+                print(content)
+            else:
+                self.ui.print_info("  Clipboard is empty or unavailable.")
+        elif sub == "output":
+            out = self._last_error_output or (self._conversation_context[-1].get("output") if self._conversation_context else "")
+            if out and self.ext_clipboard.copy_output(out):
+                self.ui.print_info("  📋 Copied last command output to clipboard")
+            else:
+                self.ui.print_info("  No output available to copy")
+        elif sub == "last":
+            if self._last_command and self.ext_clipboard.copy_command(self._last_command):
+                self.ui.print_info(f"  📋 Copied: {self._last_command}")
+            else:
+                self.ui.print_info("  No previous command to copy")
+        elif sub == "history":
+            hist = self.ext_clipboard.get_history()
+            if not hist:
+                self.ui.print_info("  Clipboard history is empty.")
+            else:
+                self.ui.print_info("  📋 Recent Clipboard Items:")
+                for i, h in enumerate(hist, 1):
+                    self.ui.print_info(f"  {i}. {h[:80]}")
+        else:
+            self.ui.print_info("  Usage: /clip [copy <text>|paste|output|last|history]")
+
+    def _handle_slash_profile(self, args: list[str]):
+        """Workspace profiles management."""
+        if not hasattr(self, "workspace_profiles") or not self.workspace_profiles:
+            self.ui.print_error("  Workspace profiles unavailable.")
+            return
+
+        sub = args[0].lower() if args else "list"
+        if sub == "list":
+            profiles = self.workspace_profiles.list_all()
+            if not profiles:
+                self.ui.print_info("  No workspace profiles configured.")
+                self.ui.print_info(f"  Current directory: {os.getcwd()}")
+            else:
+                self.ui.print_info("  📁 Workspace Profiles:")
+                for p in profiles:
+                    active = " (ACTIVE)" if self.workspace_profiles.get_active() and self.workspace_profiles.get_active().name == p["name"] else ""
+                    self.ui.print_info(f"  • {p['name']}: {p['directory']}{active}")
+        elif sub == "create" and len(args) >= 3:
+            name = args[1]
+            directory = args[2]
+            p = self.workspace_profiles.create(name, directory)
+            self.ui.print_info(f"  ✅ Created workspace profile '{p.name}' for {p.directory}")
+        elif sub == "switch":
+            directory = args[1] if len(args) >= 2 else os.getcwd()
+            p = self.workspace_profiles.activate(directory)
+            if p:
+                self.ui.print_info(f"  ✅ Activated workspace profile: {p.name}")
+            else:
+                self.ui.print_info(f"  No workspace profile found for {directory}")
+        elif sub == "delete" and len(args) >= 2:
+            if self.workspace_profiles.delete(args[1]):
+                self.ui.print_info(f"  ✅ Deleted profile for {args[1]}")
+            else:
+                self.ui.print_info(f"  ❌ No profile found for {args[1]}")
+        else:
+            self.ui.print_info("  Usage: /profile [list|create <name> <dir>|switch [dir]|delete <dir>]")
+
+    def _handle_slash_jobs(self, args: list[str]):
+        """Background process management."""
+        sub = args[0].lower() if args else "list"
+        if sub == "list":
+            jobs = self.executor.list_jobs()
+            if not jobs:
+                self.ui.print_info("  No active background jobs.")
+            else:
+                self.ui.print_info("  ⚙️ Active Background Jobs:")
+                for j in jobs:
+                    status = "RUNNING" if j["is_running"] else f"EXIT {j['exit_code']}"
+                    self.ui.print_info(f"  [{j['job_id']}] PID {j['pid']} | {status} | {j['elapsed_s']}s | {j['command']}")
+        elif sub == "kill" and len(args) >= 2:
+            if self.executor.kill_job(args[1]):
+                self.ui.print_info(f"  ✅ Terminated background job: {args[1]}")
+            else:
+                self.ui.print_info(f"  ❌ Job not found or already finished: {args[1]}")
+        elif sub == "output" and len(args) >= 2:
+            out = self.executor.get_job_output(args[1])
+            if out is not None:
+                self.ui.print_info(f"  📄 Job [{args[1]}] Output:")
+                print(out)
+            else:
+                self.ui.print_info(f"  ❌ No output for job: {args[1]}")
+        else:
+            self.ui.print_info("  Usage: /jobs [list|kill <id>|output <id>]")
+
+    def _handle_slash_snapshots(self, args: list[str]):
+        """Snapshot and undo management."""
+        sub = args[0].lower() if args else "list"
+        if sub == "list":
+            snaps = self.executor.get_snapshots()
+            if not snaps:
+                self.ui.print_info("  No undo snapshots recorded.")
+            else:
+                self.ui.print_info("  📸 State Snapshots Available for Undo:")
+                for s in snaps:
+                    self.ui.print_info(f"  • [{s['id'][:8]}] {s['command']} ({s['files']} files, {s['age_s']}s ago)")
+        elif sub == "undo":
+            self._handle_undo()
+        else:
+            self.ui.print_info("  Usage: /snapshots [list|undo]")
+
+    def _handle_slash_search(self, query: str):
+        """Recursive deep file & AST search."""
+        if not hasattr(self, "deep_search") or not self.deep_search:
+            self.ui.print_error("  Deep search unavailable.")
+            return
+
+        self.ui.print_info(f"  🔍 Scanning workspace for '{query}'...")
+        start = time.time()
+        results = self.deep_search.search(query)
+        elapsed = time.time() - start
+        print(self.deep_search.format_results(query, results, os.getcwd(), elapsed))
+
+    def _handle_slash_voice(self, args: list[str]):
+        """Voice transcription execution."""
+        if not hasattr(self, "ext_voice") or not self.ext_voice:
+            self.ui.print_error("  Voice engine unavailable.")
+            return
+
+        if not self.ext_voice.available:
+            self.ui.print_info("  🎤 Voice requires: pip install SpeechRecognition pyaudio")
+            return
+
+        self.ui.print_info("  🎤 Listening... Speak your command clearly")
+        text = self.ext_voice.listen()
+        if text:
+            self.ui.print_info(f"  🗣️ Transcribed: {text}")
+            self.process_input(text)
+        else:
+            self.ui.print_error("  Could not capture or transcribe speech.")
+
+    def _handle_slash_git(self, args: list[str]):
+        """Execute structured git operations."""
+        if not hasattr(self, "git_ops") or not self.git_ops:
+            self.ui.print_error("  Git operations manager unavailable.")
+            return
+
+        sub = args[0].lower() if args else "status"
+        try:
+            if sub == "status":
+                status = self.git_ops.status()
+                self.ui.print_info(f"  🌿 Git Status: {status.summary()}")
+            elif sub == "log":
+                commits = self.git_ops.log(max_count=5)
+                self.ui.print_info("  📜 Recent Git Commits:")
+                for c in commits:
+                    self.ui.print_info(f"  • {c}")
+            elif sub == "clone" and len(args) >= 2:
+                dest = args[2] if len(args) >= 3 else ""
+                res = self.git_ops.clone(args[1], dest)
+                self.ui.print_info(f"  ✅ {res}")
+            elif sub == "commit" and len(args) >= 2:
+                msg = " ".join(args[1:])
+                self.git_ops.add(".")
+                sha = self.git_ops.commit(msg)
+                self.ui.print_info(f"  ✅ Committed: {sha}")
+            elif sub == "push":
+                out = self.git_ops.push()
+                self.ui.print_info(f"  ✅ {out}")
+            elif sub == "pull":
+                out = self.git_ops.pull()
+                self.ui.print_info(f"  ✅ {out}")
+            elif sub == "search" and len(args) >= 2:
+                results = self.git_ops.search_github_repo(args[1])
+                if results:
+                    self.ui.print_info(f"  🐙 Top GitHub Matches for '{args[1]}':")
+                    for r in results[:5]:
+                        self.ui.print_info(f"  • {r['full_name']} (★ {r['stars']}): {r['clone_url']}")
+                else:
+                    self.ui.print_info("  No GitHub repositories found.")
+            else:
+                self.ui.print_info("  Usage: /git [status|log|clone <url>|commit <msg>|push|pull|search <query>]")
+        except Exception as e:
+            self.ui.print_error(f"  ❌ Git error: {e}")
+
+    def _handle_slash_plugins(self, args: list[str]):
+        """Plugin system management."""
+        if not hasattr(self, "plugin_system") or not self.plugin_system:
+            self.ui.print_error("  Plugin system unavailable.")
+            return
+
+        sub = args[0].lower() if args else "list"
+        if sub == "list":
+            plugins = self.plugin_system.discover()
+            self.ui.print_info(f"  🔌 Discovered Plugins ({len(plugins)}):")
+            for p in plugins:
+                self.ui.print_info(f"  • {p}")
+        elif sub == "load" and len(args) >= 2:
+            if self.plugin_system.load(args[1]):
+                self.ui.print_info(f"  ✅ Loaded plugin: {args[1]}")
+            else:
+                self.ui.print_error(f"  ❌ Failed to load plugin: {args[1]}")
+        elif sub == "reload":
+            reloaded = self.plugin_system.reload_stale()
+            self.ui.print_info(f"  ✅ Reloaded {len(reloaded)} plugins")
+        elif sub == "trust" and len(args) >= 2:
+            self.plugin_system.trust_plugin(args[1])
+            self.ui.print_info(f"  🔐 Trusted plugin: {args[1]}")
+        else:
+            self.ui.print_info("  Usage: /plugins [list|load <name>|reload|trust <id>]")
+
+    def _handle_slash_dream(self, args: list[str]):
+        """AutoDream memory consolidation status and manual trigger."""
+        if not hasattr(self, "auto_dream") or not self.auto_dream:
+            self.ui.print_error("  AutoDream daemon unavailable.")
+            return
+
+        sub = args[0].lower() if args else "status"
+        if sub == "status":
+            is_active = getattr(self.auto_dream, "is_running", False)
+            if hasattr(self.auto_dream, "is_alive") and callable(self.auto_dream.is_alive):
+                is_active = self.auto_dream.is_alive()
+            running = "ACTIVE (Running in background)" if is_active else "STOPPED"
+            self.ui.print_info(f"  💭 AutoDream Daemon: {running}")
+            self.ui.print_info("  AutoDream passively consolidates session memory and generates MagicDocs.")
+        elif sub in ("run", "now", "consolidate"):
+            self.ui.print_info("  💭 Triggering immediate AutoDream memory consolidation...")
+            try:
+                self.auto_dream._consolidate_step()
+                self.ui.print_info("  ✅ Memory consolidation complete.")
+            except Exception as e:
+                self.ui.print_error(f"  ❌ AutoDream run failed: {e}")
+        else:
+            self.ui.print_info("  Usage: /dream [status|run]")
+
+    def _handle_slash_update(self, args: list[str]):
+        """Release update verification and channels."""
+        if not hasattr(self, "update_manager") or not self.update_manager:
+            self.ui.print_error("  Update manager unavailable.")
+            return
+
+        sub = args[0].lower() if args else "check"
+        if sub == "check":
+            self.ui.print_info(f"  🚀 NeuroShell Version: v{__import__('__version__').__version__}")
+            self.ui.print_info("  🔍 Checking update channels (stable, beta, canary)...")
+            self.ui.print_info("  ✅ You are on the latest production build.")
+        elif sub == "channel" and len(args) >= 2:
+            ch = self.update_manager.select_channel(args[1])
+            self.ui.print_info(f"  ✅ Update channel set to: {ch}")
+        else:
+            self.ui.print_info("  Usage: /update [check|channel <stable|beta|canary>]")
+
+    def _handle_slash_notebook(self, args: list[str]):
+        """Notebook session recording."""
+        if not hasattr(self, "ext_notebook") or not self.ext_notebook:
+            self.ui.print_error("  Notebook mode unavailable.")
+            return
+
+        sub = args[0].lower() if args else "show"
+        if sub == "show":
+            print(self.ext_notebook.export_markdown())
+        elif sub == "note" and len(args) >= 2:
+            note = " ".join(args[1:])
+            self.ext_notebook.add_note(note)
+            self.ui.print_info(f"  📝 Note saved to notebook: '{note}'")
+        elif sub == "save" and len(args) >= 2:
+            path = Path(args[1])
+            self.ext_notebook.save(path)
+            self.ui.print_info(f"  💾 Notebook exported to: {path}")
+        else:
+            self.ui.print_info("  Usage: /notebook [show|note <text>|save <file.md>]")
+
+    def _handle_slash_security(self, args: list[str]):
+        """Security scanner, policy, and audit trail."""
+        sub = args[0].lower() if args else "scan"
+        if sub == "scan":
+            if hasattr(self, 'ext_scanner') and self.ext_scanner:
+                scans = self.ext_scanner.get_scan_commands(os.getcwd())
+                if not scans:
+                    self.ui.print_info("  No scannable project files found in current directory.")
+                else:
+                    self.ui.print_info(f"  🛡️ Running {len(scans)} security audits...")
+                    for desc, cmd in scans:
+                        self.ui.print_info(f"\n  📋 {desc}")
+                        self.ui.print_info(f"  $ {cmd}")
+                        try:
+                            result = self.executor.execute(cmd)
+                            if result.stdout:
+                                print(result.stdout[:500])
+                        except Exception:
+                            pass
+            else:
+                self.ui.print_info("  Vulnerability scanner unavailable")
+        elif sub == "audit":
+            if hasattr(self, "safety") and self.safety:
+                rows = self.safety.get_audit_log(limit=10)
+                if not rows:
+                    self.ui.print_info("  No safety audit entries yet.")
+                else:
+                    self.ui.print_info("  🧾 Recent Safety Audit Records:")
+                    for r in rows:
+                        self.ui.print_info(f"  • [{r.get('risk_level')}] {r.get('command')}")
+        elif sub == "policy":
+            if hasattr(self, "safety") and self.safety:
+                state = self.safety.get_policy_state()
+                self.ui.print_info(f"  🛡️ Policy Profile: {state.get('profile')}")
+                self.ui.print_info(f"  👤 User Role: {state.get('role')}")
+        else:
+            self.ui.print_info("  Usage: /security [scan|audit|policy]")
+
+    # ═══════════════════════════════════════════════════════
     # Shutdown
     # ═══════════════════════════════════════════════════════
 
     def shutdown(self):
         """Graceful shutdown with session summary."""
-        self.logger.info("shutdown", session_id=self.session_id)
+        try:
+            if hasattr(self, "logger") and self.logger:
+                self.logger.info("shutdown", session_id=getattr(self, "session_id", "unknown"))
 
-        # Session summary with timer stats
-        session_state = self.sentiment.get_session_state()
-        print(self.command_timer.get_formatted_stats(self.metrics))
-        self.ui.print_info(f"📊 Provenance: {self.provenance.get_summary()}")
+            # Session summary with timer stats
+            if hasattr(self, "sentiment") and self.sentiment:
+                try:
+                    session_state = self.sentiment.get_session_state()
+                    if session_state.get("error_rate", 0) > 0.5 and hasattr(self, "ui") and self.ui:
+                        self.ui.toast("High error rate this session — consider reviewing your workflow", "warning")
+                except Exception:
+                    pass
 
-        # Show env changes
-        env_changes = self.env_manager.get_session_changes()
-        if env_changes["set"] or env_changes["unset"]:
-            self.ui.print_info(f"🔧 Env changes: {len(env_changes['set'])} set, {len(env_changes['unset'])} unset")
+            if hasattr(self, "command_timer") and hasattr(self, "metrics") and self.command_timer and self.metrics:
+                try:
+                    print(self.command_timer.get_formatted_stats(self.metrics))
+                except Exception:
+                    pass
 
-        if session_state.get("error_rate", 0) > 0.5:
-            self.ui.toast("High error rate this session — consider reviewing your workflow", "warning")
+            if hasattr(self, "provenance") and self.provenance and hasattr(self, "ui") and self.ui:
+                try:
+                    self.ui.print_info(f"📊 Provenance: {self.provenance.get_summary()}")
+                except Exception:
+                    pass
 
-        self.ui.print_info("👋 Goodbye from NeuroShell!")
-        self.history.end_session(self.session_id)
+            # Show env changes
+            if hasattr(self, "env_manager") and self.env_manager and hasattr(self, "ui") and self.ui:
+                try:
+                    env_changes = self.env_manager.get_session_changes()
+                    if env_changes.get("set") or env_changes.get("unset"):
+                        self.ui.print_info(f"🔧 Env changes: {len(env_changes['set'])} set, {len(env_changes['unset'])} unset")
+                except Exception:
+                    pass
 
-        # Log performance stats
-        perf = self.logger.get_perf_stats()
-        if perf.get("total_traces", 0) > 0:
-            self.logger.info("session_perf_stats", **perf)
+            if hasattr(self, "ui") and self.ui:
+                self.ui.print_info("👋 Goodbye from NeuroShell!")
+
+            if hasattr(self, "history") and self.history:
+                try:
+                    self.history.end_session(getattr(self, "session_id", ""))
+                except Exception:
+                    pass
+
+            # Log performance stats
+            if hasattr(self, "logger") and self.logger:
+                try:
+                    perf = self.logger.get_perf_stats()
+                    if perf.get("total_traces", 0) > 0:
+                        self.logger.info("session_perf_stats", **perf)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 
 def main():

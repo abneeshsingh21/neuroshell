@@ -33,6 +33,10 @@ class MemoryEntry:
         return hashlib.md5(f"{self.input_text}:{self.command}".encode()).hexdigest()[:12]
 
 
+import threading
+import tempfile
+import os
+
 class SessionMemory:
     """
     Production-grade session memory with cross-session persistence.
@@ -53,25 +57,34 @@ class SessionMemory:
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self.memory_dir / "session_memory.json"
         self._entries: dict[str, MemoryEntry] = {}
+        self._lock = threading.Lock()
         self._load()
 
     def _load(self):
         """Load memory from disk."""
-        if self._db_path.exists():
-            try:
-                data = json.loads(self._db_path.read_text(encoding="utf-8"))
-                for key, entry_data in data.items():
-                    self._entries[key] = MemoryEntry(**entry_data)
-                logger.info("Loaded %d memory entries", len(self._entries))
-            except Exception as e:
-                logger.warning("Memory load failed: %s", e)
-                self._entries = {}
+        with self._lock:
+            if self._db_path.exists():
+                try:
+                    data = json.loads(self._db_path.read_text(encoding="utf-8"))
+                    for key, entry_data in data.items():
+                        self._entries[key] = MemoryEntry(**entry_data)
+                    logger.info("Loaded %d memory entries", len(self._entries))
+                except Exception as e:
+                    logger.warning("Memory load failed: %s", e)
+                    self._entries = {}
 
     def _save(self):
-        """Persist memory to disk."""
+        """Persist memory to disk atomically."""
         try:
-            data = {k: asdict(v) for k, v in self._entries.items()}
-            self._db_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            with self._lock:
+                data = {k: asdict(v) for k, v in self._entries.items()}
+                content = json.dumps(data, indent=2)
+            temp_fd, temp_path = tempfile.mkstemp(dir=str(self.memory_dir), prefix="mem_", suffix=".tmp")
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, str(self._db_path))
         except Exception as e:
             logger.warning("Memory save failed: %s", e)
 

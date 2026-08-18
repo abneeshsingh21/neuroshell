@@ -7,6 +7,7 @@ Hot-reloadable plugin architecture for extending NeuroShell.
 
 import os
 import sys
+import re
 import json
 import hashlib
 import importlib
@@ -144,8 +145,16 @@ class PluginSystem:
 
     def load(self, name: str) -> bool:
         """Load a plugin by name."""
-        plugin_file = PLUGINS_DIR / f"{name}.py"
-        plugin_dir = PLUGINS_DIR / name / "__init__.py"
+        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+            self._logger.error("invalid_plugin_name", name=name)
+            return False
+
+        plugin_file = (PLUGINS_DIR / f"{name}.py").resolve()
+        plugin_dir = (PLUGINS_DIR / name / "__init__.py").resolve()
+
+        if not (str(plugin_file).startswith(str(PLUGINS_DIR.resolve())) or str(plugin_dir).startswith(str(PLUGINS_DIR.resolve()))):
+            self._logger.error("path_traversal_blocked", name=name)
+            return False
 
         if plugin_file.is_file():
             file_path = str(plugin_file)

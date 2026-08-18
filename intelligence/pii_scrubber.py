@@ -53,16 +53,18 @@ def contains_secrets(text: str) -> bool:
     return False
 
 
+def _scrub_value(value):
+    if isinstance(value, str):
+        return scrub(value)
+    if isinstance(value, dict):
+        return scrub_dict(value)
+    if isinstance(value, list):
+        return [_scrub_value(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_value(v) for v in value)
+    return value
+
+
 def scrub_dict(data: dict) -> dict:
-    """Recursively scrub all string values in a dictionary."""
-    cleaned = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            cleaned[key] = scrub(value)
-        elif isinstance(value, dict):
-            cleaned[key] = scrub_dict(value)
-        elif isinstance(value, list):
-            cleaned[key] = [scrub(v) if isinstance(v, str) else v for v in value]
-        else:
-            cleaned[key] = value
-    return cleaned
+    """Recursively scrub all string values in a dictionary (including nested lists of dicts)."""
+    return {key: _scrub_value(value) for key, value in data.items()}

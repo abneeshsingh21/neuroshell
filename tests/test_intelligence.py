@@ -218,6 +218,122 @@ class TestTranslator(unittest.TestCase):
         self.assertEqual(result.source, "local")
         self.assertEqual(result.command, "winget upgrade --all")
 
+    @patch("platform.system", return_value="Windows")
+    def test_copy_folder_from_desktop_to_downloads_resolves_spaced_windows_paths(self, _mock_system):
+        """Windows folder copy with spaces should resolve full paths and avoid robocopy arg splitting."""
+        fake_engine = MagicMock()
+        fake_engine.try_resolve.return_value = None
+        fake_engine._resolve_folder.side_effect = lambda name: {
+            "desktop": r"C:\Users\lenovo\Desktop",
+            "downloads": r"C:\Users\lenovo\Downloads",
+        }.get(name.lower())
+        fake_engine._search_dir_for.side_effect = (
+            lambda directory, name_lower: r"C:\Users\lenovo\Desktop\8th Wall"
+            if directory == r"C:\Users\lenovo\Desktop" and name_lower == "8th wall"
+            else None
+        )
+        fake_engine._fuzzy_find_folder.return_value = None
+        self.translator._get_smart_open_engine = MagicMock(return_value=fake_engine)
+
+        result = self.translator.translate(
+            "make a copy of 8th Wall folder from desktop folder to downloads folder"
+        )
+
+        self.assertEqual(result.source, "local")
+        self.assertIn("powershell -NoProfile -Command", result.command)
+        self.assertIn("Copy-Item", result.command)
+        self.assertIn(r"C:\Users\lenovo\Desktop\8th Wall", result.command)
+        self.assertIn(r"C:\Users\lenovo\Downloads", result.command)
+        self.assertIn("-Recurse -Force", result.command)
+        self.assertNotIn("robocopy", result.command.lower())
+
+    @patch("platform.system", return_value="Windows")
+    def test_move_folder_from_desktop_to_downloads_resolves_spaced_windows_paths(self, _mock_system):
+        """Windows folder move with spaces should resolve full paths and use Move-Item."""
+        fake_engine = MagicMock()
+        fake_engine.try_resolve.return_value = None
+        fake_engine._resolve_folder.side_effect = lambda name: {
+            "desktop": r"C:\Users\lenovo\Desktop",
+            "downloads": r"C:\Users\lenovo\Downloads",
+        }.get(name.lower())
+        fake_engine._search_dir_for.side_effect = (
+            lambda directory, name_lower: r"C:\Users\lenovo\Desktop\8th Wall"
+            if directory == r"C:\Users\lenovo\Desktop" and name_lower == "8th wall"
+            else None
+        )
+        fake_engine._fuzzy_find_folder.return_value = None
+        self.translator._get_smart_open_engine = MagicMock(return_value=fake_engine)
+
+        result = self.translator.translate(
+            "move 8th wall folder from desktop folder to downloads folder"
+        )
+
+        self.assertEqual(result.source, "local")
+        self.assertIn("powershell -NoProfile -Command", result.command)
+        self.assertIn("Move-Item", result.command)
+        self.assertIn(r"C:\Users\lenovo\Desktop\8th Wall", result.command)
+        self.assertIn(r"C:\Users\lenovo\Downloads", result.command)
+        self.assertIn("-Force", result.command)
+        self.assertNotIn("robocopy", result.command.lower())
+
+    @patch("platform.system", return_value="Windows")
+    def test_copy_folder_from_desktop_to_downloads_without_repeating_folder_keyword(self, _mock_system):
+        """Windows copy should match phrasing that omits repeated folder keywords for roots."""
+        fake_engine = MagicMock()
+        fake_engine.try_resolve.return_value = None
+        fake_engine._resolve_folder.side_effect = lambda name: {
+            "desktop": r"C:\Users\lenovo\Desktop",
+            "downloads": r"C:\Users\lenovo\Downloads",
+        }.get(name.lower())
+        fake_engine._search_dir_for.return_value = None
+        fake_engine._fuzzy_find_folder.side_effect = (
+            lambda name_lower, search_root=None: r"C:\Users\lenovo\Desktop\8th Wall"
+            if search_root == r"C:\Users\lenovo\Desktop" and name_lower == "8thwall"
+            else None
+        )
+        self.translator._get_smart_open_engine = MagicMock(return_value=fake_engine)
+
+        result = self.translator.translate(
+            "copy 8thwall folder from desktop to downloads folder"
+        )
+
+        self.assertEqual(result.source, "local")
+        self.assertIn("powershell -NoProfile -Command", result.command)
+        self.assertIn("Copy-Item", result.command)
+        self.assertIn(r"C:\Users\lenovo\Desktop\8th Wall", result.command)
+        self.assertIn(r"C:\Users\lenovo\Downloads", result.command)
+        self.assertIn("-Recurse -Force", result.command)
+        self.assertNotIn("robocopy", result.command.lower())
+
+    @patch("platform.system", return_value="Windows")
+    def test_move_folder_from_desktop_to_downloads_without_repeating_folder_keyword(self, _mock_system):
+        """Windows move should match phrasing that omits repeated folder keywords for roots."""
+        fake_engine = MagicMock()
+        fake_engine.try_resolve.return_value = None
+        fake_engine._resolve_folder.side_effect = lambda name: {
+            "desktop": r"C:\Users\lenovo\Desktop",
+            "downloads": r"C:\Users\lenovo\Downloads",
+        }.get(name.lower())
+        fake_engine._search_dir_for.return_value = None
+        fake_engine._fuzzy_find_folder.side_effect = (
+            lambda name_lower, search_root=None: r"C:\Users\lenovo\Desktop\8th Wall"
+            if search_root == r"C:\Users\lenovo\Desktop" and name_lower == "8thwall"
+            else None
+        )
+        self.translator._get_smart_open_engine = MagicMock(return_value=fake_engine)
+
+        result = self.translator.translate(
+            "move 8thwall folder from desktop to downloads folder"
+        )
+
+        self.assertEqual(result.source, "local")
+        self.assertIn("powershell -NoProfile -Command", result.command)
+        self.assertIn("Move-Item", result.command)
+        self.assertIn(r"C:\Users\lenovo\Desktop\8th Wall", result.command)
+        self.assertIn(r"C:\Users\lenovo\Downloads", result.command)
+        self.assertIn("-Force", result.command)
+        self.assertNotIn("robocopy", result.command.lower())
+
 
 class TestErrorFixer(unittest.TestCase):
     """Tests for intelligence/error_fixer.py."""

@@ -31,6 +31,14 @@ class FixResult:
     provenance: Optional[ProvenanceTag] = None
 
 
+def _safe_elevated_cmd(cmd: str) -> str:
+    if not _IS_WINDOWS:
+        return f"sudo {cmd}"
+    # Escape quotes cleanly for PowerShell RunAs argument list
+    safe_arg = cmd.replace("'", "''").replace('"', '`"')
+    return f'powershell -NoProfile -Command "Start-Process cmd -ArgumentList \'/c {safe_arg}\' -Verb RunAs"'
+
+
 # ═══════════════════════════════════════════════════════
 # Offline Error Pattern Database
 # Key: compiled regex, Value: handler function name or fix dict
@@ -96,7 +104,7 @@ _PATTERNS = [
     {
         "regex": r"PermissionError: \[Errno 13\]",
         "fix_fn": lambda m, cmd: FixResult(
-            fix_command=f"sudo {cmd}" if platform.system() != "Windows" else f'powershell -Command "Start-Process cmd -ArgumentList \'/c {cmd}\' -Verb RunAs"',
+            fix_command=_safe_elevated_cmd(cmd),
             explanation="Permission denied — needs elevated privileges",
             confidence=0.85,
             root_cause="permission",

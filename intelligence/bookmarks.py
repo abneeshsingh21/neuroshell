@@ -42,13 +42,21 @@ class BookmarkManager:
         if self.history:
             try:
                 aliases = self.history.list_aliases()
-                for name, expansion, created, use_count in aliases:
-                    variables = re.findall(r'\{(\w+)\}', expansion)
-                    self._bookmarks[name] = Bookmark(
-                        name=name, command=expansion,
-                        created=created, use_count=use_count,
-                        variables=variables,
-                    )
+                for alias in aliases:
+                    if isinstance(alias, dict):
+                        name = alias.get("name", "")
+                        expansion = alias.get("expansion", "")
+                        created = alias.get("created", time.time())
+                        use_count = alias.get("use_count", 0)
+                    else:
+                        name, expansion, created, use_count = alias
+                    if name and expansion:
+                        variables = re.findall(r'\{(\w+)\}', expansion)
+                        self._bookmarks[name] = Bookmark(
+                            name=name, command=expansion,
+                            created=created, use_count=use_count,
+                            variables=variables,
+                        )
             except Exception:
                 pass
 

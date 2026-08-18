@@ -210,6 +210,10 @@ class ContextManager:
         "gcc", "g++", "clang", "cmake", "make", "cargo", "rustc",
         "go", "java", "javac", "mvn", "gradle",
         "dotnet", "ruby", "php", "swift",
+        # macOS / Darwin
+        "brew", "launchctl", "ioreg", "vm_stat", "pbcopy", "pbpaste", "osascript", "sw_vers",
+        # Linux / System
+        "systemctl", "journalctl", "apt", "dnf", "pacman", "zypper", "apk", "wl-copy", "wl-paste", "xclip",
         # Tools
         "curl", "wget", "ssh", "scp", "rsync", "tar", "zip", "unzip",
         "jq", "yq", "rg", "fd", "fzf", "bat", "exa", "htop",

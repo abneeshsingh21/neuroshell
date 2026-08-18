@@ -106,10 +106,21 @@ class WorkflowEngine:
         return f'(crontab -l 2>/dev/null; echo "{task.cron_expression} {cmd_chain}") | crontab -'
 
     def _parse_time(self, time_str: str) -> tuple[int, int]:
-        parts = time_str.split(":")
-        hour = int(parts[0])
-        minute = int(parts[1]) if len(parts) > 1 else 0
-        return hour, minute
+        s = time_str.strip().lower()
+        is_pm = "pm" in s
+        is_am = "am" in s
+        s = s.replace("am", "").replace("pm", "").strip()
+        parts = s.split(":")
+        try:
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            if is_pm and hour < 12:
+                hour += 12
+            elif is_am and hour == 12:
+                hour = 0
+            return hour % 24, minute % 60
+        except (ValueError, IndexError):
+            return 0, 0
 
 
 # ═══════════════════════════════════════════════════════════
@@ -202,16 +213,33 @@ class AuditEntry:
     cwd: str
     duration_ms: float = 0
     exit_code: int = 0
+    prev_hash: str = ""
+    entry_hash: str = ""
 
 
 class AuditTrail:
-    """SOC2/ISO-compliant audit logging with RBAC enforcement."""
+    """SOC2/ISO-compliant audit logging with RBAC enforcement and SHA-256 hash-chaining."""
 
     def __init__(self, log_dir: Optional[Path] = None):
         self.log_dir = log_dir or Path.home() / ".neuroshell" / "audit"
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self._current_role = UserRole.ADMIN
         self._user = os.environ.get("USER", os.environ.get("USERNAME", "unknown"))
+        self._last_hash = self._get_last_hash()
+
+    def _get_last_hash(self) -> str:
+        """Retrieve the latest hash from existing logs to maintain chain continuity."""
+        log_files = sorted(self.log_dir.glob("audit_*.jsonl"))
+        if not log_files:
+            return "0" * 64
+        try:
+            lines = log_files[-1].read_text(encoding="utf-8").strip().splitlines()
+            if lines:
+                last_entry = json.loads(lines[-1])
+                return last_entry.get("entry_hash", "0" * 64)
+        except Exception:
+            pass
+        return "0" * 64
 
     def set_role(self, role: str):
         if role in (UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER):
@@ -233,15 +261,24 @@ class AuditTrail:
         return True, "OK"
 
     def log(self, command: str, risk_score: int, action: str, cwd: str = ".",
-            duration_ms: float = 0, exit_code: int = 0):
-        """Log command execution for compliance."""
+            duration_ms: float = 0, exit_code: int = 0) -> AuditEntry:
+        """Log command execution with tamper-evident cryptographic hash chaining."""
+        import hashlib
+        ts = datetime.now().isoformat()
+        prev = self._last_hash
+        payload = f"{prev}:{ts}:{self._user}:{self._current_role}:{command}:{risk_score}:{action}:{cwd}:{exit_code}"
+        curr_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
         entry = AuditEntry(
-            timestamp=datetime.now().isoformat(),
+            timestamp=ts,
             user=self._user, role=self._current_role,
             command=command, risk_score=risk_score,
             action=action, cwd=cwd,
             duration_ms=duration_ms, exit_code=exit_code,
+            prev_hash=prev, entry_hash=curr_hash,
         )
+        self._last_hash = curr_hash
+
         # Append to daily log file
         log_file = self.log_dir / f"audit_{datetime.now().strftime('%Y-%m-%d')}.jsonl"
         try:
@@ -249,6 +286,7 @@ class AuditTrail:
                 f.write(json.dumps(asdict(entry)) + "\n")
         except Exception as e:
             logger.warning("Audit log write failed: %s", e)
+        return entry
 
     def export_report(self, days: int = 30) -> str:
         """Export audit report for compliance review."""

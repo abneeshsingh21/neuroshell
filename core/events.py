@@ -7,11 +7,14 @@ backend telemetry (Swarm, Sandbox) directly to the UI.
 """
 
 import threading
+import logging
 from typing import Callable, Dict, List, Any
+
+_events_log = logging.getLogger("neuroshell.events")
 
 class EventBus:
     _instance = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()
 
     def __new__(cls):
         with cls._lock:
@@ -44,9 +47,10 @@ class EventBus:
             subs = list(self._subscribers.get(event_type, []))
         
         for callback in subs:
-            # We don't try/except here so developer errors bubble up during dev, 
-            # though for pure prod we could catch and log.
-            callback(payload)
+            try:
+                callback(payload)
+            except Exception as exc:
+                _events_log.warning("EventBus subscriber error for %s: %s", event_type, exc)
 
 # Global singleton instance
 neuro_events = EventBus()

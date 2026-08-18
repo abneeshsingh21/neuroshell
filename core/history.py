@@ -11,6 +11,7 @@ import time
 import json
 import csv
 import io
+import threading
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional
@@ -81,19 +82,28 @@ class HistoryStore:
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or DB_FILE
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn: Optional[sqlite3.Connection] = None
+        self._local = threading.local()
         self._init_db()
 
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self._get_conn()
+
+    @_conn.setter
+    def _conn(self, val: Optional[sqlite3.Connection]):
+        self._local.conn = val
+
     def _get_conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-            self._conn.execute("PRAGMA cache_size=-8000")    # 8MB cache
-            self._conn.execute("PRAGMA temp_store=MEMORY")
-            self._conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
-        return self._conn
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=-8000")    # 8MB cache
+            conn.execute("PRAGMA temp_store=MEMORY")
+            conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+            self._local.conn = conn
+        return self._local.conn
 
     def _init_db(self):
         """Create tables, indexes, and FTS5 virtual table."""
@@ -498,10 +508,11 @@ class HistoryStore:
     def find_fix_fuzzy(self, error_message: str, limit: int = 3) -> list[dict]:
         """Find similar error fixes using substring matching."""
         conn = self._get_conn()
-        words = error_message.split()[:5]  # Use first 5 words for matching
-        conditions = " AND ".join(f"error_message LIKE '%{w}%'" for w in words if len(w) > 3)
-        if not conditions:
+        words = [w for w in error_message.split()[:5] if len(w) > 3]
+        if not words:
             return []
+        conditions = " AND ".join("error_message LIKE ?" for _ in words)
+        params = [f"%{w}%" for w in words] + [limit]
 
         rows = conn.execute(f"""
             SELECT *,
@@ -509,7 +520,7 @@ class HistoryStore:
             FROM error_fixes
             WHERE {conditions} AND success_count > failure_count
             ORDER BY success_count DESC LIMIT ?
-        """, (limit,)).fetchall()
+        """, tuple(params)).fetchall()
 
         return [dict(r) for r in rows]
 
@@ -800,9 +811,15 @@ class HistoryStore:
         except sqlite3.OperationalError:
             pass
 
-        # Vacuum to reclaim space
-        conn.execute("VACUUM")
+        # Commit deletions before vacuuming
         conn.commit()
+
+        # Vacuum to reclaim space
+        try:
+            conn.execute("VACUUM")
+        except sqlite3.OperationalError:
+            pass
+
         return deleted
 
     def get_db_stats(self) -> dict:

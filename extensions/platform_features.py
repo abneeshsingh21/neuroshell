@@ -117,18 +117,27 @@ class SmartNotifications:
             from win10toast import ToastNotifier
             ToastNotifier().show_toast(title, message, duration=5, threaded=True)
         except ImportError:
-            # PowerShell fallback
-            ps = f'''
+            import base64
+            # Escape & encode in Base64 UTF-16LE to prevent PowerShell injection
+            b64_title = base64.b64encode(title.encode('utf-16le')).decode('ascii')
+            b64_msg = base64.b64encode(message.encode('utf-16le')).decode('ascii')
+            ps_script = f'''
+            $t = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('{b64_title}'))
+            $m = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('{b64_msg}'))
             [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-            $template.GetElementsByTagName("text")[0].AppendChild($template.CreateTextNode("{title}")) | Out-Null
-            $template.GetElementsByTagName("text")[1].AppendChild($template.CreateTextNode("{message}")) | Out-Null
+            $template.GetElementsByTagName("text")[0].AppendChild($template.CreateTextNode($t)) | Out-Null
+            $template.GetElementsByTagName("text")[1].AppendChild($template.CreateTextNode($m)) | Out-Null
             [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("NeuroShell").Show($template)
             '''
-            subprocess.Popen(["powershell", "-NoProfile", "-Command", ps], creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
+            encoded = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
+            subprocess.Popen(["powershell", "-NoProfile", "-EncodedCommand", encoded],
+                             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
 
     def _notify_macos(self, title: str, message: str):
-        subprocess.Popen(["osascript", "-e", f'display notification "{message}" with title "{title}"'])
+        safe_msg = message.replace('\\', '\\\\').replace('"', '\\"')
+        safe_title = title.replace('\\', '\\\\').replace('"', '\\"')
+        subprocess.Popen(["osascript", "-e", f'display notification "{safe_msg}" with title "{safe_title}"'])
 
     def _notify_linux(self, title: str, message: str, urgency: str = "normal"):
         subprocess.Popen(["notify-send", f"--urgency={urgency}", title, message])
@@ -245,6 +254,11 @@ class MachineSync:
         out.write_text(json.dumps(export, indent=2), encoding="utf-8")
         return out
 
+    ALLOWED_SYNC_FILES = {
+        "corrections.json", "aliases.json", "snippets.json", "theme.json",
+        "session_memory.json", "workspaces.json"
+    }
+
     def import_config(self, sync_path: Path) -> dict:
         """Import config from sync file, merging with local."""
         try:
@@ -253,8 +267,13 @@ class MachineSync:
             return {"error": str(e)}
 
         imported = {}
+        base_dir = self.config_dir.resolve()
         for filename, content in data.get("data", {}).items():
-            target = self.config_dir / filename
+            if filename not in self.ALLOWED_SYNC_FILES:
+                continue
+            target = (self.config_dir / filename).resolve()
+            if not str(target).startswith(str(base_dir)):
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.exists():
                 try:

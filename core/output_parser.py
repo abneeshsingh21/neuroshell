@@ -222,8 +222,9 @@ class OutputParser:
         if tag_count < 2:
             return None
 
-        # Extract root element
-        root_match = re.match(r"<(\w+)", stripped.lstrip("<?xml ").lstrip())
+        # Extract root element safely without character-set stripping
+        cleaned = re.sub(r'<\?xml.*?\?>\s*', '', stripped, flags=re.DOTALL).lstrip()
+        root_match = re.match(r"<([\w\-]+)", cleaned)
         root = root_match.group(1) if root_match else "unknown"
 
         return ParsedOutput(

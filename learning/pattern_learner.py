@@ -35,9 +35,16 @@ class PatternLearner:
         if len(recent) < 5:
             return
 
-        # Learn command sequences (bigrams)
-        for i in range(len(recent) - 1):
-            pair = (recent[i].command, recent[i + 1].command)
+        # Learn command sequences (bigrams) in chronological order
+        ts0 = getattr(recent[0], "timestamp", None)
+        ts1 = getattr(recent[-1], "timestamp", None)
+        if isinstance(ts0, (int, float)) and isinstance(ts1, (int, float)) and ts0 > ts1:
+            chronological = list(reversed(recent))
+        else:
+            chronological = list(recent)
+
+        for i in range(len(chronological) - 1):
+            pair = (chronological[i].command, chronological[i + 1].command)
             self._sequence_counts[pair] += 1
 
         # Learn directory-specific patterns

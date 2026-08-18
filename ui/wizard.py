@@ -12,7 +12,36 @@ import webbrowser
 import logging
 from pathlib import Path
 
-import customtkinter as ctk
+try:
+    import customtkinter as ctk
+    HAS_CTK = True
+except ImportError:
+    HAS_CTK = False
+    class _MockCTK:
+        CTk = object
+        CTkToplevel = object
+        CTkFont = object
+        CTkFrame = object
+        CTkButton = object
+        CTkLabel = object
+        CTkEntry = object
+        CTkTextbox = object
+        CTkScrollableFrame = object
+        CTkTabview = object
+        CTkOptionMenu = object
+        CTkCheckBox = object
+        CTkProgressBar = object
+        CTkSlider = object
+        CTkSwitch = object
+        StringVar = object
+        BooleanVar = object
+        IntVar = object
+        DoubleVar = object
+        @staticmethod
+        def set_appearance_mode(*args, **kwargs): pass
+        @staticmethod
+        def set_default_color_theme(*args, **kwargs): pass
+    ctk = _MockCTK()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config, NEUROSHELL_DIR, CONFIG_FILE

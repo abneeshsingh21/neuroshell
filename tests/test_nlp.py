@@ -7,6 +7,7 @@ Covers:
 - _safe_model_load accepts valid model files
 - IntentClassifier fallback classify (no sklearn needed)
 """
+import warnings
 import pytest
 from pathlib import Path
 
@@ -42,6 +43,37 @@ class TestSafeModelPersistence:
         _safe_model_save({"legacy": True}, model_path)
         (tmp_path / "model.sha256").unlink()
         assert _safe_model_load(model_path) is not None
+
+    def test_load_rejects_inconsistent_version_warning_and_retrains(self, tmp_path, monkeypatch):
+        import nlp.intent_classifier as ic
+
+        model_path = tmp_path / "model.pkl"
+        model_path.write_bytes(b"legacy-model")
+        hash_path = tmp_path / "model.sha256"
+        hash_path.write_text("legacy-sidecar", encoding="utf-8")
+
+        InconsistentVersionWarning = type("InconsistentVersionWarning", (UserWarning,), {})
+
+        def fake_joblib_load(_path):
+            warnings.warn(
+                InconsistentVersionWarning(
+                    "Trying to unpickle estimator TfidfVectorizer from version 1.8.0 when using version 1.5.2."
+                ),
+                category=InconsistentVersionWarning,
+            )
+            return {"legacy": True}
+
+        monkeypatch.setattr(ic, "HAS_JOBLIB", True)
+        monkeypatch.setattr(ic, "_compute_file_hash", lambda _path: "legacy-sidecar")
+        monkeypatch.setattr(ic.joblib, "load", fake_joblib_load)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            assert ic._safe_model_load(model_path) is None
+
+        assert caught == []
+        assert not model_path.exists()
+        assert not hash_path.exists()
 
 
 class TestFallbackClassifier:

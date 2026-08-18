@@ -2561,4 +2561,45 @@ PHRASES = [
     ("can you show hidden files", "dir /a", "ls -la"),
     ("stop container backend", "docker stop backend", "docker stop backend"),
     ("docker list all", "docker ps -a", "docker ps -a"),
+    # Modern AI & Ollama Tools
+    ("list all local ollama models", "ollama list", "ollama list"),
+    ("run local llama model", "ollama run llama3", "ollama run llama3"),
+    ("pull phi model locally", "ollama pull phi3:mini", "ollama pull phi3:mini"),
+    ("show active ollama models", "ollama ps", "ollama ps"),
+    # Modern Package Managers (UV, Bun, PNPM)
+    ("install packages with uv", "uv pip install -r requirements.txt", "uv pip install -r requirements.txt"),
+    ("create venv with uv", "uv venv", "uv venv"),
+    ("run project with bun", "bun run index.ts", "bun run index.ts"),
+    ("run tests with bun", "bun test", "bun test"),
+    ("install dependencies with pnpm", "pnpm install", "pnpm install"),
+    ("build project with pnpm", "pnpm build", "pnpm build"),
+    # Modern Git Workflows
+    ("switch to new branch feature", "git switch -c feature", "git switch -c feature"),
+    ("switch to main branch", "git switch main", "git switch main"),
+    ("unstage file main.py", "git restore --staged main.py", "git restore --staged main.py"),
+    ("discard changes in main.py", "git restore main.py", "git restore main.py"),
+    ("pop stashed changes", "git stash pop", "git stash pop"),
+    ("show git stash list", "git stash list", "git stash list"),
+    # GitHub CLI (gh)
+    ("create pull request with title", "gh pr create --fill", "gh pr create --fill"),
+    ("view pull requests status", "gh pr status", "gh pr status"),
+    ("list open github issues", "gh issue list", "gh issue list"),
+    ("check github login status", "gh auth status", "gh auth status"),
+    # Modern macOS Specific Tools
+    ("update all brew packages", "winget upgrade --all", "sudo apt update && sudo apt upgrade -y", "brew update && brew upgrade"),
+    ("lock my computer screen", "rundll32.exe user32.dll,LockWorkStation", "loginctl lock-session", "pmset displaysleepnow"),
+    ("take screenshot to clipboard", "powershell -Command Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{PRTSC}')", "gnome-screenshot -c", "screencapture -c"),
+    ("search files with spotlight", "dir /s /b *", "find . -name *", "mdfind -name"),
+    ("show macos software details", "systeminfo", "uname -a", "system_profiler SPSoftwareDataType"),
+    ("check macos battery status", "powershell -Command Get-WmiObject Win32_Battery", "upower -i /org/freedesktop/UPower/devices/battery_BAT0", "pmset -g batt"),
+    # Modern Linux & Networking
+    ("show listening tcp ports", "netstat -ano | findstr LISTENING", "ss -tulpn", "lsof -iTCP -sTCP:LISTEN"),
+    ("view systemd service failures", "powershell -Command Get-EventLog -LogName System -EntryType Error -Newest 10", "systemctl --failed", "log show --predicate 'eventMessage contains \"error\"' --last 1h"),
+    ("follow service logs live", "powershell -Command Get-Content -Wait logs\\app.log", "journalctl -u app -f", "tail -f /var/log/system.log"),
+    ("show fast ip addresses", "ipconfig", "ip -br a", "ifconfig"),
+    # Modern Windows (Winget, WSL)
+    ("install application with winget", "winget install", "sudo apt install", "brew install"),
+    ("upgrade all apps with winget", "winget upgrade --all", "sudo apt upgrade -y", "brew upgrade"),
+    ("shutdown wsl subsystem", "wsl --shutdown", "echo 'WSL only on Windows'", "echo 'WSL only on Windows'"),
+    ("check wsl distributions", "wsl --status", "echo 'WSL only on Windows'", "echo 'WSL only on Windows'"),
 ]

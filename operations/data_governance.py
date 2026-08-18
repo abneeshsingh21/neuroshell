@@ -65,10 +65,16 @@ class DataGovernanceManager:
         return meta
 
     def restore_backup(self, archive_zip: Path | str, restore_dir: Path | str) -> Path:
+        import zipfile
         archive = Path(archive_zip)
-        restore = Path(restore_dir)
+        restore = Path(restore_dir).resolve()
         restore.mkdir(parents=True, exist_ok=True)
-        shutil.unpack_archive(str(archive), extract_dir=str(restore), format="zip")
+        with zipfile.ZipFile(archive, "r") as zf:
+            for member in zf.infolist():
+                target_path = (restore / member.filename).resolve()
+                if not str(target_path).startswith(str(restore)):
+                    raise PermissionError(f"Zip slip path traversal detected: {member.filename}")
+            zf.extractall(path=restore)
         return restore
 
     def validate_backup(self, archive_zip: Path | str, expected_sha256: str) -> bool:

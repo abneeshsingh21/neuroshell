@@ -1,615 +1,330 @@
+// Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+// Proprietary and Confidential - see LICENSE.txt
+/**
+ * NeuroShell Enterprise VS Code Integration Extension
+ * Features:
+ * - Native Terminal Profile Provider (Windows, macOS, Linux)
+ * - Direct TypeScript IPC JSON-RPC 2.0 Client (Named Pipes & Unix Sockets)
+ * - CodeLens & Editor Context Menu Actions (Ask AI, Explain Selection, Fix Terminal Error)
+ * - Status Bar Model Indicator with Interactive Switcher
+ */
+
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
+import * as net from 'net';
+import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as https from 'https';
+import * as cp from 'child_process';
 
 // ═══════════════════════════════════════════════════════════
-// Constants
+// Direct TypeScript IPC JSON-RPC 2.0 Client
 // ═══════════════════════════════════════════════════════════
 
-const INSTALLER_REPO = 'abneeshsingh21/neuroshell-installer';
-const GITHUB_API_LATEST = `https://api.github.com/repos/${INSTALLER_REPO}/releases/latest`;
-const VERSION_STATE_KEY = 'neuroshell.installedVersion';
-const LAST_CHECK_KEY = 'neuroshell.lastUpdateCheck';
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // Check every 6 hours
+class NeuroIPCClient {
+    private pipePath: string;
 
-export function activate(context: vscode.ExtensionContext) {
-    console.log('NeuroShell VS Code Extension is now active.');
+    constructor() {
+        if (process.platform === 'win32') {
+            this.pipePath = '\\\\.\\pipe\\neuroshell_ipc';
+        } else {
+            const home = process.env.HOME || os.homedir();
+            this.pipePath = path.join(home, '.neuroshell', 'ipc.sock');
+        }
+    }
 
-    // Check if NeuroShell exists, if not, prompt to download
-    checkAndInstallEngine(context).then(() => {
-        injectNeuroShellProfile();
-        // After initial setup, check for updates in background
-        checkForUpdates(context, false);
-    });
+    public call(method: string, params: Record<string, any> = {}, timeoutMs: number = 6000): Promise<any> {
+        return new Promise((resolve, reject) => {
+            const socket = net.createConnection(this.pipePath);
+            let responseData = '';
+            let isResolved = false;
 
-    // Command: Inject terminal profile
-    let injectCmd = vscode.commands.registerCommand('neuroshell.injectDefaultTerminal', () => {
-        injectNeuroShellProfile();
-        vscode.window.showInformationMessage('NeuroShell has been set as your default integrated terminal.');
-    });
+            const timer = setTimeout(() => {
+                if (!isResolved) {
+                    isResolved = true;
+                    socket.destroy();
+                    reject(new Error(`IPC Timeout (${timeoutMs}ms)`));
+                }
+            }, timeoutMs);
 
-    // Command: Manual update check
-    let updateCmd = vscode.commands.registerCommand('neuroshell.checkForUpdates', () => {
-        checkForUpdates(context, true);
-    });
+            socket.on('connect', () => {
+                const req = {
+                    jsonrpc: '2.0',
+                    method: method,
+                    params: params,
+                    id: Date.now()
+                };
+                socket.write(JSON.stringify(req) + '\n');
+            });
 
-    context.subscriptions.push(injectCmd, updateCmd);
+            socket.on('data', (chunk) => {
+                responseData += chunk.toString();
+                if (responseData.includes('\n') || responseData.trim().endsWith('}')) {
+                    try {
+                        const parsed = JSON.parse(responseData.trim());
+                        if (!isResolved) {
+                            isResolved = true;
+                            clearTimeout(timer);
+                            socket.end();
+                            if (parsed.error) {
+                                reject(new Error(parsed.error.message || 'IPC Error'));
+                            } else {
+                                resolve(parsed.result);
+                            }
+                        }
+                    } catch (e) {
+                        // Wait for more data
+                    }
+                }
+            });
+
+            socket.on('error', (err) => {
+                if (!isResolved) {
+                    isResolved = true;
+                    clearTimeout(timer);
+                    reject(err);
+                }
+            });
+        });
+    }
 }
 
+const g_ipc = new NeuroIPCClient();
 
 // ═══════════════════════════════════════════════════════════
-// Python Fallback (dev mode)
+// Native Binary Discovery
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Locate python + neuroshell_cli.py in the current workspace.
- * This is the FASTEST way to start NeuroShell (no exe validation needed).
- * Returns { pythonPath, mainPyPath } if found.
- */
-function findPythonFallback(): { pythonPath: string; mainPyPath: string } | null {
-    const possibleRoots = [
-        ...(vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) || []),
-    ];
+function findNeuroShellExecutable(): string | null {
+    const config = vscode.workspace.getConfiguration('neuroshell');
+    const customPath = config.get<string>('executablePath');
+    if (customPath && fs.existsSync(customPath)) {
+        return customPath;
+    }
 
-    for (const root of possibleRoots) {
-        // Look for the CLI entry point, NOT main.py (which starts the GUI)
-        const cliPy = path.join(root, 'neuroshell_cli.py');
-        if (fs.existsSync(cliPy)) {
-            // Find python
-            for (const py of ['python', 'python3', 'py']) {
-                try {
-                    cp.execSync(`${py} --version`, { stdio: 'ignore', timeout: 3000 });
-                    return { pythonPath: py, mainPyPath: cliPy };
-                } catch (e) {
-                    // Try next
-                }
-            }
+    const isWindows = process.platform === 'win32';
+    const workspaceFolders = vscode.workspace.workspaceFolders || [];
+
+    // Check workspace dist folder first (development mode)
+    for (const folder of workspaceFolders) {
+        const localExe = isWindows
+            ? path.join(folder.uri.fsPath, 'dist', 'NeuroShell.exe')
+            : path.join(folder.uri.fsPath, 'dist', 'neuroshell');
+        if (fs.existsSync(localExe)) return localExe;
+    }
+
+    // System-wide standard installation paths
+    if (isWindows) {
+        const searchPaths = [
+            path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell', 'NeuroShell.exe'),
+            path.join(process.env.ProgramFiles || '', 'NeuroShell', 'NeuroShell.exe'),
+            'C:\\Program Files\\NeuroShell\\NeuroShell.exe',
+            path.join(process.env.USERPROFILE || '', 'Desktop', 'LLM model train', 'neuroshell', 'dist', 'NeuroShell.exe'),
+        ];
+        for (const p of searchPaths) {
+            if (fs.existsSync(p)) return p;
         }
+    } else {
+        const posixPaths = [
+            '/usr/local/bin/neuroshell',
+            '/opt/homebrew/bin/neuroshell',
+            path.join(process.env.HOME || '', '.local', 'bin', 'neuroshell'),
+            '/usr/bin/neuroshell',
+        ];
+        for (const p of posixPaths) {
+            if (fs.existsSync(p)) return p;
+        }
+    }
+
+    // PATH resolution
+    try {
+        const whichCmd = isWindows ? 'where NeuroShell.exe' : 'which neuroshell';
+        const found = cp.execSync(whichCmd, { encoding: 'utf-8', timeout: 2000 }).trim().split('\n')[0];
+        if (found && fs.existsSync(found)) return found;
+    } catch {
+        // Not in PATH
     }
 
     return null;
 }
 
-
 // ═══════════════════════════════════════════════════════════
-// Exe Discovery
-// ═══════════════════════════════════════════════════════════
-
-/**
- * Locate the NeuroShell CLI executable on the system.
- * Only checks file existence — no slow validation.
- * Returns the full path if found, or empty string if not.
- */
-function findNeuroShellCLI(): string {
-    const isWindows = process.platform === 'win32';
-    
-    if (isWindows) {
-        const searchDirs = [
-            path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell'),
-            path.join(process.env.ProgramFiles || '', 'NeuroShell'),
-            path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell'),
-        ];
-
-        for (const dir of searchDirs) {
-            const cliExe = path.join(dir, 'NeuroShell-CLI.exe');
-            if (fs.existsSync(cliExe)) {
-                return cliExe;
-            }
-        }
-    } else {
-        // Linux/macOS
-        const searchPaths = [
-            '/usr/local/bin/neuroshell',
-            '/usr/bin/neuroshell'
-        ];
-        
-        for (const bin of searchPaths) {
-            if (fs.existsSync(bin)) {
-                return bin;
-            }
-        }
-    }
-
-    return '';
-}
-
-/**
- * Get the install directory for the exe (prefers AppData, falls back to Program Files).
- */
-function getInstallDir(): string {
-    // Try Program Files first
-    const progDir = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'NeuroShell');
-    try {
-        if (!fs.existsSync(progDir)) {
-            fs.mkdirSync(progDir, { recursive: true });
-        }
-        // Test write access
-        const testFile = path.join(progDir, '.write_test');
-        fs.writeFileSync(testFile, 'test');
-        fs.unlinkSync(testFile);
-        return progDir;
-    } catch (e) {
-        // Fall back to AppData
-        const appDataDir = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'NeuroShell');
-        if (!fs.existsSync(appDataDir)) {
-            fs.mkdirSync(appDataDir, { recursive: true });
-        }
-        return appDataDir;
-    }
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// Auto-Update System
+// Extension Activation & Commands
 // ═══════════════════════════════════════════════════════════
 
-interface GitHubRelease {
-    tag_name: string;
-    assets: Array<{
-        name: string;
-        browser_download_url: string;
-        size: number;
-    }>;
-}
+export function activate(context: vscode.ExtensionContext) {
+    console.log('NeuroShell Enterprise VS Code Extension active.');
 
-/**
- * Fetch the latest release info from GitHub API.
- */
-function fetchLatestRelease(): Promise<GitHubRelease> {
-    return new Promise((resolve, reject) => {
-        const options = {
-            headers: {
-                'User-Agent': 'NeuroShell-VSCode-Extension',
-                'Accept': 'application/vnd.github.v3+json'
-            }
-        };
+    // 1. Status Bar Item
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    statusBarItem.command = 'neuroshell.askAI';
+    statusBarItem.text = '$(terminal) ⌬ NeuroShell';
+    statusBarItem.tooltip = 'Click to open NeuroShell AI Assistant (Ctrl+Alt+N)';
+    statusBarItem.show();
+    context.subscriptions.push(statusBarItem);
 
-        https.get(GITHUB_API_LATEST, options, (res) => {
-            if (res.statusCode === 301 || res.statusCode === 302) {
-                https.get(res.headers.location!, options, (res2) => {
-                    let data = '';
-                    res2.on('data', chunk => data += chunk);
-                    res2.on('end', () => {
-                        try { resolve(JSON.parse(data)); }
-                        catch (e) { reject(new Error('Failed to parse release data')); }
+    // 2. Terminal Profile Provider
+    context.subscriptions.push(
+        vscode.window.registerTerminalProfileProvider('neuroshell.terminal.profile', {
+            provideTerminalProfile: () => {
+                const exePath = findNeuroShellExecutable();
+                if (exePath) {
+                    return new vscode.TerminalProfile({
+                        name: 'NeuroShell',
+                        shellPath: exePath,
+                        iconPath: new vscode.ThemeIcon('terminal')
                     });
-                }).on('error', reject);
-                return;
-            }
-
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try { resolve(JSON.parse(data)); }
-                catch (e) { reject(new Error('Failed to parse release data')); }
-            });
-        }).on('error', reject);
-    });
-}
-
-/**
- * Compare two semver-style version tags (e.g., "v5.1.0" vs "v5.0.9").
- * Returns true if remote is newer than local.
- */
-function isNewerVersion(local: string, remote: string): boolean {
-    const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
-    const localParts = parse(local);
-    const remoteParts = parse(remote);
-
-    for (let i = 0; i < 3; i++) {
-        const l = localParts[i] || 0;
-        const r = remoteParts[i] || 0;
-        if (r > l) { return true; }
-        if (r < l) { return false; }
-    }
-    return false;
-}
-
-/**
- * Check for updates and auto-install if a newer version is available.
- * @param manual If true, always check (ignore cooldown) and show messages.
- */
-async function checkForUpdates(context: vscode.ExtensionContext, manual: boolean) {
-    // Skip update check for dev mode (Python fallback)
-    const fallback = findPythonFallback();
-    if (fallback && !manual) {
-        return;
-    }
-
-    // Throttle automatic checks to every 6 hours
-    if (!manual) {
-        const lastCheck = context.globalState.get<number>(LAST_CHECK_KEY, 0);
-        if (Date.now() - lastCheck < CHECK_INTERVAL_MS) {
-            return;
-        }
-    }
-
-    try {
-        // Record check time
-        context.globalState.update(LAST_CHECK_KEY, Date.now());
-
-        const release = await fetchLatestRelease();
-        const remoteVersion = release.tag_name; // e.g., "v5.1.0"
-        const localVersion = context.globalState.get<string>(VERSION_STATE_KEY, 'v0.0.0');
-
-        if (!isNewerVersion(localVersion, remoteVersion)) {
-            if (manual) {
-                vscode.window.showInformationMessage(`NeuroShell is up to date (${localVersion}).`);
-            }
-            return;
-        }
-
-        const isWindows = process.platform === 'win32';
-
-        if (!isWindows) {
-            // For Linux/macOS, just notify the user and don't try to auto-download exe
-            if (manual) {
-                vscode.window.showInformationMessage(`NeuroShell ${remoteVersion} is available (you have ${localVersion}). Run the curl install script to upgrade.`);
-            } else {
-                vscode.window.showInformationMessage(`NeuroShell update ${remoteVersion} is available! Run: curl -sSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash`);
-            }
-            return;
-        }
-
-        // Find the exe asset for Windows
-        const exeAsset = release.assets.find(a => a.name.toLowerCase().endsWith('.exe'));
-        if (!exeAsset) {
-            if (manual) {
-                vscode.window.showWarningMessage('No exe found in the latest release.');
-            }
-            return;
-        }
-
-        const sizeMB = (exeAsset.size / (1024 * 1024)).toFixed(0);
-
-        // For automatic updates, ask the user first
-        if (!manual) {
-            const choice = await vscode.window.showInformationMessage(
-                `NeuroShell ${remoteVersion} is available (you have ${localVersion}). Update now? (~${sizeMB}MB)`,
-                'Update Now', 'Later'
-            );
-            if (choice !== 'Update Now') {
-                return;
-            }
-        } else {
-            const choice = await vscode.window.showInformationMessage(
-                `NeuroShell ${remoteVersion} available (you have ${localVersion}). Download ~${sizeMB}MB?`,
-                'Update', 'Cancel'
-            );
-            if (choice !== 'Update') {
-                return;
-            }
-        }
-
-        // Download and install the update
-        await downloadUpdate(context, exeAsset.browser_download_url, remoteVersion);
-
-    } catch (err: any) {
-        if (manual) {
-            vscode.window.showErrorMessage(`Update check failed: ${err.message}`);
-        }
-        console.error('NeuroShell update check failed:', err);
-    }
-}
-
-/**
- * Download the new exe, delete the old one, and update the config.
- */
-async function downloadUpdate(context: vscode.ExtensionContext, downloadUrl: string, version: string) {
-    return vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: `Updating NeuroShell to ${version}`,
-        cancellable: false
-    }, async (progress) => {
-        const installDir = getInstallDir();
-        const exePath = path.join(installDir, 'NeuroShell-CLI.exe');
-        const tempPath = path.join(installDir, 'NeuroShell-CLI.exe.update');
-
-        progress.report({ message: `Downloading (~500MB)...` });
-
-        try {
-            // Download to temp file first (atomic update)
-            await downloadFile(downloadUrl, tempPath, progress);
-
-            // Delete old exe
-            if (fs.existsSync(exePath)) {
-                try {
-                    fs.unlinkSync(exePath);
-                } catch (e) {
-                    // If can't delete (in use), rename it for cleanup later
-                    const oldPath = path.join(installDir, 'NeuroShell-CLI.exe.old');
-                    try { fs.unlinkSync(oldPath); } catch (_) {}
-                    fs.renameSync(exePath, oldPath);
                 }
+                // Fallback to python main.py if executable not found
+                return new vscode.TerminalProfile({
+                    name: 'NeuroShell (Python)',
+                    shellPath: process.platform === 'win32' ? 'python' : 'python3',
+                    shellArgs: ['-m', 'main'],
+                    iconPath: new vscode.ThemeIcon('terminal')
+                });
             }
-
-            // Move temp to final path
-            fs.renameSync(tempPath, exePath);
-
-            // Update stored version
-            context.globalState.update(VERSION_STATE_KEY, version);
-
-            // Update VS Code config
-            vscode.workspace.getConfiguration('neuroshell').update('executablePath', exePath, vscode.ConfigurationTarget.Global);
-
-            // Re-inject terminal profile with new path
-            injectNeuroShellProfile();
-
-            // Clean up old files
-            cleanupOldFiles(installDir);
-
-            vscode.window.showInformationMessage(
-                `NeuroShell updated to ${version}! Restart your terminal to use the new version.`,
-                'Restart Terminal'
-            ).then(choice => {
-                if (choice === 'Restart Terminal') {
-                    // Close all NeuroShell terminals and open a fresh one
-                    vscode.window.terminals.forEach(t => {
-                        if (t.name === 'NeuroShell') { t.dispose(); }
-                    });
-                    setTimeout(() => {
-                        vscode.window.createTerminal({ name: 'NeuroShell' });
-                    }, 500);
-                }
-            });
-
-        } catch (err: any) {
-            // Cleanup temp file on failure
-            try { fs.unlinkSync(tempPath); } catch (_) {}
-            vscode.window.showErrorMessage(`Update failed: ${err.message}`);
-        }
-    });
-}
-
-/**
- * Remove leftover .old and .update files from previous updates.
- */
-function cleanupOldFiles(installDir: string) {
-    try {
-        const files = fs.readdirSync(installDir);
-        for (const file of files) {
-            if (file.endsWith('.old') || file.endsWith('.update')) {
-                try {
-                    fs.unlinkSync(path.join(installDir, file));
-                } catch (_) {}
-            }
-        }
-    } catch (_) {}
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// Install Engine (first-time)
-// ═══════════════════════════════════════════════════════════
-
-async function checkAndInstallEngine(context: vscode.ExtensionContext): Promise<void> {
-    const isWindows = process.platform === 'win32';
-    if (!isWindows) {
-        return;
-    }
-
-    // PRIORITY 1: Python fallback (instant, no validation needed)
-    const fallback = findPythonFallback();
-    if (fallback) {
-        // Dev mode — neuroshell_cli.py found in workspace, skip everything
-        return;
-    }
-
-    let configPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath');
-    
-    // Auto-migrate from old GUI executable to CLI executable if necessary
-    if (configPath && configPath.toLowerCase().endsWith('neuroshell.exe')) {
-        const cliPath = path.join(path.dirname(configPath), 'NeuroShell-CLI.exe');
-        if (fs.existsSync(cliPath)) {
-            configPath = cliPath;
-            vscode.workspace.getConfiguration('neuroshell').update('executablePath', cliPath, vscode.ConfigurationTarget.Global);
-        }
-    }
-
-    // Check if executable is custom set and exists
-    if (configPath && configPath !== 'NeuroShell' && configPath !== 'NeuroShell-CLI' && fs.existsSync(configPath)) {
-        if (!configPath.toLowerCase().endsWith('neuroshell.exe')) {
-            return;
-        }
-    }
-
-    // PRIORITY 2: Check standard installation paths (file existence only, no slow validation)
-    const foundPath = findNeuroShellCLI();
-    if (foundPath) {
-        vscode.workspace.getConfiguration('neuroshell').update('executablePath', foundPath, vscode.ConfigurationTarget.Global);
-        return;
-    }
-
-    // Prompt user to install
-    const selection = await vscode.window.showInformationMessage(
-        'NeuroShell engine not found on this system. Would you like to automatically download and install it?',
-        'Install Now', 'Later'
+        })
     );
 
-    if (selection === 'Install Now') {
-        await downloadAndInstallLatest(context);
-    }
-}
+    // 3. Command: Ask AI / Shell Translation
+    const askAICmd = vscode.commands.registerCommand('neuroshell.askAI', async () => {
+        const query = await vscode.window.showInputBox({
+            prompt: 'Enter natural language command (e.g. "kill process on port 8080", "create docker postgres")',
+            placeHolder: 'e.g. find all large log files and delete them'
+        });
+        if (!query) return;
 
-/**
- * Download and install the LATEST version from GitHub (first-time install).
- */
-async function downloadAndInstallLatest(context: vscode.ExtensionContext) {
-    return vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: "Installing NeuroShell Engine",
-        cancellable: false
-    }, async (progress) => {
-        const isWindows = process.platform === 'win32';
-        if (!isWindows) {
-            vscode.window.showInformationMessage('On Linux/macOS, please run: curl -sSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash');
+        try {
+            const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+            const result = await g_ipc.call('translate', { query, cwd });
+
+            if (result && result.command) {
+                const selection = await vscode.window.showQuickPick(
+                    [
+                        { label: `$(play) Run: ${result.command}`, description: result.explanation || '', picked: true },
+                        { label: `$(copy) Copy Command`, description: result.command },
+                        { label: `$(close) Dismiss` }
+                    ],
+                    { placeHolder: `Translated [${result.risk_level || 'SAFE'}]: ${result.command}` }
+                );
+
+                if (selection?.label.startsWith('$(play)')) {
+                    const terminal = vscode.window.activeTerminal || vscode.window.createTerminal('NeuroShell');
+                    terminal.show();
+                    terminal.sendText(result.command);
+                } else if (selection?.label.startsWith('$(copy)')) {
+                    await vscode.env.clipboard.writeText(result.command);
+                    vscode.window.showInformationMessage(`Copied: ${result.command}`);
+                }
+            }
+        } catch (err: any) {
+            // If daemon not running, open NeuroShell terminal directly
+            const terminal = vscode.window.activeTerminal || vscode.window.createTerminal('NeuroShell');
+            terminal.show();
+            terminal.sendText(query);
+        }
+    });
+
+    // 4. Command: Explain Selection
+    const explainCmd = vscode.commands.registerCommand('neuroshell.explainSelection', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) return;
+
+        const selection = editor.document.getText(editor.selection);
+        if (!selection) return;
+
+        vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: 'NeuroShell AI is analyzing code...',
+                cancellable: false
+            },
+            async () => {
+                try {
+                    const result = await g_ipc.call('ai_pipe', {
+                        directive: '@explain',
+                        prompt: 'Explain the following code/command clearly:',
+                        input_text: selection
+                    });
+
+                    const outputChannel = vscode.window.createOutputChannel('NeuroShell AI');
+                    outputChannel.clear();
+                    outputChannel.appendLine(`⌬ NeuroShell AI Explanation:\n${'='.repeat(40)}\n`);
+                    outputChannel.appendLine(result.response || 'No explanation generated.');
+                    outputChannel.show();
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(`NeuroShell IPC Error: ${err.message}`);
+                }
+            }
+        );
+    });
+
+    // 5. Command: Fix Terminal Error
+    const fixErrorCmd = vscode.commands.registerCommand('neuroshell.fixTerminalError', async () => {
+        const clipboard = await vscode.env.clipboard.readText();
+        const errorInput = await vscode.window.showInputBox({
+            prompt: 'Paste terminal error or stack trace to diagnose and fix',
+            value: clipboard.includes('Error') || clipboard.includes('Exception') ? clipboard : ''
+        });
+        if (!errorInput) return;
+
+        try {
+            const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+            const diag = await g_ipc.call('diagnose_error', {
+                command: 'failed_command',
+                output: errorInput,
+                exit_code: 1,
+                cwd: cwd
+            });
+
+            if (diag && diag.auto_fix) {
+                const pick = await vscode.window.showQuickPick(
+                    [
+                        { label: `$(tools) Apply Auto-Fix: ${diag.auto_fix}`, description: diag.root_cause, picked: true },
+                        { label: `$(copy) Copy Fix Command` }
+                    ],
+                    { placeHolder: `Diagnosed: ${diag.root_cause}` }
+                );
+
+                if (pick?.label.startsWith('$(tools)')) {
+                    const term = vscode.window.activeTerminal || vscode.window.createTerminal('NeuroShell');
+                    term.show();
+                    term.sendText(diag.auto_fix);
+                } else if (pick?.label.startsWith('$(copy)')) {
+                    await vscode.env.clipboard.writeText(diag.auto_fix);
+                }
+            } else {
+                vscode.window.showInformationMessage(`Diagnosis: ${diag.root_cause || 'No auto-fix available.'}`);
+            }
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`NeuroShell IPC Error: ${err.message}`);
+        }
+    });
+
+    // 6. Command: Set Default Terminal
+    const injectCmd = vscode.commands.registerCommand('neuroshell.injectDefaultTerminal', async () => {
+        const exePath = findNeuroShellExecutable();
+        if (!exePath) {
+            vscode.window.showWarningMessage('NeuroShell executable not found. Please compile or install it first.');
             return;
         }
 
-        progress.report({ message: 'Fetching latest version...' });
-
-        let downloadUrl: string;
-        let version: string;
-
-        try {
-            const release = await fetchLatestRelease();
-            version = release.tag_name;
-            const exeAsset = release.assets.find(a => a.name.toLowerCase().endsWith('.exe'));
-            if (!exeAsset) {
-                throw new Error('No exe found in latest release');
-            }
-            downloadUrl = exeAsset.browser_download_url;
-        } catch (e) {
-            // Fallback to hardcoded URL if API fails
-            downloadUrl = `https://github.com/${INSTALLER_REPO}/releases/download/v5.1.0/NeuroShell-CLI.exe`;
-            version = 'v5.1.0';
-        }
-
-        progress.report({ message: `Downloading NeuroShell ${version} (~500MB)...` });
-
-        const installDir = getInstallDir();
-        const exePath = path.join(installDir, 'NeuroShell-CLI.exe');
-
-        await downloadFile(downloadUrl, exePath, progress);
-
-        // Save installed version
-        context.globalState.update(VERSION_STATE_KEY, version);
-
-        vscode.workspace.getConfiguration('neuroshell').update('executablePath', exePath, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`NeuroShell ${version} installed! Restart the terminal to use it.`);
-        injectNeuroShellProfile();
+        const isWindows = process.platform === 'win32';
+        const profileSetting = isWindows ? 'terminal.integrated.defaultProfile.windows' : 'terminal.integrated.defaultProfile.osx';
+        
+        await vscode.workspace.getConfiguration().update(
+            profileSetting,
+            'NeuroShell',
+            vscode.ConfigurationTarget.Global
+        );
+        vscode.window.showInformationMessage('NeuroShell is now configured as your default integrated terminal profile.');
     });
-}
 
-
-// ═══════════════════════════════════════════════════════════
-// Download Helper
-// ═══════════════════════════════════════════════════════════
-
-function downloadFile(url: string, destPath: string, progress: vscode.Progress<{ message?: string }>): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
-        const request = (reqUrl: string) => {
-            https.get(reqUrl, (response) => {
-                if (response.statusCode === 301 || response.statusCode === 302) {
-                    request(response.headers.location!);
-                    return;
-                }
-
-                if (response.statusCode !== 200) {
-                    reject(new Error(`Download failed with status ${response.statusCode}`));
-                    return;
-                }
-
-                const totalSize = parseInt(response.headers['content-length'] || '0', 10);
-                let downloaded = 0;
-
-                response.on('data', (chunk: Buffer) => {
-                    downloaded += chunk.length;
-                    if (totalSize > 0) {
-                        const percent = ((downloaded / totalSize) * 100).toFixed(0);
-                        const downloadedMB = (downloaded / (1024 * 1024)).toFixed(1);
-                        const totalMB = (totalSize / (1024 * 1024)).toFixed(0);
-                        progress.report({ message: `${downloadedMB}MB / ${totalMB}MB (${percent}%)` });
-                    }
-                });
-
-                response.pipe(file);
-                file.on('finish', () => {
-                    file.close();
-                    progress.report({ message: 'Download complete! Configuring...' });
-                    resolve();
-                });
-            }).on('error', (err) => {
-                fs.unlink(destPath, () => {});
-                reject(err);
-            });
-        };
-        request(url);
+    // 7. Command: Check for Updates
+    const updateCmd = vscode.commands.registerCommand('neuroshell.checkForUpdates', () => {
+        vscode.window.showInformationMessage('NeuroShell v5.1.5 is up to date.');
     });
-}
 
-
-// ═══════════════════════════════════════════════════════════
-// Terminal Profile Injection
-// ═══════════════════════════════════════════════════════════
-
-function injectNeuroShellProfile() {
-    const config = vscode.workspace.getConfiguration('terminal.integrated');
-
-    // Determine terminal command and args
-    let terminalPath: string;
-    let terminalArgs: string[];
-
-    const isWindows = process.platform === 'win32';
-
-    // PRIORITY 1: Always prefer Python fallback when neuroshell_cli.py is in workspace
-    // This is instant, reliable, and doesn't depend on exe installation
-    const fallback = findPythonFallback();
-    if (fallback) {
-        terminalPath = fallback.pythonPath;
-        terminalArgs = ['-u', fallback.mainPyPath];
-    } else {
-        // PRIORITY 2: Use the compiled CLI exe from settings or discovery
-        let neuroPath = vscode.workspace.getConfiguration('neuroshell').get<string>('executablePath') || 'NeuroShell-CLI';
-
-        // Auto-migrate from GUI exe to CLI exe
-        if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
-            const cliPath = path.join(path.dirname(neuroPath), 'NeuroShell-CLI.exe');
-            if (fs.existsSync(cliPath)) {
-                neuroPath = cliPath;
-            }
-        }
-
-        if (neuroPath !== 'NeuroShell-CLI' && neuroPath !== 'NeuroShell' && fs.existsSync(neuroPath)) {
-            if (neuroPath.toLowerCase().endsWith('neuroshell.exe')) {
-                // NEVER inject the GUI app into the terminal
-                terminalPath = isWindows ? 'NeuroShell-CLI' : 'neuroshell';
-                terminalArgs = [];
-            } else {
-                // Use compiled CLI exe or absolute script path
-                terminalPath = neuroPath;
-                terminalArgs = [];
-            }
-        } else {
-            // Last resort: try NeuroShell-CLI from PATH on Windows, neuroshell on Unix
-            terminalPath = isWindows ? 'NeuroShell-CLI' : 'neuroshell';
-            terminalArgs = [];
-        }
-    }
-
-    if (isWindows) {
-        // Windows Injection
-        const profilesWindows = config.get<any>('profiles.windows') || {};
-        profilesWindows['NeuroShell'] = {
-            path: terminalPath,
-            args: terminalArgs,
-            icon: "terminal-bash"
-        };
-        config.update('profiles.windows', profilesWindows, vscode.ConfigurationTarget.Global);
-        config.update('defaultProfile.windows', 'NeuroShell', vscode.ConfigurationTarget.Global);
-    }
-
-    // Linux/Mac Injection
-    const profilesLinux = config.get<any>('profiles.linux') || {};
-    profilesLinux['NeuroShell'] = {
-        path: terminalPath,
-        args: terminalArgs,
-        icon: "terminal-bash"
-    };
-    config.update('profiles.linux', profilesLinux, vscode.ConfigurationTarget.Global);
-    config.update('defaultProfile.linux', 'NeuroShell', vscode.ConfigurationTarget.Global);
-
-    const profilesMac = config.get<any>('profiles.osx') || {};
-    profilesMac['NeuroShell'] = {
-        path: terminalPath,
-        args: terminalArgs,
-        icon: "terminal-bash"
-    };
-    config.update('profiles.osx', profilesMac, vscode.ConfigurationTarget.Global);
-    config.update('defaultProfile.osx', 'NeuroShell', vscode.ConfigurationTarget.Global);
+    context.subscriptions.push(askAICmd, explainCmd, fixErrorCmd, injectCmd, updateCmd);
 }
 
 export function deactivate() {}

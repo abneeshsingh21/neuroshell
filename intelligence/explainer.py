@@ -150,15 +150,23 @@ class Explainer:
             provenance=ProvenanceTag(source=ProvenanceSource.PATTERN, confidence=0.95, detail="offline database", latency_ms=0.1),
         )
 
+    SAFE_HELP_COMMANDS = {
+        "git", "docker", "tar", "grep", "curl", "wget", "npm", "pip", "python", "python3",
+        "cargo", "go", "kubectl", "systemctl", "find", "sed", "awk", "ls", "df", "ps",
+        "netstat", "ip", "ssh", "scp", "rsync", "chmod", "chown", "uname", "top", "free"
+    }
+
     def _explain_manpage(self, base_cmd: str) -> str:
-        try:
-            r = subprocess.run([base_cmd, "--help"], capture_output=True, text=True, timeout=5)
-            out = r.stdout or r.stderr
-            if out:
-                lines = [l for l in out.split("\n") if l.strip()][:10]
-                return "\n".join(lines)
-        except Exception:
-            pass
+        clean_cmd = base_cmd.strip().lower()
+        if clean_cmd in self.SAFE_HELP_COMMANDS:
+            try:
+                r = subprocess.run([base_cmd, "--help"], capture_output=True, text=True, timeout=3)
+                out = r.stdout or r.stderr
+                if out:
+                    lines = [l for l in out.split("\n") if l.strip()][:10]
+                    return "\n".join(lines)
+            except Exception:
+                pass
         try:
             r = subprocess.run(["man", "-f", base_cmd], capture_output=True, text=True, timeout=3)
             if r.returncode == 0:

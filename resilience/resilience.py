@@ -97,7 +97,8 @@ class CircuitBreaker:
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._success_count = 0
-        self._last_failure_time = 0
+        self._last_failure_time = 0.0
+        self._half_open_in_flight = False
         self._lock = threading.Lock()
 
     @property
@@ -107,20 +108,31 @@ class CircuitBreaker:
                 if time.time() - self._last_failure_time >= self.recovery_timeout:
                     self._state = CircuitState.HALF_OPEN
                     self._success_count = 0
+                    self._half_open_in_flight = False
             return self._state
 
     def call(self, func: Callable, *args, **kwargs):
         """Execute a function through the circuit breaker."""
-        state = self.state
+        with self._lock:
+            now = time.time()
+            if self._state == CircuitState.OPEN:
+                if now - self._last_failure_time >= self.recovery_timeout:
+                    self._state = CircuitState.HALF_OPEN
+                    self._success_count = 0
+                    self._half_open_in_flight = False
+                else:
+                    raise CircuitOpenError(f"Circuit '{self.name}' is OPEN — service unavailable")
 
-        if state == CircuitState.OPEN:
-            raise CircuitOpenError(f"Circuit '{self.name}' is OPEN — service unavailable")
+            if self._state == CircuitState.HALF_OPEN:
+                if self._half_open_in_flight:
+                    raise CircuitOpenError(f"Circuit '{self.name}' is HALF_OPEN — probe call already in progress")
+                self._half_open_in_flight = True
 
         try:
             result = func(*args, **kwargs)
             self._on_success()
             return result
-        except Exception as e:
+        except Exception:
             self._on_failure()
             raise
 
@@ -128,16 +140,22 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count = 0
             if self._state == CircuitState.HALF_OPEN:
+                self._half_open_in_flight = False
                 self._success_count += 1
                 if self._success_count >= self.success_threshold:
                     self._state = CircuitState.CLOSED
 
     def _on_failure(self):
         with self._lock:
-            self._failure_count += 1
             self._last_failure_time = time.time()
-            if self._failure_count >= self.failure_threshold:
+            if self._state == CircuitState.HALF_OPEN:
                 self._state = CircuitState.OPEN
+                self._failure_count = self.failure_threshold
+                self._half_open_in_flight = False
+            else:
+                self._failure_count += 1
+                if self._failure_count >= self.failure_threshold:
+                    self._state = CircuitState.OPEN
 
     def reset(self):
         """Manually reset the circuit breaker."""
@@ -231,11 +249,18 @@ class CrashRecovery:
         self._state_file = self.sessions_dir / "last_state.json"
 
     def save_state(self, state: dict):
-        """Save current session state for recovery."""
+        """Save current session state for recovery atomically."""
+        import tempfile
         state["_saved_at"] = time.time()
         state["_pid"] = os.getpid()
         try:
-            self._state_file.write_text(json.dumps(state, default=str), encoding="utf-8")
+            data = json.dumps(state, default=str, indent=2)
+            temp_fd, temp_path = tempfile.mkstemp(dir=str(self.sessions_dir), prefix="state_", suffix=".tmp")
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, str(self._state_file))
         except Exception as exc:
             _resilience_log.warning("Failed to save session state: %s", exc)
 

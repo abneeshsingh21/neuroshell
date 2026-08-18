@@ -444,41 +444,41 @@ class TestNLPNewIntents(unittest.TestCase):
 
 
 class TestDesktopGUIThemes(unittest.TestCase):
-    """Tests for desktop_app.py theme and color data (non-GUI, data-only)."""
+    """Tests for desktop_features.py theme and color data (non-GUI, data-only)."""
 
     def test_colors_dict(self):
-        from desktop_app import COLORS
-        self.assertIsInstance(COLORS, dict)
-        self.assertIn("bg_dark", COLORS)
-        self.assertIn("accent_cyan", COLORS)
+        from extensions.desktop_features import BUILT_IN_THEMES
+        self.assertIsInstance(BUILT_IN_THEMES, dict)
+        self.assertIn("cyberpunk", BUILT_IN_THEMES)
+        self.assertIn("nord", BUILT_IN_THEMES)
 
     def test_ansi_colors_mapping(self):
-        from desktop_app import ANSI_COLORS
-        self.assertIn("31", ANSI_COLORS)  # red
-        self.assertIn("32", ANSI_COLORS)  # green
-        self.assertIn("1", ANSI_COLORS)   # bold
+        from extensions.desktop_features import ThemeEngine
+        engine = ThemeEngine()
+        theme = engine.get_theme()
+        self.assertIn("primary", theme)
+        self.assertIn("bg", theme)
 
     def test_font_constants(self):
-        from desktop_app import FONT_FAMILY, FONT_UI
-        self.assertIsInstance(FONT_FAMILY, str)
-        self.assertIsInstance(FONT_UI, str)
+        from extensions.desktop_features import CommandPalette
+        palette = CommandPalette()
+        results = palette.search("files")
+        self.assertIsInstance(results, list)
 
     def test_theme_definitions(self):
         """Theme definitions should have required keys."""
-        from desktop_app import NeuroShellDesktop
-        themes = NeuroShellDesktop._THEMES
-        self.assertIn("dark", themes)
-        self.assertIn("ocean", themes)
-        self.assertIn("matrix", themes)
-        self.assertIn("light", themes)
+        from extensions.desktop_features import BUILT_IN_THEMES
+        self.assertIn("cyberpunk", BUILT_IN_THEMES)
+        self.assertIn("nord", BUILT_IN_THEMES)
+        self.assertIn("matrix", BUILT_IN_THEMES)
+        self.assertIn("dracula", BUILT_IN_THEMES)
 
     def test_theme_keys_consistent(self):
         """All themes should have the same keys."""
-        from desktop_app import NeuroShellDesktop
-        themes = NeuroShellDesktop._THEMES
-        dark_keys = set(themes["dark"].keys())
-        for name, theme in themes.items():
-            self.assertEqual(set(theme.keys()), dark_keys, f"Theme '{name}' has inconsistent keys")
+        from extensions.desktop_features import BUILT_IN_THEMES
+        cyber_keys = set(BUILT_IN_THEMES["cyberpunk"].keys())
+        for name, theme in BUILT_IN_THEMES.items():
+            self.assertEqual(set(theme.keys()), cyber_keys, f"Theme '{name}' has inconsistent keys")
 
 
 if __name__ == "__main__":

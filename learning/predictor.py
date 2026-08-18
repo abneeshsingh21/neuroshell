@@ -19,14 +19,21 @@ class Predictor:
         self._trained = False
 
     def train(self):
-        """Build Markov chain from command history."""
+        """Build Markov chain from command history in chronological order."""
         recent = self.history.get_recent(1000)
         if len(recent) < 2:
             return
 
-        for i in range(len(recent) - 1):
-            current = recent[i].command
-            next_cmd = recent[i + 1].command
+        ts0 = getattr(recent[0], "timestamp", None)
+        ts1 = getattr(recent[-1], "timestamp", None)
+        if isinstance(ts0, (int, float)) and isinstance(ts1, (int, float)) and ts0 > ts1:
+            chronological = list(reversed(recent))
+        else:
+            chronological = list(recent)
+
+        for i in range(len(chronological) - 1):
+            current = chronological[i].command
+            next_cmd = chronological[i + 1].command
             self._transitions[current][next_cmd] += 1
             self._total[current] += 1
 

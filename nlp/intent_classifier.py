@@ -10,6 +10,7 @@ import os
 import json
 import hashlib
 import math
+import warnings
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
@@ -19,6 +20,12 @@ try:
     HAS_JOBLIB = True
 except ImportError:
     import pickle  # fallback if joblib unavailable
+    class _MockJoblib:
+        @staticmethod
+        def load(f): raise NotImplementedError()
+        @staticmethod
+        def dump(val, f, **kwargs): raise NotImplementedError()
+    joblib = _MockJoblib()
     HAS_JOBLIB = False
 
 try:
@@ -60,9 +67,10 @@ def _safe_model_save(model, path: Path):
 
 
 def _safe_model_load(path: Path):
-    """Load model only if SHA-256 hash matches the sidecar file.
+    """Load model only if the cache is trustworthy for the current runtime.
 
-    Raises ValueError if tampered. Returns None if no hash sidecar (first-run).
+    Returns None when the file is tampered or serialized by an incompatible
+    scikit-learn version so the caller can retrain safely.
     """
     hash_path = path.with_suffix(".sha256")
     if hash_path.exists():
@@ -75,12 +83,42 @@ def _safe_model_load(path: Path):
                 "Delete %s to retrain.", path
             )
             return None  # Caller will retrain
-    # Hash matches (or no sidecar yet — legacy load, will get sidecar on next save)
+
     if HAS_JOBLIB:
-        return joblib.load(path)
+        load_fn = joblib.load
     else:
-        with open(path, "rb") as f:
-            return pickle.load(f)  # noqa: S301 — gated by hash check above
+        def load_fn(target_path: Path):
+            with open(target_path, "rb") as f:
+                return pickle.load(f)  # noqa: S301 — gated by hash check above
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = load_fn(path)
+
+    for record in caught:
+        message = str(record.message)
+        if (
+            record.category.__name__ == "InconsistentVersionWarning"
+            or ("Trying to unpickle estimator" in message and "when using version" in message)
+        ):
+            import logging
+            logger = logging.getLogger("neuroshell.nlp")
+            for stale_path in (path, hash_path):
+                try:
+                    if stale_path.exists():
+                        stale_path.unlink()
+                except OSError:
+                    logger.debug("Failed to remove stale NLP model cache file: %s", stale_path, exc_info=True)
+            logger.info(
+                "Cleared stale NLP intent model cache due to sklearn version mismatch: %s",
+                path,
+            )
+            return None
+
+    for record in caught:
+        warnings.warn(record.message, category=record.category, stacklevel=2)
+
+    return model
 
 
 @dataclass

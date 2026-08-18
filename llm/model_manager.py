@@ -117,6 +117,22 @@ class ModelManager:
         """Get the current active model name."""
         return self.config.llm.model
 
+    def get_active_model(self) -> str:
+        """Alias for current_model."""
+        return self.current_model()
+
+    def list_available_models(self) -> list[dict]:
+        """Return list of models as dicts for UI select menu."""
+        models = self.list_models()
+        return [
+            {
+                "name": m.name,
+                "description": f"{m.size_gb}GB {m.parameters}".strip(),
+                "is_active": m.is_active,
+            }
+            for m in models
+        ]
+
     def get_model_info(self, model_name: str = "") -> Optional[ModelInfo]:
         """Get info about a specific model."""
         target = model_name or self.config.llm.model

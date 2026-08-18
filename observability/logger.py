@@ -13,10 +13,23 @@ import logging
 import traceback
 import functools
 import random
+import contextvars
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Callable
 from config import LOG_DIR
+
+_CORRELATION_VAR: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("neuroshell_correlation_id", default=None)
+
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler resilient against Windows file locking errors (WinError 32)."""
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except (PermissionError, OSError):
+            # On Windows, if another process or thread holds the log file open, ignore rollover failure
+            pass
 
 
 class StructuredLogger:
@@ -29,7 +42,7 @@ class StructuredLogger:
     - Structured error context with stack traces
     - Log sampling for verbose debug logs
     - Optional stderr console handler for debug mode
-    - Correlation IDs for request tracing
+    - Correlation IDs for request tracing (ContextVar-backed)
     - Log level filtering per component
     """
 
@@ -37,7 +50,6 @@ class StructuredLogger:
 
     def __init__(self, component: str, log_level: str = "INFO", console: bool = False, sample_rate: float = 1.0):
         self.component = component
-        self._correlation_id: Optional[str] = None
         self._sample_rate = max(0.0, min(1.0, sample_rate))  # 0.0 = no logs, 1.0 = all logs
         self._perf_traces: list[dict] = []
 
@@ -48,8 +60,8 @@ class StructuredLogger:
         self._logger.propagate = False
 
         if not self._logger.handlers:
-            # File handler with rotation (10MB, keep 5)
-            fh = RotatingFileHandler(
+            # File handler with safe rotation (10MB, keep 5)
+            fh = SafeRotatingFileHandler(
                 LOG_DIR / "neuroshell.log",
                 maxBytes=10 * 1024 * 1024,
                 backupCount=5,
@@ -75,7 +87,11 @@ class StructuredLogger:
         return cls(component)
 
     def set_correlation_id(self, cid: str):
-        self._correlation_id = cid
+        _CORRELATION_VAR.set(cid)
+
+    @property
+    def correlation_id(self) -> Optional[str]:
+        return _CORRELATION_VAR.get()
 
     def debug(self, event: str, **data):
         if self._should_sample():
@@ -166,8 +182,9 @@ class StructuredLogger:
             "component": self.component,
             "event": event,
         }
-        if self._correlation_id:
-            record["cid"] = self._correlation_id
+        cid = self.correlation_id
+        if cid:
+            record["cid"] = cid
         if data:
             record["data"] = data
 
