@@ -2152,9 +2152,39 @@ public:
 
         // Short Developer Testing Aliases: "test", "test changed", "test diff", "test all"
         if (lowerTrim == "@test" || lowerTrim == "test" || lowerTrim == "tests" || lowerTrim == "@test all" || lowerTrim == "test all" || lowerTrim == "test everything") {
+            auto polySuites = neuroshell::TestOrchestrator::DetectAllEcosystems(fs::current_path());
+            if (polySuites.size() > 1) {
+                std::cout << "\n" << C_CYAN << "  🌐 Polyglot Project Detected: Running " << polySuites.size() << " test suites concurrently..." << C_RESET << "\n\n";
+                std::vector<std::string> cmds;
+                std::vector<std::string> labels;
+                for (const auto& s : polySuites) {
+                    cmds.push_back(s.command);
+                    labels.push_back(s.language);
+                }
+                taskSupervisor.RunParallel(cmds, labels);
+                return;
+            }
+
             std::string testCmd = neuroshell::TestOrchestrator::GetParallelTestCommand({}, fs::current_path());
             std::cout << "\n" << C_CYAN << "  🧪 Running Parallel Test Suite: " << C_BOLD << C_WHITE << testCmd << C_RESET << "\n\n";
             ExecuteCommand(testCmd);
+            return;
+        }
+
+        if (lowerTrim == "test python" || lowerTrim == "pytest") {
+            ExecuteCommand("pytest -n auto -v");
+            return;
+        }
+        if (lowerTrim == "test node" || lowerTrim == "test frontend" || lowerTrim == "test js" || lowerTrim == "test ts") {
+            ExecuteCommand(fs::exists("vitest.config.ts") ? "npx vitest run --threads" : "npm test");
+            return;
+        }
+        if (lowerTrim == "test rust" || lowerTrim == "cargo test") {
+            ExecuteCommand("cargo test");
+            return;
+        }
+        if (lowerTrim == "test go") {
+            ExecuteCommand("go test -p 4 -v ./...");
             return;
         }
 

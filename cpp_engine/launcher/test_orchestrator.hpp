@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <algorithm>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -21,7 +22,14 @@ enum class ProjectEcosystem {
     Rust,
     Go,
     Cpp,
+    Java,
     Unknown
+};
+
+struct PolyglotSuite {
+    std::string language;
+    std::string command;
+    std::string directory;
 };
 
 class TestOrchestrator {
@@ -42,7 +50,56 @@ public:
         if (fs::exists(root / "CMakeLists.txt")) {
             return ProjectEcosystem::Cpp;
         }
+        if (fs::exists(root / "pom.xml") || fs::exists(root / "build.gradle")) {
+            return ProjectEcosystem::Java;
+        }
         return ProjectEcosystem::Unknown;
+    }
+
+    static std::vector<PolyglotSuite> DetectAllEcosystems(const fs::path& root = fs::current_path()) {
+        std::vector<PolyglotSuite> suites;
+
+        // 1. Check Root
+        if (fs::exists(root / "pyproject.toml") || fs::exists(root / "requirements.txt") || fs::exists(root / "pytest.ini") || fs::exists(root / "setup.py")) {
+            suites.push_back({"Python", "pytest -n auto -v", "."});
+        }
+        if (fs::exists(root / "package.json")) {
+            std::string cmd = (fs::exists(root / "vitest.config.ts") || fs::exists(root / "vitest.config.js")) ? "npx vitest run --threads" : "npm test";
+            suites.push_back({"Node/TypeScript", cmd, "."});
+        }
+        if (fs::exists(root / "Cargo.toml")) {
+            suites.push_back({"Rust", "cargo test", "."});
+        }
+        if (fs::exists(root / "go.mod")) {
+            suites.push_back({"Go", "go test -p 4 -v ./...", "."});
+        }
+        if (fs::exists(root / "CMakeLists.txt")) {
+            suites.push_back({"C++", "ctest -j 4 --output-on-failure", "."});
+        }
+
+        // 2. Check immediate subfolders for Monorepo microservices (e.g. ./frontend, ./backend, ./api, ./web)
+        try {
+            for (const auto& entry : fs::directory_iterator(root)) {
+                if (entry.is_directory()) {
+                    std::string dirName = entry.path().filename().string();
+                    if (dirName.rfind(".", 0) == 0 || dirName == "node_modules" || dirName == ".venv" || dirName == "venv" || dirName == "dist" || dirName == "build") {
+                        continue;
+                    }
+
+                    fs::path subPath = entry.path();
+                    if (fs::exists(subPath / "package.json") && suites.empty()) {
+                        std::string cmd = "npm --prefix " + dirName + " test";
+                        suites.push_back({"Frontend (" + dirName + ")", cmd, dirName});
+                    }
+                    if ((fs::exists(subPath / "requirements.txt") || fs::exists(subPath / "pyproject.toml")) && suites.empty()) {
+                        std::string cmd = "pytest -n auto -v " + dirName;
+                        suites.push_back({"Backend (" + dirName + ")", cmd, dirName});
+                    }
+                }
+            }
+        } catch (...) {}
+
+        return suites;
     }
 
     static std::string GetParallelTestCommand(const std::vector<std::string>& files = {}, const fs::path& root = fs::current_path()) {
@@ -76,6 +133,10 @@ public:
 
             case ProjectEcosystem::Cpp:
                 return "ctest -j 4 --output-on-failure";
+
+            case ProjectEcosystem::Java:
+                if (fs::exists(root / "pom.xml")) return "mvn test";
+                return "./gradlew test";
 
             default:
                 if (!files.empty()) {
