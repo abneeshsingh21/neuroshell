@@ -305,11 +305,16 @@ async function triggerEngineDownload(): Promise<boolean> {
 export function activate(context: vscode.ExtensionContext) {
     console.log('NeuroShell Enterprise VS Code Extension active.');
 
+    const isWindows = process.platform === 'win32';
+    const settingKey = isWindows
+        ? 'terminal.integrated.defaultProfile.windows'
+        : 'terminal.integrated.defaultProfile.osx';
+
     // 1. Check if Engine is installed, otherwise prompt enterprise notification
     const installedExe = findNeuroShellExecutable();
     if (!installedExe) {
         vscode.window.showInformationMessage(
-            '⌬ NeuroShell Engine is ready to install! Download the native high-speed terminal with 1-click.',
+            '⌬ NeuroShell Engine is ready! Download & configure the native high-speed C++ terminal in 1-click.',
             '⚡ Download & Setup NeuroShell',
             'Remind Me Later'
         ).then((selection) => {
@@ -317,6 +322,9 @@ export function activate(context: vscode.ExtensionContext) {
                 triggerEngineDownload();
             }
         });
+    } else {
+        // Auto-configure as default profile
+        vscode.workspace.getConfiguration().update(settingKey, 'NeuroShell', vscode.ConfigurationTarget.Global);
     }
 
     // 2. Status Bar Item
@@ -331,25 +339,29 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerTerminalProfileProvider('neuroshell.terminal.profile', {
             provideTerminalProfile: () => {
-                const exePath = findNeuroShellExecutable();
-                if (exePath) {
-                    return new vscode.TerminalProfile({
-                        name: 'NeuroShell',
-                        shellPath: exePath,
-                        iconPath: new vscode.ThemeIcon('terminal')
-                    });
-                }
+                const exePath = findNeuroShellExecutable() || getTargetInstallPath();
                 return new vscode.TerminalProfile({
-                    name: 'NeuroShell (Python)',
-                    shellPath: process.platform === 'win32' ? 'python' : 'python3',
-                    shellArgs: ['-m', 'main'],
+                    name: 'NeuroShell',
+                    shellPath: exePath,
                     iconPath: new vscode.ThemeIcon('terminal')
                 });
             }
         })
     );
 
-    // 4. Command: Download / Update Engine
+    // 4. Command: Explicit Native Terminal Opener
+    const openTermCmd = vscode.commands.registerCommand('neuroshell.openTerminal', () => {
+        const exePath = findNeuroShellExecutable() || getTargetInstallPath();
+        const term = vscode.window.createTerminal({
+            name: 'NeuroShell',
+            shellPath: exePath,
+            iconPath: new vscode.ThemeIcon('terminal')
+        });
+        term.show();
+    });
+    context.subscriptions.push(openTermCmd);
+
+    // 5. Command: Download / Update Engine
     const downloadCmd = vscode.commands.registerCommand('neuroshell.downloadEngine', () => {
         triggerEngineDownload();
     });
