@@ -5,13 +5,11 @@ NeuroShell Theme System — Production Grade
 Custom themes via config, auto dark/light, icon sets, 10 built-in themes.
 """
 
-import os
 import json
-from typing import Optional
+import os
 from dataclasses import dataclass, field
-from pathlib import Path
-from config import NEUROSHELL_DIR
 
+from config import NEUROSHELL_DIR
 
 THEMES_DIR = NEUROSHELL_DIR / "themes"
 
@@ -231,7 +229,7 @@ class ThemeManager:
             })
         return themes
 
-    def export_theme(self, name: str) -> Optional[str]:
+    def export_theme(self, name: str) -> str | None:
         """Export theme as JSON string."""
         theme = self.BUILT_IN.get(name) or self._custom_themes.get(name)
         if theme:
@@ -241,7 +239,7 @@ class ThemeManager:
             }, indent=2)
         return None
 
-    def import_theme(self, json_str: str) -> Optional[Theme]:
+    def import_theme(self, json_str: str) -> Theme | None:
         """Import theme from JSON string."""
         try:
             data = json.loads(json_str)

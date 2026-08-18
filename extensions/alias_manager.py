@@ -8,9 +8,7 @@ Supports alias/unalias/list with JSON persistence.
 
 import json
 import os
-from pathlib import Path
-from typing import Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from config import NEUROSHELL_DIR
 
@@ -105,7 +103,7 @@ class AliasManager:
             return True
         return False
 
-    def get(self, name: str) -> Optional[str]:
+    def get(self, name: str) -> str | None:
         """Get the command for an alias, or None."""
         entry = self._aliases.get(name.strip().lower())
         return entry.command if entry else None

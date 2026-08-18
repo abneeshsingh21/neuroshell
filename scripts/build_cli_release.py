@@ -63,7 +63,7 @@ def run_build(project_root: Path, out_dir: Path) -> Path:
     system_name = platform.system().lower()
     exe_name = "NeuroShell-CLI.exe" if system_name.startswith("win") else "neuroshell"
     exe = dist_dir / exe_name
-    
+
     if not exe.exists():
         raise FileNotFoundError(f"built executable not found: {exe}")
     return exe
@@ -115,10 +115,10 @@ def main() -> int:
 
     print("Building NeuroShell CLI...")
     binary = run_build(project_root=project_root, out_dir=out_dir)
-    
+
     print(f"Packaging {binary}...")
     artifact = package_artifact(binary_path=binary, release_dir=out_dir)
-    
+
     print("Writing checksums...")
     checksum = write_checksums(artifact)
 

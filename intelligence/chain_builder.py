@@ -9,7 +9,6 @@ Handles "then", "and", "after that" keywords for chained commands.
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -71,7 +70,7 @@ class ChainBuilder:
         lower = user_input.lower()
         return any(re.search(p, lower) for p in CHAIN_PATTERNS)
 
-    def build(self, user_input: str) -> Optional[ChainPlan]:
+    def build(self, user_input: str) -> ChainPlan | None:
         """Build a chain plan from natural language."""
         # Split into sub-tasks
         parts = CHAIN_SPLITTER.split(user_input)
@@ -109,7 +108,7 @@ class ChainBuilder:
             source="pattern",
         )
 
-    def build_with_llm(self, user_input: str) -> Optional[ChainPlan]:
+    def build_with_llm(self, user_input: str) -> ChainPlan | None:
         """Use LLM for complex chain planning."""
         if not self.llm:
             return self.build(user_input)

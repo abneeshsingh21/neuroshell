@@ -6,19 +6,19 @@ Provides isolated execution environments for dangerous commands, allowing safe
 rollback without affecting the primary working directory.
 """
 
-import os
-import subprocess
 import logging
-import uuid
 import shutil
+import subprocess
+import uuid
 from pathlib import Path
+
 from core.events import neuro_events
 
 _log = logging.getLogger("neuroshell.sandbox")
 
 class GitSandbox:
     """Manages ephemeral git worktrees for safe, isolated execution."""
-    
+
     def __init__(self, primary_workspace: str):
         self.primary = Path(primary_workspace).resolve()
         self.sandbox_dir: Path | None = None
@@ -35,7 +35,7 @@ class GitSandbox:
 
         uid = str(uuid.uuid4())[:8]
         self.sandbox_branch = f"ns-sandbox-{uid}"
-        
+
         # Place the sandbox as a sibling to the primary workspace to avoid recursive indexing
         self.sandbox_dir = self.primary.parent / f"{self.primary.name}-sandbox-{uid}"
 
@@ -74,7 +74,7 @@ class GitSandbox:
         """View the diff of what the command changed in the sandbox."""
         if not self.sandbox_dir or not self.sandbox_dir.exists():
             return ""
-            
+
         try:
             res = subprocess.run(
                 ["git", "diff"],
@@ -170,11 +170,11 @@ class GitSandbox:
                 cwd=str(self.primary),
                 capture_output=True
             )
-            
+
             # Failsafe cleanup map
             if self.sandbox_dir.exists():
                 shutil.rmtree(self.sandbox_dir, ignore_errors=True)
-                
+
         except Exception as e:
             _log.error(f"Sandbox cleanup failed: {e}")
         finally:

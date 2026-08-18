@@ -9,11 +9,10 @@ Zero internet. Zero API calls. Maximum privacy.
 """
 
 from __future__ import annotations
+
 import math
-import os
 import platform
 import re
-from typing import Optional
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _IS_WIN = platform.system() == "Windows"
@@ -100,7 +99,7 @@ class PhraseDictionary:
 
         self._built = True
 
-    def translate(self, query: str, threshold: float = 0.35) -> Optional[dict]:
+    def translate(self, query: str, threshold: float = 0.35) -> dict | None:
         """
         Translate English phrase to shell command.
         Returns dict with keys: command, english, confidence, or None.

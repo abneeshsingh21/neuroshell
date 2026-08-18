@@ -5,10 +5,9 @@ Detects network connectivity loss and seamlessly pivots from cloud
 LLM providers to local Ollama. Ensures the AI terminal never stops.
 """
 
-import socket
 import logging
+import socket
 import time
-from typing import Optional
 
 _log = logging.getLogger("neuroshell.offline_fallback")
 
@@ -31,7 +30,7 @@ def check_internet(timeout: float = 2.0) -> bool:
             sock = socket.create_connection((host, port), timeout=timeout)
             sock.close()
             return True
-        except (socket.timeout, OSError):
+        except (TimeoutError, OSError):
             continue
     return False
 
@@ -43,7 +42,7 @@ def check_ollama(host: str = "127.0.0.1", port: int = 11434,
         sock = socket.create_connection((host, port), timeout=timeout)
         sock.close()
         return True
-    except (socket.timeout, OSError):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -56,7 +55,7 @@ def check_provider(provider: str, timeout: float = 2.0) -> bool:
         sock = socket.create_connection(endpoint, timeout=timeout)
         sock.close()
         return True
-    except (socket.timeout, OSError):
+    except (TimeoutError, OSError):
         return False
 
 

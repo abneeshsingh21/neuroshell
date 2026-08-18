@@ -5,12 +5,10 @@ NeuroShell Live Command Explainer + Risk Scoring + Project Context
 Tier 1+3: Real-time command explanation, risk visualization, and project detection.
 """
 
-import re
-import os
 import logging
-from pathlib import Path
+import re
 from dataclasses import dataclass
-from typing import Optional
+from pathlib import Path
 
 logger = logging.getLogger("neuroshell.intelligence")
 
@@ -62,7 +60,7 @@ COMMAND_KNOWLEDGE = {
 }
 
 
-def explain_command(command: str) -> Optional[dict]:
+def explain_command(command: str) -> dict | None:
     """Explain a command in real-time as the user types."""
     parts = command.strip().split()
     if not parts:
@@ -190,7 +188,7 @@ class ProjectInfo:
     detected_files: list[str]
 
 
-def detect_project(cwd: str = ".") -> Optional[ProjectInfo]:
+def detect_project(cwd: str = ".") -> ProjectInfo | None:
     """Detect project type from current directory."""
     cwd_path = Path(cwd).resolve()
     best_match = None

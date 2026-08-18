@@ -5,16 +5,13 @@ NeuroShell Voice Command + Notifications + REST API + Terminal Sharing
 Tier 1+4: Voice input, desktop notifications, API server, session sharing.
 """
 
-import os
 import json
-import time
 import logging
 import platform
-import threading
 import subprocess
+import threading
+import time
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional, Callable
 
 logger = logging.getLogger("neuroshell.platform")
 
@@ -49,11 +46,10 @@ class VoiceCommandEngine:
     def available(self) -> bool:
         return self._available
 
-    def listen(self, timeout: int = 5, phrase_time_limit: int = 10) -> Optional[str]:
+    def listen(self, timeout: int = 5, phrase_time_limit: int = 10) -> str | None:
         """Listen for voice input and return transcribed text."""
         if not self._available:
             return None
-        import speech_recognition as sr
         try:
             with self._microphone() as source:
                 self._recognizer.adjust_for_ambient_noise(source, duration=0.5)
@@ -69,11 +65,10 @@ class VoiceCommandEngine:
             logger.warning("Voice recognition failed: %s", e)
             return None
 
-    def listen_with_whisper(self, timeout: int = 5) -> Optional[str]:
+    def listen_with_whisper(self, timeout: int = 5) -> str | None:
         """Use OpenAI Whisper for offline recognition (higher accuracy)."""
         if not self._available:
             return None
-        import speech_recognition as sr
         try:
             with self._microphone() as source:
                 self._recognizer.adjust_for_ambient_noise(source, duration=0.5)
@@ -174,8 +169,8 @@ class NeuroShellAPI:
     def start(self):
         """Start API server in background thread."""
         try:
-            from http.server import HTTPServer, BaseHTTPRequestHandler
             import json as _json
+            from http.server import BaseHTTPRequestHandler, HTTPServer
 
             translator = self.translator
 
@@ -234,10 +229,10 @@ class NeuroShellAPI:
 class MachineSync:
     """Tier 2: Sync aliases, patterns, corrections across machines via file export."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         self.config_dir = config_dir or Path.home() / ".neuroshell"
 
-    def export_config(self, output_path: Optional[Path] = None) -> Path:
+    def export_config(self, output_path: Path | None = None) -> Path:
         """Export all learnable config to a single JSON file."""
         export = {"exported_at": time.time(), "machine": platform.node(), "data": {}}
 

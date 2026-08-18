@@ -5,8 +5,6 @@ NeuroShell Clipboard Integration
 Copy commands, outputs, and AI suggestions to clipboard.
 """
 
-import re
-from typing import Optional
 
 try:
     import pyperclip
@@ -47,7 +45,7 @@ class ClipboardManager:
                 pass
         return True
 
-    def paste(self) -> Optional[str]:
+    def paste(self) -> str | None:
         """Get text from clipboard or memory fallback."""
         if HAS_PYPERCLIP:
             try:
@@ -80,7 +78,7 @@ class ClipboardManager:
         """Get clipboard copy history."""
         return list(reversed(self._history[-limit:]))
 
-    def detect_command_in_clipboard(self) -> Optional[str]:
+    def detect_command_in_clipboard(self) -> str | None:
         """Check if clipboard contains something that looks like a command."""
         content = self.paste()
         if not content:

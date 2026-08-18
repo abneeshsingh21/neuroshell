@@ -6,13 +6,11 @@ Auto-detects project types (Python, Node, Rust, Go, Docker, Java)
 and provides context-aware suggestions.
 """
 
-import os
-import json
 import fnmatch
+import json
+import os
 import time
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
 
 try:
     import toml as _toml
@@ -157,7 +155,7 @@ class ProjectDetector:
     CACHE_TTL_S = 60.0
 
     def __init__(self):
-        self._cache: dict[str, tuple["ProjectInfo", float]] = {}  # path → (info, timestamp)
+        self._cache: dict[str, tuple[ProjectInfo, float]] = {}  # path → (info, timestamp)
 
     def detect(self, directory: str = None) -> "ProjectInfo":
         """Detect project type in the given directory."""
@@ -237,7 +235,6 @@ class ProjectDetector:
 
     def _extract_name(self, directory: str, project_type: str, files: set) -> str:
         """Try to extract the project name from config files."""
-        import json as _json
 
         if project_type == "node" and "package.json" in files:
             try:

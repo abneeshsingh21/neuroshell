@@ -9,9 +9,8 @@ interactive flag drill-down, and visual pipeline diagrams.
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
-from observability.provenance import ProvenanceTag, ProvenanceSource
+from observability.provenance import ProvenanceSource, ProvenanceTag
 
 
 @dataclass
@@ -27,7 +26,7 @@ class ExplainResult:
     breakdown: list[dict] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
     related_commands: list[str] = field(default_factory=list)
-    provenance: Optional[ProvenanceTag] = None
+    provenance: ProvenanceTag | None = None
     source: str = ""
     examples: list[str] = field(default_factory=list)
     man_excerpt: str = ""
@@ -110,7 +109,7 @@ class Explainer:
             provenance=ProvenanceTag(source=ProvenanceSource.FALLBACK, confidence=0.0),
         )
 
-    def explain_flag(self, command: str, flag: str) -> Optional[FlagExplanation]:
+    def explain_flag(self, command: str, flag: str) -> FlagExplanation | None:
         """Explain a specific flag."""
         base_cmd = command.strip().split()[0].lower()
         entry = _DB.get(base_cmd)
@@ -123,7 +122,7 @@ class Explainer:
         entry = _DB.get(base_cmd)
         return list(entry[3]) if entry else []
 
-    def _explain_offline(self, command: str, base_cmd: str) -> Optional[ExplainResult]:
+    def _explain_offline(self, command: str, base_cmd: str) -> ExplainResult | None:
         entry = _DB.get(base_cmd)
         if not entry:
             return None

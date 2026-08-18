@@ -5,13 +5,12 @@ NeuroShell Session Memory + Command History Timeline
 Tier 2: Persistent learning across sessions with similarity search.
 """
 
-import json
-import time
 import hashlib
+import json
 import logging
+import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional
 
 logger = logging.getLogger("neuroshell.memory")
 
@@ -33,9 +32,10 @@ class MemoryEntry:
         return hashlib.md5(f"{self.input_text}:{self.command}".encode()).hexdigest()[:12]
 
 
-import threading
-import tempfile
 import os
+import tempfile
+import threading
+
 
 class SessionMemory:
     """
@@ -52,7 +52,7 @@ class SessionMemory:
     MAX_ENTRIES = 5000
     SIMILARITY_THRESHOLD = 0.6
 
-    def __init__(self, memory_dir: Optional[Path] = None):
+    def __init__(self, memory_dir: Path | None = None):
         self.memory_dir = memory_dir or Path.home() / ".neuroshell" / "memory"
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self.memory_dir / "session_memory.json"

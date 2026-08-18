@@ -5,8 +5,7 @@ NeuroShell Live Config Editor
 View and modify configuration from within the REPL.
 """
 
-from typing import Optional
-from dataclasses import fields, asdict
+from dataclasses import fields
 
 
 class ConfigEditor:

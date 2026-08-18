@@ -6,7 +6,6 @@ Markov chain next-command prediction for ghost-text suggestions.
 """
 
 from collections import defaultdict
-from typing import Optional
 
 
 class Predictor:
@@ -62,7 +61,7 @@ class Predictor:
 
         return predictions
 
-    def get_ghost_text(self, current_command: str) -> Optional[str]:
+    def get_ghost_text(self, current_command: str) -> str | None:
         """Get single best prediction for ghost-text display."""
         preds = self.predict(current_command, top_k=1)
         if preds and preds[0][1] >= 0.3:  # Only show if >= 30% probable

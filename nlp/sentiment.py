@@ -8,8 +8,7 @@ session tracking with decay, and proactive intervention.
 
 import re
 import time
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 try:
     from nltk.sentiment.vader import SentimentIntensityAnalyzer
@@ -81,7 +80,7 @@ class SentimentDetector:
     ]
 
     def __init__(self):
-        self._vader: Optional[SentimentIntensityAnalyzer] = None
+        self._vader: SentimentIntensityAnalyzer | None = None
         self._error_streak: int = 0
         self._success_streak: int = 0
         self._session_frustration: float = 0.0

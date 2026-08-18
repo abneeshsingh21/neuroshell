@@ -6,20 +6,16 @@ Four-layer safety: pattern matching → chain analysis → scope estimation → 
 Includes audit logging, whitelisting, dry-run simulation, and impact estimation.
 """
 
-import re
-import os
-import time
-import json
 import csv
 import hashlib
+import json
+import os
 import platform
-from pathlib import Path
+import re
+import time
 from dataclasses import dataclass, field
-from typing import Optional
 from enum import Enum
-
-from observability.provenance import ProvenanceTag, ProvenanceSource
-
+from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════
 # Enums & Data Models
@@ -683,7 +679,7 @@ class SafetyChecker:
             payload = json.loads(path.read_text(encoding="utf-8"))
             rows = payload.get("entries", []) if isinstance(payload, dict) else []
         elif path.suffix.lower() == ".csv":
-            with open(path, "r", newline="", encoding="utf-8") as f:
+            with open(path, newline="", encoding="utf-8") as f:
                 rows = list(csv.DictReader(f))
         else:
             return {"ok": False, "reason": "unsupported_extension", "entries_checked": 0, "digest_ok": None}
@@ -764,7 +760,7 @@ class SafetyChecker:
         ])
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _verify_export_digest(self, path: Path) -> Optional[bool]:
+    def _verify_export_digest(self, path: Path) -> bool | None:
         """Verify optional sidecar digest. Returns None when no sidecar exists."""
         sidecar = path.with_suffix(path.suffix + ".sha256")
         if not sidecar.exists():

@@ -6,9 +6,9 @@ Embedding-based command history search using sentence-transformers.
 """
 
 import time
+from dataclasses import dataclass
+
 import numpy as np
-from typing import Optional
-from dataclasses import dataclass, field
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -31,8 +31,8 @@ class SemanticSearch:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self._model_name = model_name
-        self._model: Optional[SentenceTransformer] = None
-        self._embeddings: Optional[np.ndarray] = None
+        self._model: SentenceTransformer | None = None
+        self._embeddings: np.ndarray | None = None
         self._commands: list[dict] = []  # {command, context, timestamp}
         self._loaded = False
 

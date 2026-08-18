@@ -7,18 +7,17 @@ confidence calibration, learn-from-feedback integration, and
 advanced smart-open resolution (folders, apps, URLs, system shortcuts).
 """
 
-import time
-import json
-import re
 import os
+import re
 import shlex
 import subprocess
-from typing import Any, Callable, Optional
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
-from observability.provenance import ProvenanceTag, ProvenanceSource  # type: ignore
 from intelligence.sanitizer import LLMSanitizer  # type: ignore
-
+from observability.provenance import ProvenanceSource, ProvenanceTag  # type: ignore
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -43,7 +42,7 @@ class TranslationResult:
     explanation: str
     is_destructive: bool = False
     alternatives: list[str] = field(default_factory=list)
-    provenance: Optional[ProvenanceTag] = None
+    provenance: ProvenanceTag | None = None
     steps: list[TranslationStep] = field(default_factory=list)
     is_multi_step: bool = False
     disambiguation: list[dict] = field(default_factory=list)
@@ -64,8 +63,8 @@ class TranslationResult:
 # ═══════════════════════════════════════════════════════════
 
 def _get_internal_cmd(script_name: str, arg: str) -> str:
-    import sys
     import os
+    import sys
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         script_path = os.path.join(sys._MEIPASS, "intelligence", script_name)
     else:
@@ -690,7 +689,7 @@ class Translator:
         self.swarm = None  # Lazy-loaded swarm orchestrator
         self._phrase_dict = None  # Lazy-loaded 2500+ offline phrase dictionary
 
-    def translate(self, user_input: str, entities: Optional[dict[str, Any]] = None) -> TranslationResult:
+    def translate(self, user_input: str, entities: dict[str, Any] | None = None) -> TranslationResult:
         """
         Translate natural language to shell command(s).
 
@@ -748,7 +747,7 @@ class Translator:
         # 5. LLM translation
         return self._llm_translate(user_input_clean, entities)
 
-    def _try_phrase_dictionary(self, user_input: str) -> Optional[TranslationResult]:
+    def _try_phrase_dictionary(self, user_input: str) -> TranslationResult | None:
         """Query the 2,554+ offline phrase TF-IDF vector index (<0.5ms)."""
         try:
             if not self._phrase_dict:
@@ -774,7 +773,7 @@ class Translator:
             pass
         return None
 
-    def translate_with_disambiguation(self, user_input: str, entities: Optional[dict[str, Any]] = None) -> TranslationResult:
+    def translate_with_disambiguation(self, user_input: str, entities: dict[str, Any] | None = None) -> TranslationResult:
         """Translate with disambiguation when ambiguous."""
         result = self.translate(user_input, entities)
 
@@ -794,7 +793,7 @@ class Translator:
         """Learn from user correction for future translations."""
         self._feedback_corrections[original_input.strip().lower()] = corrected_command
 
-    def _get_smart_open_engine(self) -> Optional[Any]:
+    def _get_smart_open_engine(self) -> Any | None:
         """Lazy-load SmartOpenEngine when path or app resolution is needed."""
         if self._smart_open is None:
             try:
@@ -804,7 +803,7 @@ class Translator:
                 return None
         return self._smart_open
 
-    def _try_smart_open(self, user_input: str) -> Optional[TranslationResult]:
+    def _try_smart_open(self, user_input: str) -> TranslationResult | None:
         """Attempt to route through the SmartOpen Engine for URLs, apps, drives, and power commands."""
         engine = self._get_smart_open_engine()
         if engine is None:
@@ -830,7 +829,7 @@ class Translator:
     # Local Pattern Matching
     # ═══════════════════════════════════════════════════════
 
-    def _try_local_patterns(self, user_input: str) -> Optional[TranslationResult]:
+    def _try_local_patterns(self, user_input: str) -> TranslationResult | None:
         """Try to match against known patterns locally."""
         import platform as plat
         os_name = plat.system()
@@ -899,9 +898,9 @@ class Translator:
 
 
 
-    def _try_local_dynamic_patterns(self, user_input: str, is_windows: bool) -> Optional[str]:
+    def _try_local_dynamic_patterns(self, user_input: str, is_windows: bool) -> str | None:
         """Handle dynamic local patterns with argument-safe command rendering."""
-        patterns: list[tuple[str, Callable[..., Optional[str]]]] = [
+        patterns: list[tuple[str, Callable[..., str | None]]] = [
             (r"(?:show|list|view)\s+(?:all\s+)?files?(?:\s+in\s+(.+))?", lambda g: self._build_cmd(["dir" if is_windows else "ls", g[0].strip()] if g and g[0] else ["dir" if is_windows else "ls"])),
             (r"(?:make|create)\s+(?:a\s+)?(?:directory|folder|dir)\s+(?:(?:called|name|named)\s+)?(\S+)", lambda g: self._build_cmd(["mkdir", g[0]])),
             (r"(?:delete|remove)\s+(?:the\s+)?(?:file|directory|folder)\s+(\S+)", lambda g: self._build_cmd(["rm", g[0]])),
@@ -953,15 +952,15 @@ class Translator:
 
         return None
 
-    def _build_windows_folder_copy_command(self, source_name: str, source_base: str, dest_base: str) -> Optional[str]:
+    def _build_windows_folder_copy_command(self, source_name: str, source_base: str, dest_base: str) -> str | None:
         """Build a safe Windows folder copy command for resolved source/destination roots."""
         return self._build_windows_folder_transfer_command(source_name, source_base, dest_base, move=False)
 
-    def _build_windows_folder_move_command(self, source_name: str, source_base: str, dest_base: str) -> Optional[str]:
+    def _build_windows_folder_move_command(self, source_name: str, source_base: str, dest_base: str) -> str | None:
         """Build a safe Windows folder move command for resolved source/destination roots."""
         return self._build_windows_folder_transfer_command(source_name, source_base, dest_base, move=True)
 
-    def _build_windows_folder_transfer_command(self, source_name: str, source_base: str, dest_base: str, move: bool = False) -> Optional[str]:
+    def _build_windows_folder_transfer_command(self, source_name: str, source_base: str, dest_base: str, move: bool = False) -> str | None:
         """Resolve well-known folder roots and generate a quoted PowerShell copy/move command."""
         engine = self._get_smart_open_engine()
         if engine is None:
@@ -1036,7 +1035,7 @@ class Translator:
         ]
         return any(kw in user_input.lower() for kw in multi_keywords)
 
-    def _translate_multi_step(self, user_input: str, entities: Optional[dict[str, Any]] = None) -> TranslationResult:
+    def _translate_multi_step(self, user_input: str, entities: dict[str, Any] | None = None) -> TranslationResult:
         """Translate a multi-step request into multiple commands."""
         ctx_summary = self.context.get_context_summary()
 
@@ -1091,7 +1090,7 @@ Return JSON:
     # LLM Translation
     # ═══════════════════════════════════════════════════════
 
-    def _llm_translate(self, user_input: str, entities: Optional[dict[str, Any]] = None) -> TranslationResult:
+    def _llm_translate(self, user_input: str, entities: dict[str, Any] | None = None) -> TranslationResult:
         """Use LLM for command translation."""
         ctx_summary = self.context.get_context_summary()
         recent = self.history.get_recent(5)
@@ -1172,7 +1171,7 @@ Return JSON:
     def _swarm_translate(self, user_input: str) -> TranslationResult:
         """Route complex intentions through the Swarm Orchestrator."""
         start = time.time()
-        
+
         if self.swarm is None:
             try:
                 from neuroshell.intelligence.swarm import SwarmOrchestrator
@@ -1186,7 +1185,7 @@ Return JSON:
         # Fire Swarm Pipeline
         swarm_res = self.swarm.route_task(user_input)
         latency = (time.time() - start) * 1000
-        
+
         # Sanitize result
         sanitized = self._sanitizer.sanitize(swarm_res.final_command, source="swarm")
         if not sanitized.is_safe or not swarm_res.is_safe:
@@ -1236,7 +1235,7 @@ Return JSON:
     # History Cache
     # ═══════════════════════════════════════════════════════
 
-    def _check_history_cache(self, user_input: str) -> Optional[TranslationResult]:
+    def _check_history_cache(self, user_input: str) -> TranslationResult | None:
         """Check if we've translated this exact input before."""
         try:
             records = self.history.search_commands(user_input, limit=5)

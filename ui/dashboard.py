@@ -7,8 +7,6 @@ error rate, and context-aware suggestions.
 """
 
 import os
-import time
-from typing import Optional
 
 try:
     import psutil
@@ -16,10 +14,10 @@ except ImportError:
     psutil = None
 
 try:
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
     from rich.columns import Columns
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
     from rich.text import Text
     HAS_RICH = True
 except ImportError:

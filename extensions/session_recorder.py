@@ -5,12 +5,10 @@ NeuroShell Session Recorder
 Records terminal sessions to shareable replay files.
 """
 
+import gzip
 import json
 import time
-import gzip
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
 
 from config import NEUROSHELL_DIR
 
@@ -68,7 +66,7 @@ class SessionRecorder:
     """Records and replays terminal sessions."""
 
     def __init__(self):
-        self._active: Optional[SessionRecording] = None
+        self._active: SessionRecording | None = None
         self._recording = False
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -89,7 +87,7 @@ class SessionRecorder:
         self._recording = True
         return True
 
-    def stop(self) -> Optional[str]:
+    def stop(self) -> str | None:
         """Stop recording and save. Returns file path."""
         if not self._recording or not self._active:
             return None
@@ -144,7 +142,7 @@ class SessionRecorder:
                 pass
         return recordings[:20]
 
-    def load_recording(self, filename: str) -> Optional[dict]:
+    def load_recording(self, filename: str) -> dict | None:
         """Load a recorded session."""
         file = RECORDINGS_DIR / filename
         if not file.exists():
@@ -156,7 +154,7 @@ class SessionRecorder:
         except Exception:
             return None
 
-    def replay_text(self, filename: str) -> Optional[str]:
+    def replay_text(self, filename: str) -> str | None:
         """Get human-readable text replay of a session."""
         data = self.load_recording(filename)
         if not data:

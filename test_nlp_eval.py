@@ -1,23 +1,21 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
-import sys
-import os
 import json
+import sys
 import traceback
 from pathlib import Path
 
 try:
     sys.path.insert(0, r'c:\Users\lenovo\Desktop\LLM model train\neuroshell')
-    from intelligence.translator import Translator
-    from intelligence.smart_open import SmartOpenEngine
-    from llm.client import LLMClient
+    from config import load_config
     from core.context import ContextManager
     from core.history import HistoryStore
-    from config import load_config
+    from intelligence.translator import Translator
+    from llm.client import LLMClient
 
     print("Loading config...")
     config = load_config()
-    
+
     print("Initializing LLM client...")
     llm = LLMClient(config)
     context = ContextManager(config)
@@ -25,7 +23,7 @@ try:
 
     print("Initializing Translator...")
     translator = Translator(llm, context, history)
-    
+
     test_cases = [
         'list all files in this directory',
         'show saved wifi passwords',

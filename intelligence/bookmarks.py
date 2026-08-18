@@ -6,10 +6,9 @@ Save, recall, and manage favorite commands with variable substitution.
 Commands: !save, !run, !list, !delete
 """
 
-import time
 import re
+import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -78,7 +77,7 @@ class BookmarkManager:
 
         return bookmark
 
-    def run(self, name: str, variables: dict = None) -> Optional[str]:
+    def run(self, name: str, variables: dict = None) -> str | None:
         """Get a bookmark's command, with variable substitution."""
         bookmark = self._bookmarks.get(name)
         if not bookmark:

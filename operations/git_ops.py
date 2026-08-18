@@ -11,14 +11,12 @@ Requires: git must be on PATH (standard on all platforms).
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 _log = logging.getLogger("neuroshell.operations.git_ops")
 
@@ -100,7 +98,7 @@ class GitOps:
     structured data rather than raw strings.
     """
 
-    def __init__(self, cwd: Optional[str | Path] = None):
+    def __init__(self, cwd: str | Path | None = None):
         self.cwd = Path(cwd) if cwd else Path.cwd()
 
     # ------------------------------------------------------------------
@@ -221,7 +219,7 @@ class GitOps:
             ))
         return commits
 
-    def last_commit(self) -> Optional[CommitInfo]:
+    def last_commit(self) -> CommitInfo | None:
         """Return the most recent commit, or None in an empty repo."""
         commits = self.log(max_count=1)
         return commits[0] if commits else None
@@ -363,7 +361,7 @@ class GitOps:
     # Clone
     # ------------------------------------------------------------------
 
-    def clone(self, url: str, destination=None, timeout_s: int = 300) -> "CloneResult":
+    def clone(self, url: str, destination=None, timeout_s: int = 300) -> CloneResult:
         """
         Clone a remote repository.
 
@@ -405,9 +403,9 @@ class GitOps:
         Network errors are silenced and an empty list is returned.
         """
         try:
-            import urllib.request
             import json as _json
             import urllib.parse
+            import urllib.request
 
             q = urllib.parse.quote(query)
             api_url = (
@@ -452,9 +450,9 @@ class GitOps:
         return f"GitOps(cwd={self.cwd}, branch={branch!r})"
 
 import asyncio
-from typing import Any, AsyncGenerator, Dict
 import sys
-from pathlib import Path
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
 
 # Add NeuroShell root to path to resolve intelligence module if run independently
 _root = str(Path(__file__).parent.parent)
@@ -471,7 +469,7 @@ class GitTool(BaseTool):
     Agentic interface for GitHub and Git operations.
     Conforms to the BaseTool streaming protocol.
     """
-    def __init__(self, git_ops: Optional[GitOps] = None):
+    def __init__(self, git_ops: GitOps | None = None):
         self.git_ops = git_ops or GitOps()
 
     @property
@@ -488,7 +486,7 @@ class GitTool(BaseTool):
             "type": "object",
             "properties": {
                 "action": {
-                    "type": "string", 
+                    "type": "string",
                     "enum": ["status", "clone", "search", "log", "push", "pull", "commit"],
                     "description": "The git operation to perform."
                 },
@@ -498,9 +496,9 @@ class GitTool(BaseTool):
             },
             "required": ["action"]
         }
-        
+
     def can_use_tool(self, **kwargs) -> bool:
-        # Clone, status, search, and log are safe. 
+        # Clone, status, search, and log are safe.
         # Push, pull, and commit mutate state and might need permission.
         action = kwargs.get("action")
         if action in ["push", "commit"]:
@@ -512,9 +510,9 @@ class GitTool(BaseTool):
         url = kwargs.get("url")
         destination = kwargs.get("destination")
         message = kwargs.get("message")
-        
+
         yield {"type": "progress", "message": f"Initializing Git {action}..."}
-        
+
         git = GitOps()
         loop = asyncio.get_running_loop()
 

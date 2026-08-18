@@ -7,16 +7,19 @@ response caching, token tracking, conversation memory, and multi-model routing.
 Supports: Ollama (local) + Groq (cloud fallback).
 """
 
-import os
-import time
-import json
 import hashlib
+import json
 import logging
+import os
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from typing import Any, Optional, Generator, Callable
-from dataclasses import dataclass, field
+import time
 from collections import OrderedDict
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+from dataclasses import dataclass, field
+from typing import Any
+
 from core.events import neuro_events
 
 _llm_log = logging.getLogger("neuroshell.llm")
@@ -153,7 +156,7 @@ class LRUCache:
         self._hits = 0
         self._misses = 0
 
-    def get(self, key: str, max_age_s: float = 3600) -> Optional[str]:
+    def get(self, key: str, max_age_s: float = 3600) -> str | None:
         """Get cached value if not expired."""
         with self._lock:
             if key in self._cache:
@@ -381,7 +384,7 @@ class LLMClient:
         else:
             return 60.0
 
-    def _with_hard_timeout(self, func: Callable[..., Any], timeout: Optional[float] = None) -> Any:
+    def _with_hard_timeout(self, func: Callable[..., Any], timeout: float | None = None) -> Any:
         """Execute func with a hard wall-clock timeout to prevent shell freeze.
 
         Uses persistent ThreadPoolExecutor so the caller thread is never blocked on context manager exit.
@@ -438,7 +441,7 @@ class LLMClient:
     # ═══════════════════════════════════════════════════════
 
     def _openai_generate(self, prompt: str, system_prompt: str = "",
-                         temperature: Optional[float] = None) -> LLMResponse:
+                         temperature: float | None = None) -> LLMResponse:
         """Generate via OpenAI-compatible API (OpenAI, OpenRouter, Gemini)."""
         if not self._openai_client:
             return self._fallback_response("OpenAI client not configured")
@@ -487,7 +490,7 @@ class LLMClient:
     # ═══════════════════════════════════════════════════════
 
     def _anthropic_generate(self, prompt: str, system_prompt: str = "",
-                            temperature: Optional[float] = None) -> LLMResponse:
+                            temperature: float | None = None) -> LLMResponse:
         """Generate via Anthropic Claude API."""
         if not self._openai_client:  # reuses _openai_client httpx handle
             return self._fallback_response("Anthropic client not configured")
@@ -553,7 +556,7 @@ class LLMClient:
     # ═══════════════════════════════════════════════════════
 
     def _groq_generate(self, prompt: str, system_prompt: str = "",
-                       temperature: Optional[float] = None) -> LLMResponse:
+                       temperature: float | None = None) -> LLMResponse:
         """Generate via Groq cloud API (fallback)."""
         if not self._groq_client:
             return self._fallback_response("Groq API not configured")
@@ -594,8 +597,8 @@ class LLMClient:
             return self._fallback_response(f"Groq error: {e}", latency)
 
     def _groq_generate_streaming(self, prompt: str, system_prompt: str = "",
-                                  temperature: Optional[float] = None,
-                                  callback: Optional[Callable[..., Any]] = None) -> LLMResponse:
+                                  temperature: float | None = None,
+                                  callback: Callable[..., Any] | None = None) -> LLMResponse:
         """Generate via Groq with streaming (fallback)."""
         if not self._groq_client:
             return self._fallback_response("Groq API not configured")
@@ -646,7 +649,7 @@ class LLMClient:
             )
 
     def _groq_chat(self, user_message: str, system_prompt: str = "",
-                   temperature: Optional[float] = None) -> LLMResponse:
+                   temperature: float | None = None) -> LLMResponse:
         """Multi-turn chat via Groq (fallback)."""
         if not self._groq_client:
             return self._fallback_response("Groq API not configured")
@@ -693,13 +696,13 @@ class LLMClient:
         self,
         prompt: str,
         system_prompt: str = "",
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         use_cache: bool = True,
-        max_retries: Optional[int] = None,
+        max_retries: int | None = None,
     ) -> LLMResponse:
         """Generate a response with retry and caching. Falls back to Ollama if Groq fails."""
         prompt = _sanitize_for_prompt(prompt)  # Prevent prompt injection from command output
-        
+
         provider = getattr(self.config, "provider", "ollama")
 
         # ── Priority: Configured Cloud Provider → Ollama (local) ──
@@ -803,8 +806,8 @@ class LLMClient:
         self,
         prompt: str,
         system_prompt: str = "",
-        temperature: Optional[float] = None,
-        callback: Optional[Callable[..., Any]] = None,
+        temperature: float | None = None,
+        callback: Callable[..., Any] | None = None,
     ) -> LLMResponse:
         """Generate with streaming token-by-token output. Falls back to Ollama."""
         # ── Priority: Configured Cloud Provider → Ollama (local) ──
@@ -887,7 +890,7 @@ class LLMClient:
                 error=str(e),
             )
 
-    def generate_json(self, prompt: str, system_prompt: str = "") -> Optional[dict]:
+    def generate_json(self, prompt: str, system_prompt: str = "") -> dict | None:
         """Generate and parse a JSON response with robust extraction."""
         json_system = system_prompt + "\n\nRespond with valid JSON only. No markdown, no explanation. Be concise."
         response = self.generate(prompt, json_system)
@@ -905,10 +908,10 @@ class LLMClient:
         self,
         user_message: str,
         system_prompt: str = "",
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
         """Multi-turn conversation with context window management. Falls back to Ollama."""
-        
+
         # Microcompression heuristic: if user message is massive (e.g. pasted code/files), mark fragile
         is_massive = len(user_message) > 3000
         msg = ConversationMessage(role="user", content=user_message, is_fragile=is_massive)
@@ -917,7 +920,7 @@ class LLMClient:
         # Trim conversation if too long
         if len(self._conversation) > self.MAX_CONVERSATION_TURNS * 2:
             self._conversation = self._conversation[-(self.MAX_CONVERSATION_TURNS * 2):]  # type: ignore[index]
-            
+
         # Trigger background Token Garbage Collection (Microcompression)
         self._trigger_microcompression()
 
@@ -1004,19 +1007,19 @@ class LLMClient:
                 safe_zone = 3 * 2 # 3 pairs of user/assistant
                 if len(self._conversation) <= safe_zone:
                     return
-                
+
                 # Check messages outside the safe zone
                 target_msgs = self._conversation[:-safe_zone]
-                
+
             for msg in target_msgs:
                 if msg.is_fragile and not msg.compressed and len(msg.content) > 3000:
                     try:
                         # Summarize the massive payload
                         compression_prompt = f"Summarize the following terminal output or file contents in 3 bullet points so I retain core context but drop the bloat:\n\n{msg.content[:15000]}"
-                        
+
                         # Use generate (not chat) to avoid polluting history further
                         res = self.generate(compression_prompt, system_prompt="You are an internal context-compressor. Be extremely concise.", use_cache=False)
-                        
+
                         if res.success:
                             with self._lock:
                                 msg.content = f"<SYSTEM_MICROCOMPRESSED>\n{res.text}\n</SYSTEM_MICROCOMPRESSED>"
@@ -1042,7 +1045,7 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    def _extract_json(self, text: str) -> Optional[dict]:
+    def _extract_json(self, text: str) -> dict | None:
         """Robust JSON extraction from LLM output."""
         text = text.strip()
 
@@ -1085,7 +1088,7 @@ class LLMClient:
                         continue
         return None
 
-    def _cache_key(self, prompt: str, system_prompt: str, temperature: Optional[float]) -> str:
+    def _cache_key(self, prompt: str, system_prompt: str, temperature: float | None) -> str:
         """Generate cache key from prompt parameters."""
         content = f"{self.config.model}:{system_prompt}:{prompt}:{temperature or self.config.temperature}"  # type: ignore[index]
         return hashlib.sha256(content.encode()).hexdigest()[:16]

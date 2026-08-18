@@ -1,8 +1,10 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
 import asyncio
-import websockets
 import json
+
+import websockets
+
 
 async def test():
     try:
@@ -10,14 +12,14 @@ async def test():
             print("Connected.")
             welcome = await ws.recv()
             print("Received:", welcome)
-            
+
             payload = json.dumps({"type": "input", "payload": "echo HELLO"})
             print(f"Sending: {payload}")
             await ws.send(payload)
-            
+
             resp = await ws.recv()
             print("Received:", resp)
-            
+
             # Wait for execution response
             resp2 = await ws.recv()
             print("Received:", resp2)

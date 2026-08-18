@@ -2,5 +2,5 @@
 # Proprietary and Confidential - see LICENSE.txt
 # NeuroShell Observability Layer
 from observability.logger import StructuredLogger
+from observability.provenance import ProvenanceSource, ProvenanceTag, ProvenanceTracker
 from observability.tracer import EventTracer
-from observability.provenance import ProvenanceTracker, ProvenanceTag, ProvenanceSource

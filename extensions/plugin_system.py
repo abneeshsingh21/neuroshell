@@ -5,21 +5,18 @@ NeuroShell Plugin System
 Hot-reloadable plugin architecture for extending NeuroShell.
 """
 
-import os
-import sys
-import re
-import json
 import hashlib
 import importlib
 import importlib.util
+import json
+import os
+import re
 import time
-from pathlib import Path
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable
 
 from config import NEUROSHELL_DIR
 from observability.logger import StructuredLogger
-
 
 PLUGINS_DIR = NEUROSHELL_DIR / "plugins"
 TRUSTED_PLUGINS_FILE = NEUROSHELL_DIR / "trusted_plugins.json"
@@ -75,7 +72,7 @@ class PluginSystem:
         self._logger = StructuredLogger("plugins")
         self._allow_untrusted = _env_bool("NEUROSHELL_ALLOW_UNTRUSTED_PLUGINS", default=False)
         self._trusted_plugins: set[str] = self._load_trusted_plugins()
-        self._loading_plugin: Optional[str] = None
+        self._loading_plugin: str | None = None
 
         # Ensure plugins directory exists
         PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
@@ -301,7 +298,7 @@ class PluginSystem:
                 self._logger.error("hook_error", hook=hook_name, error=str(e))
         return results
 
-    def execute_command(self, name: str, command: str, args: list[str] = None) -> Optional[str]:
+    def execute_command(self, name: str, command: str, args: list[str] = None) -> str | None:
         """Execute a plugin command."""
         plugin = self._plugins.get(name)
         if not plugin or not plugin.enabled:

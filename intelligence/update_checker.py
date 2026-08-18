@@ -9,7 +9,7 @@ is available. No auto-download — user controls the upgrade.
 import json
 import logging
 import urllib.request
-from typing import Optional
+
 from config import __version__
 
 _log = logging.getLogger("neuroshell.update_checker")
@@ -35,7 +35,7 @@ def check_for_update(
     owner: str = _DEFAULT_OWNER,
     repo: str = _DEFAULT_REPO,
     timeout: float = 5.0,
-) -> Optional[dict]:
+) -> dict | None:
     """
     Check GitHub for a newer release.
     

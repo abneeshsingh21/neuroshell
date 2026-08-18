@@ -7,8 +7,7 @@ List available models, switch active model, and check model status.
 """
 
 import time
-from typing import Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -133,7 +132,7 @@ class ModelManager:
             for m in models
         ]
 
-    def get_model_info(self, model_name: str = "") -> Optional[ModelInfo]:
+    def get_model_info(self, model_name: str = "") -> ModelInfo | None:
         """Get info about a specific model."""
         target = model_name or self.config.llm.model
         models = self.list_models()

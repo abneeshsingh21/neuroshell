@@ -6,16 +6,15 @@ Deep environment intelligence: Docker, virtual envs, project detection,
 git branch/stash/remote info, package manager awareness, and IDE integration.
 """
 
+import json
 import os
 import platform
 import shutil
 import socket
 import subprocess
-import json
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
 import time
+from dataclasses import dataclass, field
+from pathlib import Path
 
 try:
     import psutil
@@ -170,7 +169,7 @@ class ContextSnapshot:
     files_in_cwd: list = field(default_factory=list)
     hostname: str = ""
     username: str = ""
-    workspace_type: Optional[str] = None
+    workspace_type: str | None = None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -225,12 +224,12 @@ class ContextManager:
     def __init__(self, config):
         self.config = config
         self._network = NetworkStatus()
-        self._tool_cache: Optional[list[str]] = None
+        self._tool_cache: list[str] | None = None
         self._tool_cache_time: float = 0
-        self._context_cache: Optional[ContextSnapshot] = None
+        self._context_cache: ContextSnapshot | None = None
         self._context_cache_time: float = 0
 
-    def get_context(self, cwd: Optional[str] = None) -> ContextSnapshot:
+    def get_context(self, cwd: str | None = None) -> ContextSnapshot:
         """Get full system context snapshot with caching."""
         cwd = cwd or os.getcwd()
 
@@ -264,7 +263,7 @@ class ContextManager:
         self._context_cache_time = time.time()
         return ctx
 
-    def get_context_summary(self, cwd: Optional[str] = None) -> str:
+    def get_context_summary(self, cwd: str | None = None) -> str:
         """Get a compact, LLM-optimized context string."""
         ctx = self.get_context(cwd)
         parts = [
@@ -306,7 +305,7 @@ class ContextManager:
 
         return " | ".join(parts)
 
-    def get_prompt_context(self, cwd: Optional[str] = None) -> dict:
+    def get_prompt_context(self, cwd: str | None = None) -> dict:
         """Get structured context optimized for LLM prompt injection."""
         ctx = self.get_context(cwd)
         return {
@@ -359,7 +358,7 @@ class ContextManager:
                 ctx.has_changes = True
 
             # Ahead/behind
-            ab = self._git_cmd(cwd, "rev-list", "--left-right", "--count", f"HEAD...@{{u}}")
+            ab = self._git_cmd(cwd, "rev-list", "--left-right", "--count", "HEAD...@{u}")
             if ab and "\t" in ab:
                 parts = ab.split("\t")
                 ctx.ahead = int(parts[0])
@@ -706,7 +705,7 @@ class ContextManager:
                 latency_ms=round(latency, 1),
                 dns_working=dns_working,
             )
-        except (socket.timeout, OSError):
+        except (TimeoutError, OSError):
             self._network = NetworkStatus(
                 is_online=False,
                 last_check=time.time(),

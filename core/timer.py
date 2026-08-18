@@ -6,8 +6,7 @@ Precise execution timing and session performance statistics.
 """
 
 import time
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass

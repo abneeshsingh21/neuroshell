@@ -1,9 +1,11 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
-import asyncio
-from typing import Any, AsyncGenerator, Dict
-from intelligence.tools.base_tool import BaseTool
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
+
 from intelligence.mcp.mcp_client import MCPClient
+from intelligence.tools.base_tool import BaseTool
+
 
 class MCPTool(BaseTool):
     """
@@ -51,9 +53,9 @@ class MCPTool(BaseTool):
 
     async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
         action = kwargs.get("action")
-        
+
         yield {"type": "progress", "message": f"Communicating with MCP endpoint for action: {action}..."}
-        
+
         try:
             if action == "list_resources":
                 res = await self.mcp.list_resources()
@@ -71,7 +73,7 @@ class MCPTool(BaseTool):
                 params = kwargs.get("tool_params", {})
                 from intelligence.mcp.policy_limits import PolicyLimits
                 policy = PolicyLimits()
-                
+
                 # Check suspicious path parameters in MCP execution
                 is_blocked = False
                 block_reason = ""
@@ -82,14 +84,14 @@ class MCPTool(BaseTool):
                             is_blocked = True
                             block_reason = reason
                             break
-                            
+
                 if is_blocked:
                     res = {"error": f"MCP execution blocked by sandbox: {block_reason}"}
                 else:
                     res = await self.mcp.execute_tool(kwargs.get("tool_name", ""), params)
             else:
                 res = {"error": "Invalid action"}
-                
+
             if "error" in res:
                 yield {"type": "error", "message": res["error"]}
             else:

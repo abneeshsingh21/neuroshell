@@ -5,15 +5,12 @@ NeuroShell Workspace Profiles
 Per-directory configuration overrides for different project types.
 """
 
-import os
 import json
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
 
 from config import NEUROSHELL_DIR
 from observability.logger import StructuredLogger
-
 
 PROFILES_DIR = NEUROSHELL_DIR / "profiles"
 
@@ -54,7 +51,7 @@ class WorkspaceProfileManager:
 
     def __init__(self):
         self._profiles: dict[str, WorkspaceProfile] = {}
-        self._active: Optional[WorkspaceProfile] = None
+        self._active: WorkspaceProfile | None = None
         self._logger = StructuredLogger("profiles")
         PROFILES_DIR.mkdir(parents=True, exist_ok=True)
         self._load_all()
@@ -78,7 +75,7 @@ class WorkspaceProfileManager:
         self._logger.info("profile_created", name=name, directory=directory)
         return profile
 
-    def get(self, directory: str) -> Optional[WorkspaceProfile]:
+    def get(self, directory: str) -> WorkspaceProfile | None:
         """Get profile for a directory (checks parents too)."""
         directory = str(Path(directory).resolve())
 
@@ -95,7 +92,7 @@ class WorkspaceProfileManager:
 
         return None
 
-    def activate(self, directory: str) -> Optional[WorkspaceProfile]:
+    def activate(self, directory: str) -> WorkspaceProfile | None:
         """Activate profile for current directory."""
         profile = self.get(directory)
         if profile:
@@ -103,7 +100,7 @@ class WorkspaceProfileManager:
             self._logger.info("profile_activated", name=profile.name)
         return profile
 
-    def get_active(self) -> Optional[WorkspaceProfile]:
+    def get_active(self) -> WorkspaceProfile | None:
         """Get currently active profile."""
         return self._active
 

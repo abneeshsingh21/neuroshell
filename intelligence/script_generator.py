@@ -9,8 +9,6 @@ Includes error handling, comments, and platform awareness.
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
-from pathlib import Path
 
 
 @dataclass

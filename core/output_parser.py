@@ -6,10 +6,9 @@ Detects and structures: JSON, YAML, TOML, XML, tables, CSVs, logs, diffs,
 stack traces, trees, key-value pairs, and lists. Includes smart summarization.
 """
 
-import re
 import json
-from typing import Optional
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -38,7 +37,7 @@ class ParsedOutput:
     """Result of output parsing."""
     raw: str
     output_type: OutputType
-    structured_data: Optional[object] = None
+    structured_data: object | None = None
     line_count: int = 0
     summary: str = ""
     language_hint: str = ""       # for syntax highlighting
@@ -186,7 +185,7 @@ class OutputParser:
     # Detectors
     # ═══════════════════════════════════════════════════════
 
-    def _detect_json(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_json(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect JSON output."""
         stripped = output.strip()
         if not (stripped.startswith(("{", "[")) and stripped.endswith(("}", "]"))):
@@ -211,7 +210,7 @@ class OutputParser:
         except json.JSONDecodeError:
             return None
 
-    def _detect_xml(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_xml(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect XML output."""
         stripped = output.strip()
         if not self.XML_PATTERN.match(stripped):
@@ -235,7 +234,7 @@ class OutputParser:
             language_hint="xml",
         )
 
-    def _detect_diff(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_diff(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect diff/patch output."""
         header_count = len(self.DIFF_HEADER.findall(output))
         diff_lines = len(self.DIFF_LINE.findall(output))
@@ -257,7 +256,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_stack_trace(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_stack_trace(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect error stack traces (Python, Node, Java, Rust, Go)."""
         trace_type = ""
         if self.PYTHON_TRACE.search(output):
@@ -294,7 +293,7 @@ class OutputParser:
             error_count=1,
         )
 
-    def _detect_yaml(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_yaml(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect YAML output."""
         yaml_lines = sum(1 for l in lines if self.YAML_PATTERN.match(l.strip()))
         yaml_list_lines = sum(1 for l in lines if self.YAML_LIST.match(l))
@@ -311,7 +310,7 @@ class OutputParser:
                 )
         return None
 
-    def _detect_toml(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_toml(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect TOML output."""
         section_count = len(self.INI_SECTION.findall(output))
         # TOML uses dotted keys
@@ -327,7 +326,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_ini(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_ini(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect INI/config file output."""
         section_count = len(self.INI_SECTION.findall(output))
         kv_count = len(self.INI_KV.findall(output))
@@ -342,7 +341,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_csv(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_csv(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect CSV-like output."""
         if len(lines) < 2:
             return None
@@ -362,7 +361,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_table(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_table(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect tabular output."""
         if len(lines) < 3:
             return None
@@ -391,7 +390,7 @@ class OutputParser:
             summary=f"Table with ~{len(lines)} rows",
         )
 
-    def _detect_log(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_log(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect log output with severity analysis."""
         log_lines = sum(1 for line in lines if self.LOG_PATTERN.match(line))
         ts_lines = sum(1 for line in lines if self.TIMESTAMP_LOG.match(line))
@@ -417,7 +416,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_tree(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_tree(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect tree-structure output."""
         tree_lines = sum(1 for line in lines if self.TREE_PATTERN.match(line))
         if tree_lines >= len(lines) * 0.4:
@@ -429,7 +428,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_key_value(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_key_value(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect key-value pair output."""
         kv_pattern = re.compile(r"^[\w\s\-\.]+\s*[:=]\s*.+$")
         kv_lines = sum(1 for line in lines if kv_pattern.match(line.strip()))
@@ -451,7 +450,7 @@ class OutputParser:
             )
         return None
 
-    def _detect_list(self, output: str, lines: list[str]) -> Optional[ParsedOutput]:
+    def _detect_list(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect bulleted/numbered list output."""
         list_pattern = re.compile(r"^\s*[\-\*\•\d+\.]\s+.+$")
         list_lines = sum(1 for line in lines if list_pattern.match(line))

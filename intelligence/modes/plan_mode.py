@@ -8,6 +8,7 @@ or if it must remain in a safe brainstorm/architecting state.
 
 import threading
 
+
 class PlanModeController:
     def __init__(self):
         self._is_planning = False

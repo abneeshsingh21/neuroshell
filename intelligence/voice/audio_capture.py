@@ -8,7 +8,7 @@ Records microphone buffers natively using OS commands like sox or sounddevice.
 import subprocess
 import threading
 import wave
-import os
+
 
 class AudioCapture:
     def __init__(self, sample_rate=16000):
@@ -22,15 +22,15 @@ class AudioCapture:
         """Starts recording audio from default mic using SoX/rec."""
         if self.is_recording:
             return
-            
+
         self.is_recording = True
         self._buffer.clear()
-        
+
         args = [
             'rec', '-q', '-t', 'raw', '-r', str(self.sample_rate),
             '-e', 'signed', '-b', '16', '-c', '1', '-'
         ]
-        
+
         try:
             import sys
             kwargs = {}
@@ -59,10 +59,10 @@ class AudioCapture:
         if self.process:
             self.process.terminate()
             self.process = None
-            
+
         with self._lock:
             data = bytes(self._buffer)
-            
+
         return data
 
     def save_wav(self, pcm_data: bytes, path: str):

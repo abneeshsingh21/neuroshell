@@ -7,9 +7,8 @@ with the embedded production NeuroShell logo (assets/icon.ico).
 
 from __future__ import annotations
 
-import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 CSC_PATH = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")

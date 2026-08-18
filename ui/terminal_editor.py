@@ -8,16 +8,6 @@ syntax highlighting, history navigation, and tab-completion.
 
 from __future__ import annotations
 
-import os
-import sys
-from typing import Optional, Callable, List
-
-from ui.interactive_menu import (
-    _read_key, Key,
-    C_CYAN, C_MAGENTA, C_GREEN, C_YELLOW, C_GRAY, C_MUTED, C_WHITE,
-    C_BOLD, C_RESET, CLEAR_LINE,
-)
-
 
 class TerminalLineEditor:
     """
@@ -78,7 +68,7 @@ class TerminalLineEditor:
 
         return ""
 
-    def read_line(self, prompt: str) -> Optional[str]:
+    def read_line(self, prompt: str) -> str | None:
         """
         Read a line of user input with high responsiveness.
         Uses native input() for 100% typability and recording to history.

@@ -6,14 +6,12 @@ Multi-intent detection, confidence calibration, custom intent training,
 temperature-scaled softmax, persistent corrections.
 """
 
-import os
-import json
 import hashlib
+import json
 import math
 import warnings
-from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass, field
+from pathlib import Path
 
 try:
     import joblib  # safer than pickle, supports compression
@@ -29,16 +27,15 @@ except ImportError:
     HAS_JOBLIB = False
 
 try:
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.svm import LinearSVC
-    from sklearn.pipeline import Pipeline
     from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.pipeline import Pipeline
+    from sklearn.svm import LinearSVC
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
 
 from config import NLP_MODELS_DIR
-
 
 # ═══════════════════════════════════════════════════════════
 # Secure Model Persistence (replaces bare pickle)
@@ -127,7 +124,7 @@ class IntentResult:
     intent: str
     confidence: float
     all_scores: dict = field(default_factory=dict)
-    secondary_intent: Optional[str] = None
+    secondary_intent: str | None = None
     secondary_confidence: float = 0.0
     is_multi_intent: bool = False
 
@@ -272,7 +269,7 @@ class IntentClassifier:
     CONJUNCTIONS = {"and", "then", "also", "plus", "after that", "followed by", "&&"}
 
     def __init__(self):
-        self._model: Optional[Pipeline] = None
+        self._model: Pipeline | None = None
         self._model_path = NLP_MODELS_DIR / "intent_classifier.pkl"
         self._corrections_path = NLP_MODELS_DIR / "corrections.json"
         self._corrections: list[tuple[str, str]] = []
@@ -351,7 +348,7 @@ class IntentClassifier:
 
     # ── Internal ──────────────────────────────────────────
 
-    def _detect_multi_intent(self, text: str) -> Optional[IntentResult]:
+    def _detect_multi_intent(self, text: str) -> IntentResult | None:
         """Detect multi-intent inputs like 'run tests and push to main'."""
         text_lower = text.lower()
         for conj in self.CONJUNCTIONS:

@@ -6,7 +6,6 @@ Interactive tutorial and contextual help with smart hints.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -200,7 +199,7 @@ class HelpSystem:
             lines.append(f"  {ex}")
         return "\n".join(lines)
 
-    def get_hint(self, context: str) -> Optional[str]:
+    def get_hint(self, context: str) -> str | None:
         """Get a contextual hint based on current situation."""
         if not self.config.hints_enabled:
             return None
@@ -261,7 +260,7 @@ class OnboardingTutorial:
     def is_completed(self) -> bool:
         return self._completed
 
-    def get_current_step(self) -> Optional[dict]:
+    def get_current_step(self) -> dict | None:
         if self._current_step >= len(self.STEPS):
             self._completed = True
             return None

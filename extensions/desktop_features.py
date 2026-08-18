@@ -5,16 +5,13 @@ NeuroShell Desktop App Features
 Command Palette, Snippet Manager, Theme Engine, Notebook Mode, Diff Preview, Autocomplete.
 """
 
-import re
-import os
 import json
-import time
 import logging
 import platform
-import subprocess
+import re
+import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional
 
 logger = logging.getLogger("neuroshell.desktop")
 
@@ -136,7 +133,7 @@ class Snippet:
 class SnippetManager:
     """Save, organize, and share command snippets."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         self._dir = config_dir or Path.home() / ".neuroshell"
         self._dir.mkdir(parents=True, exist_ok=True)
         self._file = self._dir / "snippets.json"
@@ -164,7 +161,7 @@ class SnippetManager:
         self._save()
         return s
 
-    def get(self, name: str) -> Optional[Snippet]:
+    def get(self, name: str) -> Snippet | None:
         s = self._snippets.get(name)
         if s:
             s.use_count += 1
@@ -249,7 +246,7 @@ BUILT_IN_THEMES = {
 class ThemeEngine:
     """Manage and apply terminal themes."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         self._dir = config_dir or Path.home() / ".neuroshell"
         self._dir.mkdir(parents=True, exist_ok=True)
         self._config_file = self._dir / "theme.json"
@@ -381,7 +378,7 @@ class DiffPreview:
     def __init__(self):
         self.is_windows = platform.system() == "Windows"
 
-    def get_preview(self, command: str) -> Optional[tuple[str, str]]:
+    def get_preview(self, command: str) -> tuple[str, str] | None:
         """Return (preview_command, explanation) or None."""
         maps = {**self.DRY_RUN_MAP, **(self.WINDOWS_DRY_RUN if self.is_windows else {})}
         for pattern, (template, explanation) in maps.items():

@@ -1,23 +1,19 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 # Import Phase 5 stuff
 from intelligence.lsp.lsp_client import LSPClient
-from intelligence.tools.lsp_tool import LSPTool
-
 from intelligence.mcp.mcp_client import MCPClient
-from intelligence.tools.mcp_tool import MCPTool
-
+from intelligence.modes.plan_mode import PlanModeController
 from intelligence.tasks.task_manager import TaskManager
+from intelligence.tools.lsp_tool import LSPTool
+from intelligence.tools.mcp_tool import MCPTool
+from intelligence.tools.mode_tools import ModeTool
 from intelligence.tools.task_tools import TaskSystemTool
-
 from intelligence.voice.audio_capture import AudioCapture
 from intelligence.voice.whisper_bridge import WhisperBridge
 
-from intelligence.modes.plan_mode import PlanModeController
-from intelligence.tools.mode_tools import ModeTool
 
 async def run_tests():
     print("Testing LSP subsystem...")

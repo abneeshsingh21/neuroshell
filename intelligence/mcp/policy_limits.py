@@ -2,7 +2,8 @@
 # Proprietary and Confidential - see LICENSE.txt
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import List
+
 
 class PolicyLimits:
     """
@@ -11,7 +12,7 @@ class PolicyLimits:
     and explicitly whitelisted system directories.
     """
 
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(self, workspace_root: str | None = None):
         if workspace_root:
             self.workspace_root = Path(workspace_root).resolve()
         else:
@@ -19,8 +20,8 @@ class PolicyLimits:
 
         # System absolute paths that are inherently safe for reading (but not writing)
         self.whitelisted_read_paths: List[Path] = []
-        
-        # Define cross-platform standard desktop/downloads paths as semi-safe 
+
+        # Define cross-platform standard desktop/downloads paths as semi-safe
         # (AI can read from them if explicitly requested, but sandbox warns)
         try:
             home = Path.home()
@@ -59,7 +60,7 @@ class PolicyLimits:
                 return True, "Allowed by workspace policy."
             except ValueError:
                 pass
-                
+
         # 2. Strict Write Ban Outside Workspace
         if require_write_access:
             return False, f"Write blocked. Path {target} is outside the active workspace {self.workspace_root}."

@@ -6,18 +6,18 @@ Circuit breaker, rate limiting, crash recovery, graceful degradation,
 and comprehensive health checks with retry policies.
 """
 
-import socket
-import time
-import platform
-import shutil
-import os
 import json
 import logging
+import os
+import platform
+import shutil
+import socket
 import threading
-from pathlib import Path
-from typing import Optional, Callable
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 _resilience_log = logging.getLogger("neuroshell.resilience")
 
@@ -264,7 +264,7 @@ class CrashRecovery:
         except Exception as exc:
             _resilience_log.warning("Failed to save session state: %s", exc)
 
-    def recover_state(self) -> Optional[dict]:
+    def recover_state(self) -> dict | None:
         """Try to recover state from last session."""
         if not self._state_file.exists():
             return None
@@ -319,7 +319,7 @@ class NetworkAware:
         try:
             socket.create_connection(("8.8.8.8", 53), timeout=3).close()
             self._is_online = True
-        except (socket.timeout, OSError):
+        except (TimeoutError, OSError):
             self._is_online = False
 
         # DNS check
@@ -337,7 +337,7 @@ class NetworkAware:
         cmd_lower = command.strip().lower()
         return any(cmd_lower.startswith(net_cmd) for net_cmd in self.NET_COMMANDS)
 
-    def warn_if_offline(self, command: str) -> Optional[str]:
+    def warn_if_offline(self, command: str) -> str | None:
         """Return warning if offline and command needs network."""
         if self.needs_network(command) and not self.check():
             return f"⚠️ '{command.split()[0]}' requires network — you appear to be offline"
@@ -488,7 +488,7 @@ class HealthCheck:
         )
 
     def _check_config_dir(self) -> HealthStatus:
-        from config import NEUROSHELL_DIR, DB_FILE
+        from config import DB_FILE, NEUROSHELL_DIR
         exists = NEUROSHELL_DIR.exists()
         db_exists = DB_FILE.exists()
         return HealthStatus(
@@ -522,7 +522,7 @@ class GracefulDegradation:
     def is_available(self, feature: str) -> bool:
         return feature not in self._disabled_features
 
-    def get_fallback(self, feature: str) -> Optional[str]:
+    def get_fallback(self, feature: str) -> str | None:
         """Get fallback feature for a disabled feature."""
         return self._fallbacks.get(feature)
 

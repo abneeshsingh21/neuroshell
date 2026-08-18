@@ -5,10 +5,10 @@ NeuroShell Swarm Intelligence — Multi-Agent Orchestrator
 Inspired by Anthropic's Claude-Code Role-Based Architecture.
 """
 
-import time
 import logging
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List
+
 from core.events import neuro_events
 
 _log = logging.getLogger("neuroshell.swarm")
@@ -29,7 +29,7 @@ class BaseAgent:
     def execute(self, task: str, context: str) -> str:
         prompt = f"Workspace Context:\n{context}\n\nTask:\n{task}"
         _log.info(f"Swarm: Engaging [{self.name}]")
-        
+
         # We use standard chat/generate but we do not want to pollute the global history
         # So we use `generate` with use_cache=False to get a raw response.
         res = self.llm.generate(prompt, self.system_prompt, use_cache=False)
@@ -71,11 +71,11 @@ ONLY output the shell command. Do not explain. Do not use markdown backticks unl
 
 class SwarmOrchestrator:
     """Manages multi-agent parallel workflows for complex prompts, utilizing Git Sandbox."""
-    
+
     def __init__(self, llm_client, context_manager=None):
         self.llm = llm_client
         self.context = context_manager
-        
+
         # Instantiate Swarm
         self.planner = PlanAgent(llm_client)
         self.executor = GeneralPurposeAgent(llm_client)
@@ -84,29 +84,29 @@ class SwarmOrchestrator:
     def route_task(self, prompt: str) -> SwarmResult:
         """Orchestrates the Swarm Pipeline: Plan -> Execute -> Sandbox Test -> Verify."""
         ctx_summary = self.context.get_context_summary() if self.context else ""
-        
+
         neuro_events.emit("swarm_update", "[🧠 Swarm] Intercepted complex task. Orchestrating...")
-        
+
         agents_used = []
-        
+
         # Step 1: Planning
         neuro_events.emit("swarm_update", "  ↳ [PlannerAgent] Drafting architectural plan...")
         plan = self.planner.execute(prompt, ctx_summary)
         agents_used.append("PlanAgent")
         neuro_events.emit("swarm_update", f"  ↳ [PlannerAgent] Done. Prepared {len(plan.splitlines())} steps.")
-        
+
         # Step 2: Execution
         neuro_events.emit("swarm_update", "  ↳ [ExecutorAgent] Mapping plan to raw shell commands...")
         exec_payload = f"Original Request: {prompt}\nArchitect Plan:\n{plan}"
         proposed_command = self.executor.execute(exec_payload, ctx_summary)
         agents_used.append("GeneralPurposeAgent")
         neuro_events.emit("swarm_update", f"  ↳ [ExecutorAgent] Output: {proposed_command[:60]}...")
-        
+
         # Stop reasoning tags from breaking things
         if "<think>" in proposed_command:
             import re
             proposed_command = re.sub(r'<think>.*?</think>', '', proposed_command, flags=re.DOTALL).strip()
-            
+
         # Strip markdown fences if present
         if proposed_command.startswith("```"):
             lines = proposed_command.splitlines()
@@ -121,7 +121,7 @@ class SwarmOrchestrator:
         # Step 3: Verification (Adversarial Static Review)
         verification = self.verifier.execute(proposed_command, ctx_summary)
         agents_used.append("VerificationAgent")
-        
+
         if "UNSAFE" in verification.upper():
             return SwarmResult(
                 final_command="",
@@ -133,10 +133,11 @@ class SwarmOrchestrator:
         # Step 4: Sandbox Trial Run
         neuro_events.emit("swarm_update", "  ✓ [VerificationAgent] PASSED.")
         import os
+
         from core.sandbox import GitSandbox
         primary_dir = os.getcwd() # NeuroShell's active cwd
         sandbox = GitSandbox(primary_dir)
-        
+
         try:
             if not sandbox.is_git_repo():
                 neuro_events.emit("swarm_update", "  ⚠ [Sandbox] Target is not a git repo. Deploying naked command...")
@@ -146,13 +147,13 @@ class SwarmOrchestrator:
                     agents_used=agents_used,
                     is_safe=True
                 )
-                
+
             neuro_events.emit("swarm_update", "  ↳ [Sandbox] Spawning ephemeral Git Worktree...")
             sandbox.create()
-            
+
             neuro_events.emit("swarm_update", "  ↳ [Sandbox] Executing isolated test run...")
             run_result = sandbox.execute(proposed_command)
-            
+
             if run_result.returncode != 0:
                 neuro_events.emit("swarm_update", f"  ❌ [Sandbox] Trial Failed (Exit code {run_result.returncode})! Rolling back safely.")
                 sandbox.cleanup()
@@ -162,7 +163,7 @@ class SwarmOrchestrator:
                     agents_used=agents_used,
                     is_safe=False
                 )
-                
+
             neuro_events.emit("swarm_update", "  ✓ [Sandbox] Command did not crash. Diffing changes...")
             diff_text = sandbox.diff()
             if not diff_text.strip():
@@ -174,11 +175,11 @@ class SwarmOrchestrator:
                     agents_used=agents_used,
                     is_safe=True
                 )
-                
+
             neuro_events.emit("swarm_update", "  🚀 [Sandbox] Mutated files safely. Fast-forward merging to primary tree...")
             applied = sandbox.apply_to_primary()
             sandbox.cleanup()
-            
+
             if applied:
                 agents_used.append("Sandbox")
                 neuro_events.emit("swarm_update", "  ✅ [Swarm] Operations fully completed and securely merged.")
@@ -196,7 +197,7 @@ class SwarmOrchestrator:
                     agents_used=agents_used,
                     is_safe=False
                 )
-                
+
         except Exception as e:
             if sandbox.sandbox_dir:
                 sandbox.cleanup()

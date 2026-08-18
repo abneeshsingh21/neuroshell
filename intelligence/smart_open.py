@@ -8,12 +8,10 @@ system shortcuts, and file-type search.
 """
 
 import os
-import re
 import platform
-from pathlib import Path
+import re
 from dataclasses import dataclass, field
-from typing import Optional
-
+from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -329,7 +327,7 @@ class SmartOpenEngine:
         self._last_explorer_time: float = 0.0
         self._EXPLORER_DEBOUNCE_S: float = 2.0  # seconds
 
-    def try_resolve(self, user_input: str) -> Optional[OpenResult]:
+    def try_resolve(self, user_input: str) -> OpenResult | None:
         """
         Try to resolve a natural language input into an open/launch command.
         Returns None if this doesn't look like an open intent.
@@ -429,7 +427,7 @@ class SmartOpenEngine:
         if nested_match:
             child = nested_match.group(1).replace(" folder", "").replace(" directory", "").strip()
             parent = nested_match.group(2).replace(" folder", "").replace(" directory", "").strip()
-            
+
             # Find the parent folder first using the existing fuzzy finder
             parent_path = self._fuzzy_find_folder(parent)
             if parent_path:
@@ -456,7 +454,7 @@ class SmartOpenEngine:
     # System Shortcuts
     # ═══════════════════════════════════════════════════════
 
-    def _try_system_shortcut(self, target_lower: str) -> Optional[OpenResult]:
+    def _try_system_shortcut(self, target_lower: str) -> OpenResult | None:
         """Check against system shortcuts registry."""
         if not self._is_windows:
             return None
@@ -483,7 +481,7 @@ class SmartOpenEngine:
     # Power Commands
     # ═══════════════════════════════════════════════════════
 
-    def _try_power_command(self, lower: str) -> Optional[OpenResult]:
+    def _try_power_command(self, lower: str) -> OpenResult | None:
         """Check against power commands (these can work without 'open' prefix)."""
         if not self._is_windows:
             return None
@@ -512,7 +510,7 @@ class SmartOpenEngine:
     # App Registry
     # ═══════════════════════════════════════════════════════
 
-    def _try_app_registry(self, target_lower: str) -> Optional[OpenResult]:
+    def _try_app_registry(self, target_lower: str) -> OpenResult | None:
         """Look up app in the registry."""
         if target_lower in self._app_registry:
             cmd, name = self._app_registry[target_lower]
@@ -559,7 +557,7 @@ class SmartOpenEngine:
     # URL Resolution
     # ═══════════════════════════════════════════════════════
 
-    def _try_url(self, target: str, target_lower: str) -> Optional[OpenResult]:
+    def _try_url(self, target: str, target_lower: str) -> OpenResult | None:
         """Resolve explicit URLs or infer from site names."""
         # Explicit URL
         if self._URL_PATTERN.match(target):
@@ -615,7 +613,7 @@ class SmartOpenEngine:
     # Latest File Finder
     # ═══════════════════════════════════════════════════════
 
-    def _try_latest_file(self, target: str, target_lower: str) -> Optional[OpenResult]:
+    def _try_latest_file(self, target: str, target_lower: str) -> OpenResult | None:
         """Find the most recently modified file of a given type."""
         match = self._LATEST_FILE.match(target)
         if not match:
@@ -680,7 +678,7 @@ class SmartOpenEngine:
             confidence=0.60,
         )
 
-    def _resolve_folder(self, name: str) -> Optional[str]:
+    def _resolve_folder(self, name: str) -> str | None:
         """
         Resolve a folder name to an absolute path.
         
@@ -761,7 +759,7 @@ class SmartOpenEngine:
 
         return None
 
-    def _search_dir_for(self, directory: str, name_lower: str) -> Optional[str]:
+    def _search_dir_for(self, directory: str, name_lower: str) -> str | None:
         """Search a directory for a folder with case-insensitive name matching."""
         try:
             for entry in os.scandir(directory):
@@ -787,7 +785,7 @@ class SmartOpenEngine:
 
         return None
 
-    def _fuzzy_find_folder(self, name_lower: str, search_root: Optional[str] = None) -> Optional[str]:
+    def _fuzzy_find_folder(self, name_lower: str, search_root: str | None = None) -> str | None:
         """Last-resort fuzzy search across multiple locations, or a specific root."""
         best_match = None
         best_score = 0
@@ -802,7 +800,7 @@ class SmartOpenEngine:
                     if depth > 3:
                         dirs.clear() # Stop descending further
                         continue
-                        
+
                     for d in dirs:
                         if d.startswith("."): continue
                         score = SmartOpenEngine._similarity_score(name_lower, d.lower())
@@ -853,7 +851,7 @@ class SmartOpenEngine:
             return 0.0
         return common / max_len
 
-    def _try_as_folder(self, target: str, target_lower: str) -> Optional[OpenResult]:
+    def _try_as_folder(self, target: str, target_lower: str) -> OpenResult | None:
         """Check if the target is a folder (well-known or in current directory)."""
         resolved = self._resolve_folder(target)
         if resolved:
@@ -956,7 +954,7 @@ class SmartOpenEngine:
     # Zip / Compress Commands
     # ═══════════════════════════════════════════════════════
 
-    def _try_zip_command(self, lower: str, original: str) -> Optional[OpenResult]:
+    def _try_zip_command(self, lower: str, original: str) -> OpenResult | None:
         """Handle zip/compress and unzip/extract commands."""
         if not self._is_windows:
             return None
@@ -967,7 +965,7 @@ class SmartOpenEngine:
             dest = zip_match.group(2)
             # Clean up trailing 'folder' or 'directory'
             source = re.sub(r'\s+(?:folder|directory|dir)$', '', source, flags=re.IGNORECASE)
-            
+
             actual_source = source
             if not os.path.exists(source):
                 fuzzy = self._fuzzy_find_folder(source)
@@ -991,7 +989,7 @@ class SmartOpenEngine:
         if unzip_match:
             source = unzip_match.group(1).strip()
             dest = unzip_match.group(2)
-            
+
             # Fuzzy resolve the source archive using folder fuzzy finding logic if missing
             actual_source = source
             if not os.path.exists(source):
@@ -1008,7 +1006,7 @@ class SmartOpenEngine:
                                 break
                     except (OSError, PermissionError):
                         continue
-                        
+
             if not dest:
                 dest = "."
             dest = dest.strip()
@@ -1038,7 +1036,7 @@ class SmartOpenEngine:
     # Full URL
     _FULL_URL = re.compile(r"^https?://")
 
-    def _try_github_clone(self, lower: str, original: str) -> Optional[OpenResult]:
+    def _try_github_clone(self, lower: str, original: str) -> OpenResult | None:
         """
         Detect GitHub clone intents and generate the appropriate git clone command.
 
@@ -1094,16 +1092,16 @@ class SmartOpenEngine:
             confidence=0.60,
         )
 
-    def _github_api_search(self, query: str) -> Optional[tuple]:
+    def _github_api_search(self, query: str) -> tuple | None:
         """
         Search GitHub's public API for the most popular repo matching `query`.
         Returns (full_name, clone_url, stars, description) or None.
         Requires no auth for public repos (60 req/hour rate limit).
         """
         try:
-            import urllib.request
             import json as _json
             import urllib.parse
+            import urllib.request
 
             q = urllib.parse.quote(query)
             url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page=1"
@@ -1134,9 +1132,9 @@ class SmartOpenEngine:
 
 
 import asyncio
-import sys
 import subprocess
-from typing import Any, AsyncGenerator, Dict
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
 
 try:
     from intelligence.tools.base_tool import BaseTool
@@ -1171,9 +1169,9 @@ class SmartOpenTool(BaseTool):
         if not query:
             yield {"type": "error", "message": "query parameter is required"}
             return
-            
+
         yield {"type": "progress", "message": f"Resolving open intent for '{query}'..."}
-        
+
         loop = asyncio.get_running_loop()
         engine = SmartOpenEngine()
 
@@ -1181,7 +1179,7 @@ class SmartOpenTool(BaseTool):
             result = engine.try_resolve(query)
             if not result:
                 return None
-            
+
             # Fire and forget the command
             try:
                 import sys

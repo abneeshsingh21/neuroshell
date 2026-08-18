@@ -5,10 +5,10 @@ NeuroShell Event Tracer
 Correlation ID tracing across the full pipeline.
 """
 
-import uuid
 import time
+import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+
 from observability.logger import StructuredLogger
 
 
@@ -44,7 +44,7 @@ class Trace:
 class EventTracer:
     """Manages traces with correlation IDs."""
 
-    def __init__(self, logger: Optional[StructuredLogger] = None):
+    def __init__(self, logger: StructuredLogger | None = None):
         self._traces: dict[str, Trace] = {}
         self._recent: list[str] = []  # Last N trace IDs
         self._max_traces = 100
@@ -82,11 +82,11 @@ class EventTracer:
         if trace:
             trace.completed = True
 
-    def get_trace(self, correlation_id: str) -> Optional[Trace]:
+    def get_trace(self, correlation_id: str) -> Trace | None:
         """Get a specific trace."""
         return self._traces.get(correlation_id)
 
-    def get_last_trace(self) -> Optional[Trace]:
+    def get_last_trace(self) -> Trace | None:
         """Get the most recent trace."""
         if self._recent:
             return self._traces.get(self._recent[-1])

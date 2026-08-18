@@ -6,24 +6,24 @@ Executes commands with real-time streaming, process lifecycle management,
 resource monitoring, async support, job tracking, and undo snapshots.
 """
 
-import subprocess
 import os
-import re
-import signal
 import platform
+import re
+import shutil
+import signal
+import subprocess
+import threading
 import time
 import uuid
-import shutil
-import threading
+
 try:
     import psutil
 except ImportError:
     psutil = None
-from pathlib import Path
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
 from enum import Enum
-
+from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -203,7 +203,7 @@ class ShellExecutor:
         self._job_counter = 0
 
         # Execution tracking
-        self._active_process: Optional[subprocess.Popen] = None
+        self._active_process: subprocess.Popen | None = None
         self._cancelled = False
         self._total_commands = 0
         self._total_duration_ms = 0.0
@@ -234,13 +234,13 @@ class ShellExecutor:
     def execute(
         self,
         command: str,
-        shell: Optional[str] = None,
+        shell: str | None = None,
         timeout: int = 300,
-        stream_callback: Optional[Callable[[str], None]] = None,
+        stream_callback: Callable[[str], None] | None = None,
         capture_snapshot: bool = False,
-        snapshot_paths: Optional[list[str]] = None,
-        env_overrides: Optional[dict[str, str]] = None,
-        stdin_data: Optional[str] = None,
+        snapshot_paths: list[str] | None = None,
+        env_overrides: dict[str, str] | None = None,
+        stdin_data: str | None = None,
     ) -> ExecutionResult:
         """
         Execute a command with full lifecycle management.
@@ -347,8 +347,8 @@ class ShellExecutor:
         shell: str,
         start_time: float,
         timeout: int,
-        stream_callback: Optional[Callable],
-        stdin_data: Optional[str],
+        stream_callback: Callable | None,
+        stdin_data: str | None,
         resources: ResourceUsage,
     ) -> ExecutionResult:
         """Handle streaming output and process completion."""
@@ -595,7 +595,7 @@ class ShellExecutor:
             return True
         return False
 
-    def get_job_output(self, job_id: str) -> Optional[str]:
+    def get_job_output(self, job_id: str) -> str | None:
         """Get output from a background job."""
         job = self._bg_jobs.get(job_id)
         if job:
@@ -626,7 +626,7 @@ class ShellExecutor:
 
     # ── Builtins & Directory Management ────────────────────
 
-    def _handle_builtin(self, command: str, start_time: float, shell: str) -> Optional[ExecutionResult]:
+    def _handle_builtin(self, command: str, start_time: float, shell: str) -> ExecutionResult | None:
         """Handle shell builtins: cd, pushd, popd, export/set."""
         cmd_stripped = command.strip()
         cmd_lower = cmd_stripped.lower()
@@ -797,7 +797,7 @@ class ShellExecutor:
         (re.compile(r"\$\([^)]{1,200}\)"), "$(...) subshell injection detected"),
     ]
 
-    def _check_injection(self, command: str) -> Optional[str]:
+    def _check_injection(self, command: str) -> str | None:
         """Secondary injection guard — defense-in-depth last-line check.
 
         Scans for patterns that strongly indicate shell injection, not legitimate
@@ -891,9 +891,7 @@ class ShellExecutor:
             tokens = stripped.split()
             if len(tokens) == 1:
                 # Bare interpreter — add version/help flag
-                if first_token in ("python", "python3"):
-                    return f"{stripped} --version"
-                elif first_token == "node":
+                if first_token in ("python", "python3") or first_token == "node":
                     return f"{stripped} --version"
                 elif first_token == "nslookup":
                     return command  # nslookup with no args is fine with timeout
@@ -970,7 +968,7 @@ class ShellExecutor:
 
         return ([command], None)
 
-    def _build_env(self, overrides: Optional[dict] = None) -> dict:
+    def _build_env(self, overrides: dict | None = None) -> dict:
         """Build execution environment with custom vars and overrides."""
         env = self._env.copy()
         env.update(self._custom_env)
@@ -1025,7 +1023,7 @@ class ShellExecutor:
 
         return snapshot
 
-    def undo_last(self) -> Optional[tuple[str, list[str]]]:
+    def undo_last(self) -> tuple[str, list[str]] | None:
         """Undo the last snapshotted command. Returns (command, restored_files)."""
         if not self._snapshots:
             return None

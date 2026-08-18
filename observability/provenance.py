@@ -5,9 +5,8 @@ NeuroShell Provenance Tracker
 Tags every suggestion with its source for trust and transparency.
 """
 
-from enum import Enum
 from dataclasses import dataclass
-from typing import Optional
+from enum import Enum
 
 
 class ProvenanceSource(Enum):

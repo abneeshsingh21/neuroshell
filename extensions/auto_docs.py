@@ -5,10 +5,7 @@ NeuroShell Auto-Documentation Generator
 Generates markdown docs from command history, patterns, and session logs.
 """
 
-import os
 import time
-from pathlib import Path
-from typing import Optional
 
 from config import NEUROSHELL_DIR
 
@@ -97,7 +94,7 @@ class AutoDocsGenerator:
         ]
 
         for fix in fixes[:30]:
-            lines.append(f"\n### Error Pattern")
+            lines.append("\n### Error Pattern")
             lines.append(f"**Error:** `{fix.get('error_preview', '')[:100]}`")
             lines.append(f"**Fix:** `{fix.get('fix_command', '')}`")
             lines.append(f"**Source:** {fix.get('source', '')} | **Successes:** {fix.get('success_count', 0)}")

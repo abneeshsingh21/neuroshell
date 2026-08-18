@@ -9,9 +9,8 @@ import re
 import shutil
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
-from observability.provenance import ProvenanceTag, ProvenanceSource
+from observability.provenance import ProvenanceSource, ProvenanceTag
 
 
 @dataclass
@@ -27,7 +26,7 @@ class PipelineResult:
     steps: list[dict] = field(default_factory=list)
     confidence: float = 0.0
     explanation: str = ""
-    provenance: Optional[ProvenanceTag] = None
+    provenance: ProvenanceTag | None = None
     from_template: bool = False
     validation_errors: list[str] = field(default_factory=list)
 
@@ -128,7 +127,7 @@ class PipelineBuilder:
         self.llm = llm_client
         self.context = context_manager
 
-    def build(self, user_input: str, params: Optional[dict] = None) -> PipelineResult:
+    def build(self, user_input: str, params: dict | None = None) -> PipelineResult:
         """Build a pipeline from NL description, using templates or LLM."""
         # 1. Try template match
         template = self._match_template(user_input)
@@ -168,7 +167,7 @@ class PipelineBuilder:
             preview_lines.append(f"{arrow}[Step {i+1}] {cmd.strip()}")
         return "\n".join(preview_lines)
 
-    def _match_template(self, user_input: str) -> Optional[dict]:
+    def _match_template(self, user_input: str) -> dict | None:
         """Fuzzy match user input against template names."""
         input_lower = user_input.lower().strip()
         best_match = None
@@ -207,7 +206,7 @@ class PipelineBuilder:
             pipeline=pipeline,
             steps=template.get("steps", []),
             confidence=0.9,
-            explanation=f"Built from template",
+            explanation="Built from template",
             from_template=True,
             validation_errors=errors,
             provenance=ProvenanceTag(

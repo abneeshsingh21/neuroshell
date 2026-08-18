@@ -7,7 +7,6 @@ Detects recurring command sequences, time patterns, and error-fix pairs.
 
 import time
 from collections import Counter, defaultdict
-from typing import Optional
 from dataclasses import dataclass
 
 
@@ -83,7 +82,7 @@ class PatternLearner:
 
         return patterns
 
-    def predict_next(self, last_command: str, cwd: str = "") -> Optional[str]:
+    def predict_next(self, last_command: str, cwd: str = "") -> str | None:
         """Predict the most likely next command."""
         best_cmd = None
         best_score = 0

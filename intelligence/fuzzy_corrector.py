@@ -6,9 +6,7 @@ Levenshtein-based typo detection for 100+ common shell commands.
 Suggests corrections like: "gti" → "git", "pythno" → "python"
 """
 
-import re
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -95,7 +93,7 @@ class FuzzyCorrector:
             self.commands.update(extra_commands)
         self._max_distance = 2  # Max typo distance to consider
 
-    def correct(self, input_cmd: str) -> Optional[CorrectionResult]:
+    def correct(self, input_cmd: str) -> CorrectionResult | None:
         """
         Check if first word of input is a typo and suggest correction.
         Returns None if the command looks correct.

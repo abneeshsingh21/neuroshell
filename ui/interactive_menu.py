@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
-import time
-from typing import Optional, Callable, Any, List, Dict
+from collections.abc import Callable
 
 # TrueColor & ANSI styling tokens
 C_CYAN = "\033[38;2;56;189;248m"
@@ -106,8 +105,8 @@ def _read_key() -> str:
             return Key.CTRL_D
         return ch
     else:
-        import tty
         import termios
+        import tty
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
@@ -151,8 +150,8 @@ def select_menu(
     options: list[str | dict[str, str]],
     default_index: int = 0,
     description: str = "",
-    badge_map: Optional[dict[int, str]] = None,
-) -> Optional[int]:
+    badge_map: dict[int, str] | None = None,
+) -> int | None:
     """
     Interactive arrow-key selection menu rendered in-place.
     
@@ -274,8 +273,8 @@ def text_prompt(
     prompt_text: str,
     default: str = "",
     password: bool = False,
-    validator: Optional[Callable[[str], bool]] = None,
-) -> Optional[str]:
+    validator: Callable[[str], bool] | None = None,
+) -> str | None:
     """
     Clean interactive inline text/password prompt.
     """

@@ -2,12 +2,13 @@
 # Proprietary and Confidential - see LICENSE.txt
 import asyncio
 import os
-import shutil
 import subprocess
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, Dict
 
 from intelligence.tools.base_tool import BaseTool
+
 
 class TeammateTool(BaseTool):
     """
@@ -27,7 +28,7 @@ class TeammateTool(BaseTool):
             "type": "object",
             "properties": {
                 "goal": {
-                    "type": "string", 
+                    "type": "string",
                     "description": "Clear instructions for what the sub-agent should accomplish."
                 },
                 "use_sandbox": {
@@ -46,29 +47,29 @@ class TeammateTool(BaseTool):
     async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
         goal = kwargs.get("goal")
         use_sandbox = kwargs.get("use_sandbox", True)
-        
+
         if not goal:
             yield {"type": "error", "message": "Sub-agent goal is required."}
             return
 
         yield {"type": "progress", "message": f"Spawning sub-agent for: {goal[:40]}..."}
-        
+
         loop = asyncio.get_running_loop()
 
         def _execute_teammate():
             original_cwd = os.getcwd()
             worktree_path = None
-            
+
             try:
                 # 1. Setup isolated sandbox if requested
                 if use_sandbox:
                     _ns_worktrees = Path.home() / ".neuroshell" / "worktrees"
                     worktree_dir = str(_ns_worktrees / f"agent_{os.urandom(4).hex()}")
                     worktree_path = os.path.abspath(worktree_dir)
-                    
+
                     # Ensure parent dir exists
                     os.makedirs(str(_ns_worktrees), exist_ok=True)
-                    
+
                     # Create git worktree
                     try:
                         subprocess.run(
@@ -80,22 +81,22 @@ class TeammateTool(BaseTool):
                         return {"status": "error", "message": "Failed to create git worktree sandbox."}
                 else:
                     target_dir = original_cwd
-                
+
                 # 2. Spawn Sub-Agent
                 # Note: In a full architecture, this would instantiate your Agent Planner
                 # and run a loop inside target_dir. We simulate this for the transition phase.
                 result_message = f"Teammate successfully explored: {goal}"
-                
+
                 # Simulate work
                 import time
                 time.sleep(2)  # stubbing agent thinking time
-                
+
                 return {
                     "status": "success",
                     "result": result_message,
                     "sandbox": worktree_path
                 }
-                
+
             finally:
                 # 3. Cleanup sandbox
                 if worktree_path and os.path.exists(worktree_path):
@@ -111,7 +112,7 @@ class TeammateTool(BaseTool):
             res = await loop.run_in_executor(None, _execute_teammate)
             if res.get("status") == "success":
                 yield {
-                    "type": "result", 
+                    "type": "result",
                     "data": f"Sub-Agent completed: {res['result']} (Sandbox used: {bool(res['sandbox'])})"
                 }
             else:

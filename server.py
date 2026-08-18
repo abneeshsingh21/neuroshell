@@ -3,16 +3,15 @@
 import asyncio
 import json
 import logging
-import threading
-from typing import Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-import uvicorn
-
-import sys
 import os
+import sys
+
+import uvicorn
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 try:
     import psutil
 except ImportError:
@@ -21,14 +20,15 @@ except ImportError:
 # Ensure project root in path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import load_config
-from llm.client import LLMClient
-from intelligence.translator import Translator
-from core.executor import ShellExecutor
-from core.context import ContextManager
-from core.history import HistoryStore
-from core.events import neuro_events
 from pathlib import Path
+
+from config import load_config
+from core.context import ContextManager
+from core.events import neuro_events
+from core.executor import ShellExecutor
+from core.history import HistoryStore
+from intelligence.translator import Translator
+from llm.client import LLMClient
 
 app = FastAPI(title="NeuroShell Terminal Server")
 
@@ -81,7 +81,7 @@ async def serve_frontend():
         },
     )
 
-from intelligence.safety import SafetyChecker, RiskLevel
+from intelligence.safety import RiskLevel, SafetyChecker
 
 # Initialize Core Services
 try:
@@ -152,7 +152,7 @@ async def telemetry_endpoint(websocket: WebSocket):
             )
         except Exception:
             pass
-            
+
     def _on_gc(msg: str):
         try:
             asyncio.run_coroutine_threadsafe(
@@ -219,7 +219,7 @@ async def sysmon_endpoint(websocket: WebSocket):
             await websocket.close()
         except:
             pass
-            
+
 @app.get("/api/dashboard")
 async def dashboard_api():
     """Return static dashboard state."""
@@ -234,6 +234,7 @@ async def dashboard_api():
     }
 
 from concurrent.futures import ThreadPoolExecutor
+
 _PIPELINE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ws_pipeline")
 
 @app.websocket("/ws/terminal")
@@ -246,7 +247,7 @@ async def websocket_endpoint(websocket: WebSocket):
         return
 
     await manager.connect(websocket)
-    
+
     # Send a custom welcome line to the terminal
     await websocket.send_text("\x1b[1;35mNeuroShell Core Server [Online]\x1b[0m\r\n\r\n")
 
@@ -301,7 +302,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_cmd = frame.get("payload", "").strip()
                 if not user_cmd:
                     continue
-                
+
                 # Echo what the user typed so it instantly locks into the terminal history
                 await websocket.send_text(f"\r\n\x1b[1;38;5;250mneuroshell\x1b[0m \x1b[1;32m>\x1b[0m \x1b[38;5;15m{user_cmd}\x1b[0m\r\n")
                 _last_telemetry["total_commands"] += 1
@@ -315,7 +316,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             return
 
                         command_to_run = translation_result.command
-                        
+
                         # 2. 4-Layer Safety Shield Verification
                         safety_res = safety.check(command_to_run)
                         if safety_res.risk == RiskLevel.BLOCKED:
@@ -334,7 +335,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             stream_callback=sync_stream_callback,
                             timeout=60
                         )
-                        
+
                         if res.exit_code != 0:
                             sync_stream_callback(f"\n\x1b[1;31m[Pipeline exited with code {res.exit_code}]\x1b[0m\n")
                         else:

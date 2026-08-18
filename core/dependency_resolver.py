@@ -5,13 +5,12 @@ NeuroShell Dependency Resolver
 Proactively checks if prerequisites exist before command execution.
 """
 
+import os
+import re
 import shutil
 import subprocess
-import re
-import os
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
+from pathlib import Path
 
 
 @dataclass
@@ -19,7 +18,7 @@ class DependencyCheck:
     """Result of a dependency check."""
     needed: str           # what's needed (e.g., "pytest")
     is_available: bool
-    fix_command: Optional[str] = None  # suggested install command
+    fix_command: str | None = None  # suggested install command
     message: str = ""
     version_found: str = ""
     version_needed: str = ""
@@ -67,7 +66,7 @@ class DependencyResolver:
     def __init__(self, context_manager=None):
         self.context = context_manager
 
-    def check_command(self, command: str, cwd: Optional[str] = None) -> list[DependencyCheck]:
+    def check_command(self, command: str, cwd: str | None = None) -> list[DependencyCheck]:
         """Check all dependencies for a command."""
         cwd = cwd or os.getcwd()
         checks = []
@@ -177,7 +176,7 @@ class DependencyResolver:
             message=f"Directory '{dirname}' not found in {cwd}",
         )
 
-    def _check_python_version(self, command: str) -> Optional[DependencyCheck]:
+    def _check_python_version(self, command: str) -> DependencyCheck | None:
         """Check if a specific Python version is requested."""
         match = re.match(r"python(\d+\.?\d*)", command.strip().split()[0])
         if not match:

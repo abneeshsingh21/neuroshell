@@ -5,8 +5,10 @@ Whisper Bridge
 Routes WAV data to STT models like Groq's Whisper API for near-instant transcription.
 """
 
-import httpx
 import os
+
+import httpx
+
 
 class WhisperBridge:
     def __init__(self, api_key: str = None):
@@ -17,9 +19,9 @@ class WhisperBridge:
         """Sends the audio file to Groq Whisper for transcription."""
         if not self.api_key:
             raise ValueError("GROQ_API_KEY is required for voice transcription.")
-            
+
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        
+
         async with httpx.AsyncClient() as client:
             with open(wav_path, "rb") as audio_file:
                 files = {
@@ -29,7 +31,7 @@ class WhisperBridge:
                     "model": "whisper-large-v3",
                     "response_format": "text"
                 }
-                
+
                 resp = await client.post(self.url, headers=headers, files=files, data=data, timeout=10.0)
                 resp.raise_for_status()
                 return resp.text.strip()

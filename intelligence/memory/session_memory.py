@@ -7,16 +7,17 @@ Tracks the immediate rolling context for a conversation session.
 Automatically compresses or discards oldest turns to maintain token limits.
 """
 
-from typing import List, Dict, Any
 import json
 import time
+from typing import Any, Dict, List
+
 
 class SessionMemory:
     def __init__(self, max_turns: int = 15):
         self.max_turns = max_turns
         self.turns: List[Dict[str, Any]] = []
         self.last_activity = time.time()
-        
+
     def add_turn(self, role: str, content: str, metadata: dict = None):
         self.turns.append({
             "role": role,
@@ -26,7 +27,7 @@ class SessionMemory:
         })
         self.last_activity = time.time()
         self._enforce_limits()
-        
+
     def _enforce_limits(self):
         """Discards older turns if exceeding limit.
         These discarded turns are exactly what AutoDream will process and consolidate!
@@ -35,7 +36,7 @@ class SessionMemory:
             discarded = self.turns[:-self.max_turns]
             self.turns = self.turns[-self.max_turns:]
             self._save_discarded_for_dreaming(discarded)
-            
+
     def _save_discarded_for_dreaming(self, discarded_turns: List[Dict]):
         """Append discarded turns to a log file for AutoDream to process."""
         import os
@@ -52,6 +53,6 @@ class SessionMemory:
     def get_context(self) -> List[Dict[str, Any]]:
         self.last_activity = time.time()
         return self.turns
-        
+
     def get_idle_time(self) -> float:
         return time.time() - self.last_activity

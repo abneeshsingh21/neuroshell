@@ -13,10 +13,8 @@ Provides a unified EmbeddingModel with:
 from __future__ import annotations
 
 import logging
-import math
 import re
 import threading
-from typing import Optional
 
 import numpy as np
 
@@ -27,7 +25,9 @@ _log = logging.getLogger("neuroshell.nlp.embeddings")
 # ---------------------------------------------------------------------------
 
 try:
-    from sentence_transformers import SentenceTransformer as _SentenceTransformer  # type: ignore[import-not-found]
+    from sentence_transformers import (
+        SentenceTransformer as _SentenceTransformer,  # type: ignore[import-not-found]
+    )
     _HAS_ST = True
 except ImportError:
     _HAS_ST = False
@@ -91,7 +91,7 @@ class EmbeddingModel:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self._model_name = model_name
-        self._st_model: Optional[object] = None
+        self._st_model: object | None = None
         self._lock = threading.Lock()
         self._loaded = False
         self._backend: str = "tfidf"         # "sentence-transformers" | "tfidf"
@@ -252,7 +252,7 @@ class EmbeddingModel:
 # Module-level convenience singleton
 # ---------------------------------------------------------------------------
 
-_default_model: Optional[EmbeddingModel] = None
+_default_model: EmbeddingModel | None = None
 _singleton_lock = threading.Lock()
 
 

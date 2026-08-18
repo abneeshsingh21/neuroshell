@@ -5,16 +5,15 @@ NeuroShell Workflow Engine + Vulnerability Scanner + Audit Trail
 Tier 1+2: Natural language workflows, security scanning, compliance logging.
 """
 
-import re
-import os
 import json
-import time
-import platform
 import logging
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional
+import os
+import platform
+import re
+import time
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger("neuroshell.enterprise")
 
@@ -52,7 +51,7 @@ class WorkflowEngine:
         self.is_windows = platform.system() == "Windows"
         self._workflows: list[WorkflowTask] = []
 
-    def parse(self, user_input: str) -> Optional[WorkflowTask]:
+    def parse(self, user_input: str) -> WorkflowTask | None:
         """Parse natural language workflow description."""
         user_lower = user_input.lower().strip()
 
@@ -220,7 +219,7 @@ class AuditEntry:
 class AuditTrail:
     """SOC2/ISO-compliant audit logging with RBAC enforcement and SHA-256 hash-chaining."""
 
-    def __init__(self, log_dir: Optional[Path] = None):
+    def __init__(self, log_dir: Path | None = None):
         self.log_dir = log_dir or Path.home() / ".neuroshell" / "audit"
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self._current_role = UserRole.ADMIN
@@ -304,17 +303,17 @@ class AuditTrail:
         critical = sum(1 for e in entries if e.get("risk_score", 0) >= 8)
 
         report = [
-            f"# NeuroShell Audit Report",
+            "# NeuroShell Audit Report",
             f"Generated: {datetime.now().isoformat()}",
             f"Period: Last {days} days",
-            f"",
-            f"## Summary",
+            "",
+            "## Summary",
             f"- Total commands: {total}",
             f"- Blocked commands: {blocked}",
             f"- Critical risk commands: {critical}",
             f"- Unique users: {len(set(e.get('user', '') for e in entries))}",
-            f"",
-            f"## Recent Critical Actions",
+            "",
+            "## Recent Critical Actions",
         ]
         for e in entries[-20:]:
             if e.get("risk_score", 0) >= 5:

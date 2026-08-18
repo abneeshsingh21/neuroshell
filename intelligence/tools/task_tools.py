@@ -1,9 +1,11 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
-import asyncio
-from typing import Any, AsyncGenerator, Dict
-from intelligence.tools.base_tool import BaseTool
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
+
 from intelligence.tasks.task_manager import TaskManager
+from intelligence.tools.base_tool import BaseTool
+
 
 class TaskSystemTool(BaseTool):
     """
@@ -47,9 +49,9 @@ class TaskSystemTool(BaseTool):
 
     async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
         action = kwargs.get("action")
-        
+
         yield {"type": "progress", "message": f"Task System -> {action}..."}
-        
+
         try:
             if action == "create":
                 task_id = await self.tm.create_task(kwargs.get("goal", ""))

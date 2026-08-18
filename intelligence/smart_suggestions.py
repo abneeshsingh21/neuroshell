@@ -8,11 +8,8 @@ and current working directory state.
 
 import os
 import subprocess
-import time
 from dataclasses import dataclass, field
-from typing import Optional
 from pathlib import Path
-
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -186,7 +183,7 @@ class SmartSuggester:
         lines.append("  Type a suggestion number or any command.")
         return "\n".join(lines)
 
-    def get_suggestion_by_index(self, index: int) -> Optional[str]:
+    def get_suggestion_by_index(self, index: int) -> str | None:
         """Get a suggestion command by its display index (1-based)."""
         if 1 <= index <= len(self._last_suggestions):
             return self._last_suggestions[index - 1].command

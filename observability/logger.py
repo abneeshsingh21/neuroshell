@@ -5,21 +5,21 @@ NeuroShell Structured Logger — Production Grade
 Performance tracing, structured errors, log sampling, console handler.
 """
 
-import json
-import time
-import os
-import sys
-import logging
-import traceback
-import functools
-import random
 import contextvars
-from pathlib import Path
+import functools
+import json
+import logging
+import os
+import random
+import sys
+import time
+import traceback
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
-from typing import Optional, Callable
+
 from config import LOG_DIR
 
-_CORRELATION_VAR: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("neuroshell_correlation_id", default=None)
+_CORRELATION_VAR: contextvars.ContextVar[str | None] = contextvars.ContextVar("neuroshell_correlation_id", default=None)
 
 
 class SafeRotatingFileHandler(RotatingFileHandler):
@@ -90,7 +90,7 @@ class StructuredLogger:
         _CORRELATION_VAR.set(cid)
 
     @property
-    def correlation_id(self) -> Optional[str]:
+    def correlation_id(self) -> str | None:
         return _CORRELATION_VAR.get()
 
     def debug(self, event: str, **data):
@@ -109,7 +109,7 @@ class StructuredLogger:
     def critical(self, event: str, **data):
         self._log("CRITICAL", event, data)
 
-    def exception(self, event: str, exc: Optional[Exception] = None, **data):
+    def exception(self, event: str, exc: Exception | None = None, **data):
         """Log error with full structured exception context."""
         if exc:
             data["exception_type"] = type(exc).__name__
@@ -125,7 +125,7 @@ class StructuredLogger:
                 data["frame_locals"] = frame_locals
         self._log("ERROR", event, data)
 
-    def trace(self, func: Optional[Callable] = None, *, name: str = ""):
+    def trace(self, func: Callable | None = None, *, name: str = ""):
         """Decorator for automatic performance tracing."""
         def decorator(fn):
             @functools.wraps(fn)

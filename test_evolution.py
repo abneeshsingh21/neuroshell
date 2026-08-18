@@ -1,9 +1,7 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
-import os
-import asyncio
 from unittest.mock import MagicMock
-import time
+
 
 def run_tests():
     print("Testing MagicDocs...")

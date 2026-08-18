@@ -5,24 +5,23 @@ NeuroShell Terminal UI — Production Grade
 Spinners, syntax highlighting, pagination, responsive layout, notification toasts.
 """
 
-import os
-import sys
 import json
+import os
 import re
-from typing import Optional, Callable
+import sys
 from contextlib import contextmanager
 
 try:
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.table import Table
-    from rich.columns import Columns
-    from rich.markdown import Markdown
-    from rich.syntax import Syntax
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-    from rich.live import Live
     from rich import box
+    from rich.columns import Columns
+    from rich.console import Console
+    from rich.live import Live
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+    from rich.syntax import Syntax
+    from rich.table import Table
+    from rich.text import Text
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False

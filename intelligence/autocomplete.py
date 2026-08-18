@@ -7,14 +7,9 @@ git-aware suggestions, argument completion, and real-time ranking.
 """
 
 import os
-import re
-import shutil
 import subprocess
 import time
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
-
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -398,9 +393,7 @@ class Autocomplete:
                         display_entry = entry + ("/" if is_dir else "")
 
                         # Build completion path
-                        if prefix.startswith("~"):
-                            text = os.path.join(os.path.dirname(prefix), display_entry)
-                        elif os.path.dirname(prefix):
+                        if prefix.startswith("~") or os.path.dirname(prefix):
                             text = os.path.join(os.path.dirname(prefix), display_entry)
                         else:
                             text = display_entry

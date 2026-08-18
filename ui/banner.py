@@ -5,11 +5,8 @@ NeuroShell Startup Banner
 Styled ASCII art banner with system info, health summary, and tips.
 """
 
-import os
-import sys
-import time
 import platform
-
+import time
 
 # ═══════════════════════════════════════════════════════════
 # ASCII Art Banners (theme-aware)

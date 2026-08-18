@@ -1,13 +1,21 @@
 """Quick validation of all 19 NeuroShell extension modules."""
 import sys
+
 sys.path.insert(0, ".")
 
 from extensions.agent_mode import AutonomousAgent, SmartErrorRecovery
+from extensions.desktop_features import (
+    CommandPalette,
+    DiffPreview,
+    NotebookMode,
+    SmartAutocomplete,
+    SnippetManager,
+    ThemeEngine,
+)
+from extensions.enterprise import AuditTrail, VulnerabilityScanner, WorkflowEngine
+from extensions.platform_features import MachineSync, NeuroShellAPI, SmartNotifications, VoiceCommandEngine
 from extensions.session_memory import SessionMemory
-from extensions.smart_intel import explain_command, score_risk, detect_project
-from extensions.enterprise import WorkflowEngine, VulnerabilityScanner, AuditTrail
-from extensions.platform_features import VoiceCommandEngine, SmartNotifications, NeuroShellAPI, MachineSync
-from extensions.desktop_features import CommandPalette, SnippetManager, ThemeEngine, NotebookMode, DiffPreview, SmartAutocomplete
+from extensions.smart_intel import detect_project, explain_command, score_risk
 
 agent = AutonomousAgent()
 plan = agent.plan("set up a django project called mysite")
@@ -73,6 +81,6 @@ api = NeuroShellAPI()
 print(f"18. REST API:         port={api.port}")
 
 sync = MachineSync()
-print(f"19. Machine Sync:     ready")
+print("19. Machine Sync:     ready")
 
-print(f"\n=== ALL 19 MODULES LOADED SUCCESSFULLY ===")
+print("\n=== ALL 19 MODULES LOADED SUCCESSFULLY ===")

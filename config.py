@@ -8,22 +8,20 @@ hot-reload, validation, and profile support.
 
 __version__ = "5.0.0"
 
-import os
-import platform
-import json
 import base64
 import hashlib
+import json
 import logging
-from pathlib import Path
+import os
+import platform
 from dataclasses import dataclass, field
-from typing import Optional
-import time
+from pathlib import Path
 
 # Optional strong encryption via cryptography.fernet (AES-128-CBC + HMAC)
 try:
     from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     HAS_FERNET = True
 except ImportError:
     HAS_FERNET = False
@@ -456,7 +454,7 @@ def _get_machine_identity() -> str:
         for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
             if os.path.exists(path):
                 try:
-                    with open(path, "r") as f:
+                    with open(path) as f:
                         machine_id = f.read().strip()
                         if machine_id:
                             break
@@ -504,7 +502,7 @@ def _get_master_seed() -> bytes:
             return key_file.read_bytes().strip()
     except Exception:
         pass
-    
+
     # Generate 32 bytes of secure random material
     raw_seed = base64.urlsafe_b64encode(os.urandom(32))
     try:

@@ -1,7 +1,9 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
 from abc import ABC, abstractmethod
-from typing import Dict, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
+
 
 class BaseTool(ABC):
     """

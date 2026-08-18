@@ -6,9 +6,8 @@ NeuroShell AI Pipeline — Comprehensive Feature Test
 Tests all major features: NLP, translation, safety, bookmarks, explain, fix, agent, etc.
 """
 
-import sys
 import os
-import io
+import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -252,13 +251,13 @@ def test_process_shell_cmd():
     cap = OutputCapture()
     sys.stdout = cap
     sys.stderr = cap
-    
+
     # Patch confirm to auto-accept
     orig_confirm = engine.ui.confirm
     engine.ui.confirm = lambda msg="": True
     orig_fuzzy = engine.fuzzy_corrector.correct
     engine.fuzzy_corrector.correct = lambda x: None
-    
+
     try:
         engine.process_input("echo pipeline_test_ok")
     finally:
@@ -266,7 +265,7 @@ def test_process_shell_cmd():
         sys.stderr = old_stderr
         engine.ui.confirm = orig_confirm
         engine.fuzzy_corrector.correct = orig_fuzzy
-    
+
     output = "\n".join(cap.lines)
     print(f"    Output lines: {len(cap.lines)}")
     print(f"    Contains result: {'pipeline_test_ok' in output}")
@@ -278,12 +277,12 @@ def test_process_nl():
     cap = OutputCapture()
     sys.stdout = cap
     sys.stderr = cap
-    
+
     orig_confirm = engine.ui.confirm
     engine.ui.confirm = lambda msg="": True
     orig_fuzzy = engine.fuzzy_corrector.correct
     engine.fuzzy_corrector.correct = lambda x: None
-    
+
     start = time.time()
     try:
         engine.process_input("what is my current directory")
@@ -292,7 +291,7 @@ def test_process_nl():
         sys.stderr = old_stderr
         engine.ui.confirm = orig_confirm
         engine.fuzzy_corrector.correct = orig_fuzzy
-    
+
     elapsed = time.time() - start
     output = "\n".join(cap.lines)
     print(f"    Output lines: {len(cap.lines)}")

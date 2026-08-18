@@ -9,20 +9,19 @@ Usage:
     python main.py
 """
 
-import sys
+import atexit
 import os
+import shlex
+import signal
+import sys
 import time
 import uuid
-import signal
-import atexit
-import shlex
 from pathlib import Path
-from typing import Optional
 
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import load_config, NEUROSHELL_DIR
+from config import NEUROSHELL_DIR, load_config
 
 # ═══════════════════════════════════════════════════════
 # Lazy Module Loader
@@ -112,11 +111,11 @@ class NeuroShell:
         """Load all heavy modules in background thread."""
         try:
             # ── Core Layer ───────────────────────────────
-            from core.executor import ShellExecutor
             from core.context import ContextManager
+            from core.dependency_resolver import DependencyResolver
+            from core.executor import ShellExecutor
             from core.history import HistoryStore
             from core.output_parser import OutputParser
-            from core.dependency_resolver import DependencyResolver
 
             self.executor = ShellExecutor(self.config)
             self.context = ContextManager(self.config)
@@ -137,8 +136,8 @@ class NeuroShell:
             self.ui = _DefaultConsoleUI()
 
             # ── Observability ────────────────────────────
-            from observability.tracer import EventTracer
             from observability.provenance import ProvenanceTracker
+            from observability.tracer import EventTracer
 
             self.tracer = EventTracer(self.logger)
             self.provenance = ProvenanceTracker()
@@ -152,8 +151,8 @@ class NeuroShell:
             self.llm = LLMClient(self.config)
 
             # ── NLP Fast Layer ───────────────────────────
-            from nlp.intent_classifier import IntentClassifier
             from nlp.entity_extractor import EntityExtractor
+            from nlp.intent_classifier import IntentClassifier
             from nlp.sentiment import SentimentDetector
 
             self.intent_classifier = IntentClassifier()
@@ -161,20 +160,20 @@ class NeuroShell:
             self.sentiment = SentimentDetector()
 
             # ── Intelligence ─────────────────────────────
-            from intelligence.translator import Translator
-            from intelligence.safety import SafetyChecker, RiskLevel
+            import intelligence.pii_scrubber as _pii_scrubber
+            from intelligence.agent import AgentPlanner
+            from intelligence.autocomplete import Autocomplete
+            from intelligence.bookmarks import BookmarkManager
+            from intelligence.chain_builder import ChainBuilder
             from intelligence.error_fixer import ErrorFixer
             from intelligence.explainer import Explainer
-            from intelligence.autocomplete import Autocomplete
-            from intelligence.pipeline_builder import PipelineBuilder
             from intelligence.fuzzy_corrector import FuzzyCorrector
-            from intelligence.chain_builder import ChainBuilder
-            from intelligence.project_detector import ProjectDetector
-            from intelligence.bookmarks import BookmarkManager
-            from intelligence.agent import AgentPlanner
-            from intelligence.script_generator import ScriptGenerator
             from intelligence.phrase_dictionary import PhraseDictionary
-            import intelligence.pii_scrubber as _pii_scrubber
+            from intelligence.pipeline_builder import PipelineBuilder
+            from intelligence.project_detector import ProjectDetector
+            from intelligence.safety import RiskLevel, SafetyChecker
+            from intelligence.script_generator import ScriptGenerator
+            from intelligence.translator import Translator
             self.pii_scrubber = _pii_scrubber
             from intelligence.offline_fallback import OfflineFallbackManager
 
@@ -204,7 +203,7 @@ class NeuroShell:
                 self._cpp_enabled = True
             except ImportError:
                 try:
-                    from cpp_engine.engine import FastParser, FuzzyMatcher, MarkovEngine
+                    from cpp_engine.engine import FastParser, FuzzyMatcher
                     self.cpp_parser = FastParser()
                     self.cpp_matcher = FuzzyMatcher()
                     self._cpp_enabled = True
@@ -212,22 +211,22 @@ class NeuroShell:
                     self._cpp_enabled = False
 
             # ── Feature Modules ──────────────────────────
-            from extensions.alias_manager import AliasManager
             from core.env_manager import EnvManager
-            from llm.model_manager import ModelManager
-            from extensions.config_editor import ConfigEditor
             from core.timer import CommandTimer
+            from extensions.alias_manager import AliasManager
             from extensions.auto_docs import AutoDocsGenerator
-            from intelligence.smart_suggestions import SmartSuggester
-            from intelligence.smart_open import SmartOpenEngine
             from extensions.clipboard import ClipboardManager
+            from extensions.config_editor import ConfigEditor
+            from extensions.plugin_system import PluginSystem
             from extensions.session_recorder import SessionRecorder
             from extensions.workspace_profiles import WorkspaceProfileManager
-            from extensions.plugin_system import PluginSystem
-            from operations.data_governance import DataGovernanceManager
-            from operations.update_manager import UpdateManager
-            from operations.git_ops import GitOps, GitTool
             from intelligence.deep_search import DeepSearch
+            from intelligence.smart_open import SmartOpenEngine
+            from intelligence.smart_suggestions import SmartSuggester
+            from llm.model_manager import ModelManager
+            from operations.data_governance import DataGovernanceManager
+            from operations.git_ops import GitOps, GitTool
+            from operations.update_manager import UpdateManager
 
             self.alias_manager = AliasManager()
             self.env_manager = EnvManager()
@@ -248,12 +247,12 @@ class NeuroShell:
 
             # ── Phase 7 Agentic Features ─────────────────
             from intelligence.coordinator import Coordinator
-            from intelligence.tools.task_tools import TaskSystemTool
-            from intelligence.tools.mode_tools import ModeTool
-            from intelligence.tools.teammate_tool import TeammateTool
-            from intelligence.modes.plan_mode import PlanModeController
             from intelligence.memory.session_memory import SessionMemory
+            from intelligence.modes.plan_mode import PlanModeController
             from intelligence.swarm import SwarmOrchestrator
+            from intelligence.tools.mode_tools import ModeTool
+            from intelligence.tools.task_tools import TaskSystemTool
+            from intelligence.tools.teammate_tool import TeammateTool
 
             self.session_memory = SessionMemory(max_turns=15)
             self.mcp_client = None
@@ -296,8 +295,8 @@ class NeuroShell:
             self.swarm_orchestrator = SwarmOrchestrator(self.llm, self.context)
 
             # ── Intelligence Background Services ─────────
-            from intelligence.services.magic_docs import MagicDocs
             from intelligence.memory.auto_dream import AutoDreamDaemon
+            from intelligence.services.magic_docs import MagicDocs
 
             self.magic_docs = MagicDocs(self.llm)
             self.auto_dream = AutoDreamDaemon(
@@ -308,9 +307,9 @@ class NeuroShell:
             self.auto_dream.start()
 
             # ── Learning ─────────────────────────────────
+            from learning.feedback_loop import FeedbackLoop
             from learning.pattern_learner import PatternLearner
             from learning.predictor import Predictor
-            from learning.feedback_loop import FeedbackLoop
 
             self.pattern_learner = PatternLearner(self.history)
             self.predictor = Predictor(self.history)
@@ -319,12 +318,25 @@ class NeuroShell:
 
             # ── Tier 1-4: Production Extensions ─────────
             try:
-                from extensions.agent_mode import AutonomousAgent as ExtAgent, SmartErrorRecovery
+                from extensions.agent_mode import AutonomousAgent as ExtAgent
+                from extensions.agent_mode import SmartErrorRecovery
+                from extensions.desktop_features import (
+                    CommandPalette,
+                    DiffPreview,
+                    NotebookMode,
+                    SmartAutocomplete,
+                    SnippetManager,
+                    ThemeEngine,
+                )
+                from extensions.enterprise import AuditTrail, VulnerabilityScanner, WorkflowEngine
+                from extensions.platform_features import (
+                    MachineSync,
+                    NeuroShellAPI,
+                    SmartNotifications,
+                    VoiceCommandEngine,
+                )
                 from extensions.session_memory import SessionMemory as ExtSessionMemory
-                from extensions.smart_intel import explain_command, score_risk, detect_project
-                from extensions.enterprise import WorkflowEngine, VulnerabilityScanner, AuditTrail
-                from extensions.platform_features import SmartNotifications, NeuroShellAPI, MachineSync, VoiceCommandEngine
-                from extensions.desktop_features import CommandPalette, SnippetManager, ThemeEngine, NotebookMode, DiffPreview, SmartAutocomplete
+                from extensions.smart_intel import detect_project, explain_command, score_risk
 
                 self.ext_recovery = SmartErrorRecovery(is_windows=__import__('platform').system() == 'Windows')
                 self.ext_agent = ExtAgent(recovery=self.ext_recovery)
@@ -350,15 +362,20 @@ class NeuroShell:
                 self.logger.warn("extensions_load_failed", error=str(ext_err))
 
             # ── Resilience ───────────────────────────────
-            from resilience.resilience import HealthCheck, GracefulDegradation, NetworkAware, ResilienceManager
+            from resilience.resilience import (
+                GracefulDegradation,
+                HealthCheck,
+                NetworkAware,
+                ResilienceManager,
+            )
             self.network = NetworkAware()
             self.health = HealthCheck(self.config)
             self.degradation = GracefulDegradation()
             self.resilience_manager = ResilienceManager(self.config)
 
             # ── Deployment operations ───────────────────
-            from operations.deploy_manager import DeployManager
             from operations.browser_access import BrowserAccessManager
+            from operations.deploy_manager import DeployManager
             from operations.github_access import GitHubAccessManager
             from operations.runtime_ops import RuntimeSLOMonitor
             self.deploy_manager = DeployManager(NEUROSHELL_DIR / "deploy" / "state.json")
@@ -416,11 +433,11 @@ class NeuroShell:
 
         # Wait for background module loading to complete
         modules_loaded = self._wait_for_modules(timeout=30.0)
-        
+
         if not modules_loaded or self._load_error:
             self._degraded = True
             error_msg = self._load_error or "Module loading timed out."
-            
+
             # Use UI if loaded, otherwise fallback to plain print
             if hasattr(self, 'ui') and self.ui:
                 self.ui.print_warning(f"NeuroShell started in Degraded Mode.\nError: {error_msg}")
@@ -1719,7 +1736,7 @@ class NeuroShell:
                 self.ui.print_info(f"  ✅ Attempting to open: {target}")
             except Exception as e:
                 self.ui.print_error(f"  ❌ Could not open '{target}': {e}")
-                self.ui.print_info(f"  💡 Tip: Type 'fix' to auto-fix that error")
+                self.ui.print_info("  💡 Tip: Type 'fix' to auto-fix that error")
 
     def _handle_shell_command(self, command: str, cid: str):
         """Execute shell command through safety pipeline."""
@@ -1777,7 +1794,7 @@ class NeuroShell:
 
         # Execute with spinner for potentially slow commands
         self.tracer.add_event(cid, "execute")
-        
+
         capture = False
         if has_safety:
             capture = safety.risk_level == self._RiskLevel.CAUTION
@@ -1826,7 +1843,7 @@ class NeuroShell:
                     self.history.add_command(record)
                 elif hasattr(self.history, 'add'):
                     self.history.add(record)
-            except Exception as e:
+            except Exception:
                 pass
 
         # Record in conversation memory for follow-ups
@@ -1926,7 +1943,7 @@ class NeuroShell:
         if provider == 'ollama' and reason == 'offline-fallback':
             self.ui.print_warning('☁️ Cloud unavailable. Pivoting to local Ollama.')
             self.config.llm.provider = 'ollama'
-            
+
         # Optional: Test C++ parser just for benchmarking if enabled
         if getattr(self, '_cpp_enabled', False):
             try:
@@ -2337,7 +2354,7 @@ class NeuroShell:
         if self.alias_manager.add(name, command):
             self.ui.print_info(f"  ✅ Alias set: {name} → {command}")
         else:
-            self.ui.print_info(f"  ❌ Invalid alias (empty or recursive)")
+            self.ui.print_info("  ❌ Invalid alias (empty or recursive)")
 
     def _handle_history_export(self, user_input: str):
         """Handle history export commands."""
@@ -2669,7 +2686,7 @@ class NeuroShell:
                 if self.ui.confirm("Execute swarm command?"):
                     self._handle_shell_command(result.final_command, cid)
             elif not result.is_safe:
-                self.ui.print_error(f"  ⛔ Swarm Verification failed: Command deemed unsafe.")
+                self.ui.print_error("  ⛔ Swarm Verification failed: Command deemed unsafe.")
         except Exception as e:
             self.ui.print_error(f"  ❌ Swarm execution error: {e}")
 

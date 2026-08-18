@@ -6,9 +6,7 @@ Git ref, Docker entity, IP/port, regex pattern, environment variable extraction.
 """
 
 import re
-import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 try:
     import spacy

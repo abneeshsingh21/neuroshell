@@ -6,9 +6,10 @@ A lightweight, thread-safe Pub/Sub system for streaming
 backend telemetry (Swarm, Sandbox) directly to the UI.
 """
 
-import threading
 import logging
-from typing import Callable, Dict, List, Any
+import threading
+from collections.abc import Callable
+from typing import Any
 
 _events_log = logging.getLogger("neuroshell.events")
 
@@ -19,7 +20,7 @@ class EventBus:
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
-                cls._instance = super(EventBus, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._subscribers = {}
         return cls._instance
 
@@ -45,7 +46,7 @@ class EventBus:
         with self._lock:
             # Copy the list to avoid mutations during iteration
             subs = list(self._subscribers.get(event_type, []))
-        
+
         for callback in subs:
             try:
                 callback(payload)

@@ -7,7 +7,6 @@ View, set, unset, and search environment variables from the REPL.
 
 import os
 import re
-from typing import Optional
 from dataclasses import dataclass
 
 
@@ -35,7 +34,7 @@ class EnvManager:
         self._session_vars: dict[str, str] = {}  # Vars set during this session
         self._unset_vars: set[str] = set()  # Vars unset during this session
 
-    def get(self, name: str) -> Optional[str]:
+    def get(self, name: str) -> str | None:
         """Get an environment variable value."""
         name = name.upper()
         if name in self._unset_vars:
@@ -149,7 +148,7 @@ class EnvManager:
 
         return "\n".join(lines)
 
-    def parse_set_command(self, input_str: str) -> Optional[tuple[str, str]]:
+    def parse_set_command(self, input_str: str) -> tuple[str, str] | None:
         """Parse 'KEY=VALUE' or 'KEY VALUE' format."""
         # Try KEY=VALUE format
         match = re.match(r'^(\w+)=(.*)$', input_str.strip())

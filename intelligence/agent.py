@@ -9,7 +9,6 @@ Decomposes complex tasks into numbered steps with approval before execution.
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -63,7 +62,7 @@ class AgentPlanner:
         self.executor = executor
         self.safety = safety_checker
 
-    def plan(self, task_description: str) -> Optional[AgentPlan]:
+    def plan(self, task_description: str) -> AgentPlan | None:
         """Create an execution plan for a complex task."""
         if not self.llm:
             return self._offline_plan(task_description)

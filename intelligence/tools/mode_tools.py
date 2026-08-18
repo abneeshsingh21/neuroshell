@@ -1,9 +1,11 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
-import asyncio
-from typing import Any, AsyncGenerator, Dict
-from intelligence.tools.base_tool import BaseTool
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
+
 from intelligence.modes.plan_mode import PlanModeController
+from intelligence.tools.base_tool import BaseTool
+
 
 class ModeTool(BaseTool):
     """
@@ -44,9 +46,9 @@ class ModeTool(BaseTool):
     async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
         action = kwargs.get("action")
         content = kwargs.get("content", "")
-        
+
         yield {"type": "progress", "message": f"Mode System -> {action}..."}
-        
+
         try:
             if action == "enter_plan_mode":
                 self.mc.enter_plan_mode()

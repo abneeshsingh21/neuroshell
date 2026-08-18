@@ -1,9 +1,12 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
 import asyncio
-from typing import Any, AsyncGenerator, Dict
-from intelligence.tools.base_tool import BaseTool
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
+
 from intelligence.lsp.lsp_client import LSPClient
+from intelligence.tools.base_tool import BaseTool
+
 
 class LSPTool(BaseTool):
     """
@@ -48,16 +51,16 @@ class LSPTool(BaseTool):
         uri = kwargs.get("file_uri")
         line = kwargs.get("line")
         char = kwargs.get("character")
-        
+
         yield {"type": "progress", "message": f"Querying LSP for {action} at {uri}:{line}:{char}..."}
-        
+
         loop = asyncio.get_running_loop()
-        
+
         def _fetch():
             if action == "definition":
                 return self.lsp.get_definition(uri, line, char)
             return {"error": "Unsupported LSP action"}
-            
+
         try:
             res = await loop.run_in_executor(None, _fetch)
             if "error" in res:

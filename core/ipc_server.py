@@ -10,16 +10,16 @@ Dynamic Buffer Chunking, and DACL/Permission Access Control.
 
 from __future__ import annotations
 
-import os
-import sys
 import json
-import time
-import socket
+import os
 import select
+import socket
+import sys
 import threading
-from pathlib import Path
+import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Any
+from pathlib import Path
+from typing import Any
 
 if os.name == "nt":
     import ctypes
@@ -52,10 +52,10 @@ class NamedPipeServer:
         self.shell = neuroshell_instance
         self.max_workers = max_workers
         self.running = False
-        self._listener_thread: Optional[threading.Thread] = None
+        self._listener_thread: threading.Thread | None = None
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="IPCWorker")
         self._state_lock = threading.Lock()
-        self._server_sock: Optional[socket.socket] = None
+        self._server_sock: socket.socket | None = None
 
     def start(self):
         """Start the IPC listener daemon on Windows or POSIX."""
@@ -234,7 +234,7 @@ class NamedPipeServer:
 
     # ── Unified JSON-RPC 2.0 Protocol Processing ──────────────
 
-    def _process_raw_json(self, raw_str: str) -> Optional[dict | list]:
+    def _process_raw_json(self, raw_str: str) -> dict | list | None:
         """Parse raw JSON string into single or batch request."""
         try:
             parsed = json.loads(raw_str)
@@ -252,7 +252,7 @@ class NamedPipeServer:
         else:
             return {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request object"}, "id": None}
 
-    def _execute_single_request(self, req: dict) -> Optional[dict]:
+    def _execute_single_request(self, req: dict) -> dict | None:
         """Validate and dispatch a single JSON-RPC 2.0 request."""
         if not isinstance(req, dict):
             return {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Request must be an object"}, "id": None}
@@ -303,7 +303,7 @@ class NamedPipeServer:
                 "id": req_id
             }
 
-    def _handle_request(self, req: dict) -> Optional[dict]:
+    def _handle_request(self, req: dict) -> dict | None:
         """Direct request handler for testing and internal dispatch."""
         return self._execute_single_request(req)
 
@@ -441,6 +441,7 @@ class NamedPipeServer:
 
 if __name__ == "__main__":
     import time
+
     from main import NeuroShell
 
     app = NeuroShell()

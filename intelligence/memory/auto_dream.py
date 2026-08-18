@@ -9,12 +9,11 @@ a fast LLM to summarize and permanently compress them into long-term storage.
 This exactly mirrors the `services/autoDream` pattern in Claude Code.
 """
 
+import json
 import threading
 import time
-import json
-import os
 from pathlib import Path
-from typing import Optional, Any, Tuple
+
 
 class AutoDreamDaemon:
     def __init__(self, session_memory, llm_client, magic_docs=None, ui_callback=None):
@@ -26,7 +25,7 @@ class AutoDreamDaemon:
         self._thread = None
         self.idle_threshold_seconds = 15  # Wait 15s of idle before dreaming
         self.min_queue_size = 3          # Trigger if at least 3 turns in queue
-        
+
         # We need a directory to put long term memory
         self.memory_dir = Path.home() / ".neuroshell" / "memory"
         self.memory_dir.mkdir(parents=True, exist_ok=True)
@@ -42,15 +41,15 @@ class AutoDreamDaemon:
 
     def stop(self):
         self.is_running = False
-        
+
     def _dream_loop(self):
         while self.is_running:
             time.sleep(5) # Tick every 5 seconds
-            
+
             idle_time = self.session.get_idle_time()
             if idle_time < self.idle_threshold_seconds:
                 continue
-                
+
             # System is idle! Let's check the queue.
             queue, proc_file = self._rotate_and_read_queue()
             if len(queue) >= self.min_queue_size:
@@ -67,7 +66,7 @@ class AutoDreamDaemon:
                 except Exception:
                     pass
 
-    def _rotate_and_read_queue(self) -> tuple[list, Optional[Path]]:
+    def _rotate_and_read_queue(self) -> tuple[list, Path | None]:
         """Atomically rotates queue file to prevent loss of turns added during processing."""
         if not self.queue_file.exists() or self.queue_file.stat().st_size == 0:
             return [], None
@@ -79,7 +78,7 @@ class AutoDreamDaemon:
             return [], None
 
         try:
-            with open(proc_file, "r", encoding="utf-8") as f:
+            with open(proc_file, encoding="utf-8") as f:
                 lines = f.readlines()
             items = [json.loads(line) for line in lines if line.strip()]
             return items, proc_file
@@ -90,7 +89,7 @@ class AutoDreamDaemon:
                 pass
             return [], None
 
-    def _process_queue(self, queue: list, proc_file: Optional[Path] = None):
+    def _process_queue(self, queue: list, proc_file: Path | None = None):
         """Pass the queue to the LLM to get a compressed summary fact sheet."""
         if not queue:
             if proc_file:
@@ -105,30 +104,30 @@ class AutoDreamDaemon:
             role = turn.get("role", "user")
             content = turn.get("content", "")
             transcript.append(f"[{role}]: {content}")
-            
+
         prompt = (
             "You are a background memory daemon. Provide a highly compressed bullet-point "
             "summary of facts, technical details, code structural decisions, or user preferences "
             "mentioned in the following transcript snippet. Omit small talk. Keep it brief.\n\n"
             + "\n".join(transcript)
         )
-        
+
         try:
             summary = self.llm.generate(prompt, "You are a data compression AI.")
-            
+
             if summary and summary.text:
                 with open(self.long_term_file, "a", encoding="utf-8") as f:
                     f.write(f"\n### AutoDream Consolidation - {time.ctime()}\n")
                     f.write(summary.text.strip() + "\n")
-                    
+
                 if self.ui_callback:
                     self.ui_callback("AutoDream active: 🧠 Memory compressed.")
-                    
+
                 if self.magic_docs:
                     if self.ui_callback:
                         self.ui_callback("AutoDream delegating to MagicDocs structural scan...")
                     self.magic_docs.update_magic_doc("\n".join(transcript), ui_callback=self.ui_callback)
-                    
+
         except Exception as e:
             if self.ui_callback:
                 self.ui_callback(f"AutoDream processing error: {e}")

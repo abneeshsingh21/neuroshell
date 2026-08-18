@@ -11,7 +11,6 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -19,7 +18,7 @@ class ReleaseArtifact:
     path: str
     size_bytes: int
     sha256: str
-    signature_path: Optional[str] = None
+    signature_path: str | None = None
 
 
 class ReleasePipeline:
@@ -36,7 +35,7 @@ class ReleasePipeline:
             artifacts.extend(sorted(self.dist_dir.glob(pattern)))
         return artifacts
 
-    def set_reproducible_env(self, epoch: Optional[int] = None) -> int:
+    def set_reproducible_env(self, epoch: int | None = None) -> int:
         """Set SOURCE_DATE_EPOCH for deterministic build tooling."""
         if epoch is None:
             epoch = int(time.time())

@@ -5,11 +5,11 @@ NeuroShell Autonomous Agent Mode + Smart Error Auto-Recovery
 Tier 1 Features: Multi-step task execution and automatic error diagnosis.
 """
 
+import logging
 import re
 import time
-import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable
 from enum import Enum
 
 logger = logging.getLogger("neuroshell.agent")
@@ -90,7 +90,7 @@ class SmartErrorRecovery:
         self.is_windows = is_windows
         self._error_history: list[dict] = []
 
-    def diagnose(self, command: str, stderr: str, exit_code: int) -> Optional[str]:
+    def diagnose(self, command: str, stderr: str, exit_code: int) -> str | None:
         """Analyze stderr and return a fix command, or None."""
         if exit_code == 0 or not stderr:
             return None
@@ -176,12 +176,12 @@ class AutonomousAgent:
         ],
     }
 
-    def __init__(self, executor: Optional[Callable] = None, recovery: Optional[SmartErrorRecovery] = None):
+    def __init__(self, executor: Callable | None = None, recovery: SmartErrorRecovery | None = None):
         self.executor = executor
         self.recovery = recovery or SmartErrorRecovery()
         self._plans: list[AgentPlan] = []
 
-    def plan(self, user_input: str) -> Optional[AgentPlan]:
+    def plan(self, user_input: str) -> AgentPlan | None:
         """Create execution plan from user input."""
         for pattern, steps_template in self.TASK_TEMPLATES.items():
             match = re.search(pattern, user_input, re.IGNORECASE)

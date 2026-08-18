@@ -6,7 +6,7 @@ Usage:  pip install .          (auto-compiles C++)
         python setup.py build_ext --inplace   (manual build)
 """
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 try:
     from pybind11.setup_helpers import Pybind11Extension, build_ext

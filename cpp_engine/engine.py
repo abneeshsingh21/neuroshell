@@ -7,9 +7,7 @@ Designed to be replaced with pybind11 C++ bindings for production.
 """
 
 import re
-from typing import Optional
 from dataclasses import dataclass, field
-
 
 # ═══════════════════════════════════════════════════════════
 # Fast Command Parser (Python reference — replace with C++)
@@ -216,12 +214,12 @@ class FuzzyMatcher:
         scored.sort(key=lambda x: x[1])
         return scored[:limit]
 
-    def best_match(self, query: str, max_distance: int = 3) -> Optional[str]:
+    def best_match(self, query: str, max_distance: int = 3) -> str | None:
         """Get single best match."""
         matches = self.match(query, max_distance, limit=1)
         return matches[0][0] if matches else None
 
-    def did_you_mean(self, query: str) -> Optional[str]:
+    def did_you_mean(self, query: str) -> str | None:
         """Suggest correction for typos."""
         matches = self.match(query, max_distance=2, limit=1)
         if matches and matches[0][1] > 0:

@@ -6,17 +6,16 @@ SQLite-backed storage with FTS5 full-text search, analytics, auto-cleanup,
 export/import, and comprehensive session management.
 """
 
-import sqlite3
-import time
-import json
 import csv
 import io
+import json
+import sqlite3
 import threading
+import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import Optional
-from config import DB_FILE
 
+from config import DB_FILE
 
 # ═══════════════════════════════════════════════════════════
 # Data Models
@@ -79,7 +78,7 @@ class HistoryStore:
     MAX_PREVIEW_LENGTH = 1000
     MAX_EXPORT_RECORDS = 100_000
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Path | None = None):
         self.db_path = db_path or DB_FILE
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
@@ -90,7 +89,7 @@ class HistoryStore:
         return self._get_conn()
 
     @_conn.setter
-    def _conn(self, val: Optional[sqlite3.Connection]):
+    def _conn(self, val: sqlite3.Connection | None):
         self._local.conn = val
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -492,7 +491,7 @@ class HistoryStore:
     # Error Fixes
     # ═══════════════════════════════════════════════════════
 
-    def find_fix(self, error_pattern: str) -> Optional[dict]:
+    def find_fix(self, error_pattern: str) -> dict | None:
         """Find a cached fix with confidence scoring."""
         conn = self._get_conn()
         row = conn.execute("""
@@ -567,7 +566,7 @@ class HistoryStore:
         """, (name, expansion, time.time(), name))
         conn.commit()
 
-    def get_alias(self, name: str) -> Optional[str]:
+    def get_alias(self, name: str) -> str | None:
         """Get alias expansion."""
         conn = self._get_conn()
         row = conn.execute("SELECT expansion FROM aliases WHERE name = ?", (name,)).fetchone()
@@ -596,7 +595,7 @@ class HistoryStore:
 
     def store_feedback(self, suggestion_type: str, original_input: str,
                        suggested_output: str, signal: str,
-                       user_correction: Optional[str] = None,
+                       user_correction: str | None = None,
                        source: str = "", confidence: float = 0):
         """Store user feedback on a suggestion."""
         conn = self._get_conn()
@@ -684,7 +683,7 @@ class HistoryStore:
     # Export / Import
     # ═══════════════════════════════════════════════════════
 
-    def export_json(self, filepath: Optional[Path] = None, limit: int = None) -> str:
+    def export_json(self, filepath: Path | None = None, limit: int = None) -> str:
         """Export command history as JSON."""
         conn = self._get_conn()
         effective_limit = min(limit or self.MAX_EXPORT_RECORDS, self.MAX_EXPORT_RECORDS)

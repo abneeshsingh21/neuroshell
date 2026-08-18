@@ -6,9 +6,10 @@ Orchestrates connections to standard MCP servers allowing NeuroShell AI
 to retrieve dynamic resources, prompts, and tool abstractions securely.
 """
 
-import json
+from typing import Any, Dict, List
+
 import httpx
-from typing import Dict, Any, List
+
 
 class MCPClient:
     def __init__(self, endpoint_url: str, api_key: str = None):

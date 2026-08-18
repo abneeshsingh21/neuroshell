@@ -7,7 +7,6 @@ to any cloud LLM provider. Runs entirely locally.
 """
 
 import re
-from typing import Optional
 
 # Patterns that match common secret formats
 _PII_PATTERNS = [

@@ -8,9 +8,9 @@ for sub-agents and background tasks. Rather than one monolith LLM,
 the Coordinator evaluates the query and spawns specialized Tools or Agents.
 """
 
-import asyncio
-from typing import Any, Dict, List, Optional, AsyncGenerator
-import json
+from collections.abc import AsyncGenerator
+from typing import Any, Dict
+
 
 class Coordinator:
     """
@@ -28,7 +28,7 @@ class Coordinator:
         try:
             from intelligence.smart_open import SmartOpenTool
             from operations.git_ops import GitTool
-            
+
             # Register specific tools
             self.register_tool(SmartOpenTool())
             self.register_tool(GitTool())
@@ -44,10 +44,10 @@ class Coordinator:
         """
         # Yield an initial progress event
         yield {"type": "progress", "message": "Coordinator evaluating request..."}
-        
+
         # Determine intent (simplified router for now)
         intent = self._detect_intent(user_input)
-        
+
         if intent == "smart_open":
             tool = self._tools_registry.get("smart_open_tool")
             if tool:
@@ -55,7 +55,7 @@ class Coordinator:
                 async for chunk in tool.call(query=user_input):
                     yield chunk
                 return
-                
+
         elif intent == "git":
             tool = self._tools_registry.get("git_tool")
             if tool:
@@ -65,13 +65,13 @@ class Coordinator:
                 async for chunk in tool.call(action="status"):
                     yield chunk
                 return
-                
+
         # Default fallback to Translator / Local Execution
         yield {"type": "progress", "message": "No dedicated agent found, routing to local Translator..."}
         # In a fully connected implementation, this would invoke the stripped-down Translator
         # For now we yield a placeholder fallback result
         yield {"type": "result", "data": "Routed to command execution fallback"}
-        
+
     def _detect_intent(self, user_input: str) -> str:
         """
         Detects if the query should be routed to a specific agent using heuristics.
@@ -82,5 +82,5 @@ class Coordinator:
             return "smart_open"
         if "git" in lower or "clone" in lower:
             return "git"
-            
+
         return "general"

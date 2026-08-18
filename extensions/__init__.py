@@ -3,23 +3,26 @@
 # NeuroShell Extensions — Production Module Registry
 
 # ── Core extensions ──
-from extensions.plugin_system import PluginSystem
-from extensions.workspace_profiles import WorkspaceProfileManager
-from extensions.session_recorder import SessionRecorder
+# ── Tier 1: Game Changers ──
+from extensions.agent_mode import AutonomousAgent, SmartErrorRecovery
 from extensions.auto_docs import AutoDocsGenerator
 from extensions.clipboard import ClipboardManager
 
-# ── Tier 1: Game Changers ──
-from extensions.agent_mode import AutonomousAgent, SmartErrorRecovery
-from extensions.smart_intel import explain_command, score_risk, detect_project, RiskAssessment, ProjectInfo
-from extensions.platform_features import VoiceCommandEngine, SmartNotifications, NeuroShellAPI, MachineSync
-
-# ── Tier 2: Enterprise ──
-from extensions.enterprise import WorkflowEngine, VulnerabilityScanner, AuditTrail, UserRole
-from extensions.session_memory import SessionMemory
-
 # ── Tier 3+4: Desktop & Ecosystem ──
 from extensions.desktop_features import (
-    CommandPalette, SnippetManager, ThemeEngine, NotebookMode,
-    DiffPreview, SmartAutocomplete,
+    CommandPalette,
+    DiffPreview,
+    NotebookMode,
+    SmartAutocomplete,
+    SnippetManager,
+    ThemeEngine,
 )
+
+# ── Tier 2: Enterprise ──
+from extensions.enterprise import AuditTrail, UserRole, VulnerabilityScanner, WorkflowEngine
+from extensions.platform_features import MachineSync, NeuroShellAPI, SmartNotifications, VoiceCommandEngine
+from extensions.plugin_system import PluginSystem
+from extensions.session_memory import SessionMemory
+from extensions.session_recorder import SessionRecorder
+from extensions.smart_intel import ProjectInfo, RiskAssessment, detect_project, explain_command, score_risk
+from extensions.workspace_profiles import WorkspaceProfileManager

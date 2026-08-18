@@ -6,15 +6,14 @@ Multi-strategy auto-fix: offline patterns (25+) → cached fixes → LLM.
 Each pattern provides an actionable fix command, not just a hint.
 """
 
-import re
+import hashlib
 import os
 import platform
-import hashlib
+import re
 import time
-from typing import Optional
 from dataclasses import dataclass, field
 
-from observability.provenance import ProvenanceTag, ProvenanceSource
+from observability.provenance import ProvenanceSource, ProvenanceTag
 
 # Pre-flag for convenience
 _IS_WINDOWS = platform.system() == "Windows"
@@ -28,7 +27,7 @@ class FixResult:
     confidence: float
     alternative_fixes: list[str] = field(default_factory=list)
     root_cause: str = ""
-    provenance: Optional[ProvenanceTag] = None
+    provenance: ProvenanceTag | None = None
 
 
 def _safe_elevated_cmd(cmd: str) -> str:
@@ -195,7 +194,7 @@ _PATTERNS = [
     {
         "regex": r"CONFLICT.*Merge conflict in (.+)",
         "fix_fn": lambda m, cmd: FixResult(
-            fix_command=f"git diff --name-only --diff-filter=U",
+            fix_command="git diff --name-only --diff-filter=U",
             explanation=f"Merge conflict in {m.group(1)} — resolve manually then git add + commit",
             confidence=0.85,
             root_cause="merge_conflict",
@@ -461,7 +460,7 @@ class ErrorFixer:
         normalized = re.sub(r'\d+\.\d+\.\d+', 'X.Y.Z', normalized)
         return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
-    def _check_offline_patterns(self, error: str, command: str) -> Optional[FixResult]:
+    def _check_offline_patterns(self, error: str, command: str) -> FixResult | None:
         """Match against 25+ offline error patterns."""
         for pattern in _PATTERNS:
             compiled = pattern.get("_compiled")
@@ -479,11 +478,11 @@ class ErrorFixer:
     def _swarm_fix(self, error_output: str, failed_command: str) -> FixResult:
         """Use Swarm Orchestrator to dynamically diagnose and sandbox a fix."""
         try:
-            from intelligence.swarm import SwarmOrchestrator
             from core.events import neuro_events
-            
+            from intelligence.swarm import SwarmOrchestrator
+
             neuro_events.emit("swarm_update", "[🔧 Swarm Fixer] Entering Deep Diagnostic Mode...")
-            
+
             # Formulate the diagnostic prompt for the Swarm
             task = (
                 f"The command '{failed_command}' failed with the following error:\n"
@@ -493,12 +492,12 @@ class ErrorFixer:
                 "Because you are testing in a Sandbox, your proposed command MUST be exactly "
                 "the shell command that fixes the user's issue (e.g. creating/moving files, installing packages)."
             )
-            
+
             start = time.time()
             orchestrator = SwarmOrchestrator(self.llm, self.context)
             swarm_res = orchestrator.route_task(task)
             latency = (time.time() - start) * 1000
-            
+
             # If the Swarm verified the command via GitSandbox, use it!
             # The swarm_res.final_command contains the successful deployed fix if verification passed.
             if swarm_res.is_safe and swarm_res.final_command and not swarm_res.final_command.startswith("echo"):
@@ -514,10 +513,10 @@ class ErrorFixer:
                         latency_ms=latency,
                     )
                 )
-                
+
             # If swarm didn't output a valid command, or it just echoed a summary, we fall back.
             return FixResult(fix_command="", explanation="", confidence=0.0)
-            
+
         except ImportError as e:
             print(f"[SwarmFixer] ImportError: {e}")
             return FixResult(fix_command="", explanation="", confidence=0.0)

@@ -8,13 +8,13 @@ arrow-key menu support, and real-time AI command execution.
 """
 
 import os
-import sys
-import tkinter as tk
-from tkinter import font as tkfont
-import subprocess
-import threading
 import queue
+import subprocess
+import sys
+import threading
+import tkinter as tk
 from pathlib import Path
+from tkinter import font as tkfont
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -22,10 +22,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import load_config
-from core.history import HistoryStore
 from core.context import ContextManager
-from intelligence.translator import ShellTranslator
 from intelligence.safety import SafetyChecker
+from intelligence.translator import ShellTranslator
 from llm.client import LLMRouter
 
 

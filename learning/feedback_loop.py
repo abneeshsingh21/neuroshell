@@ -6,7 +6,6 @@ Captures accept/reject/edit signals to drive real learning calibration.
 """
 
 import time
-from typing import Optional
 from dataclasses import dataclass
 
 
@@ -17,7 +16,7 @@ class FeedbackEvent:
     suggestion_type: str  # translation, fix, prediction
     original_input: str
     suggested_output: str
-    user_correction: Optional[str] = None
+    user_correction: str | None = None
     timestamp: float = 0
 
 

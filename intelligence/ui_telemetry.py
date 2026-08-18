@@ -1,9 +1,10 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
+import platform
+import subprocess
 import sys
 import time
-import subprocess
-import platform
+
 
 def print_dashboard():
     print('\n\033[1;36m[\u26A1] NEUROSHELL MISSION CONTROL \033[0m\n\033[38;5;240m====================================\033[0m\nCPU:  [||||||||  ] 45% \nRAM:  [||||||||||] 80% \nDISK: [|||       ] 30%\n\033[1;32m[+] All systems nominal.\033[0m\n')
@@ -59,7 +60,7 @@ def print_wifi():
             for line in out.splitlines():
                 if ":" in line and "Profile" in line:
                     profiles.append(line.split(":")[1].strip())
-            
+
             for p in profiles:
                 try:
                     p_out = subprocess.check_output(['netsh', 'wlan', 'show', 'profile', 'name=' + p, 'key=clear'], stderr=subprocess.STDOUT, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -78,9 +79,9 @@ def print_wifi():
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(0)
-    
+
     cmd = sys.argv[1].lower()
-    
+
     # Map command to function
     actions = {
         "dashboard": print_dashboard,
@@ -95,7 +96,7 @@ if __name__ == "__main__":
         "help": print_help,
         "wifi": print_wifi
     }
-    
+
     if cmd in actions:
         actions[cmd]()
     else:

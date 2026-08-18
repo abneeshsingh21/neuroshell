@@ -9,16 +9,17 @@ using json-rpc over stdin/stdout.
 import json
 import subprocess
 import threading
-from typing import Optional, Dict, Any
+from typing import Any, Dict
+
 
 class LSPClient:
     def __init__(self, server_command: list):
         self.server_command = server_command
-        self.process: Optional[subprocess.Popen] = None
+        self.process: subprocess.Popen | None = None
         self._request_id = 1
         self._callbacks = {}
         self._lock = threading.Lock()
-        
+
     def start(self):
         import sys
         kwargs = {}
@@ -36,7 +37,7 @@ class LSPClient:
         # Background thread to read responses
         self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._reader_thread.start()
-        
+
     def stop(self):
         if self.process:
             self.process.terminate()
@@ -55,14 +56,14 @@ class LSPClient:
                     self.process.stdout.readline()
                     content = self.process.stdout.read(length)
                     data = json.loads(content)
-                    
+
                     if "id" in data and data["id"] in self._callbacks:
                         with self._lock:
                             cb = self._callbacks.pop(data["id"])
                         cb(data)
             except Exception:
                 pass
-                
+
     def send_request(self, method: str, params: dict, timeout=5) -> Dict[str, Any]:
         """Send JSON-RPC request and block for response."""
         if not self.process:
@@ -70,7 +71,7 @@ class LSPClient:
 
         import queue
         q = queue.Queue()
-        
+
         with self._lock:
             req_id = self._request_id
             self._request_id += 1
@@ -84,10 +85,10 @@ class LSPClient:
         }
         body = json.dumps(payload)
         headers = f"Content-Length: {len(body)}\r\n\r\n"
-        
+
         self.process.stdin.write(headers + body)
         self.process.stdin.flush()
-        
+
         try:
             return q.get(timeout=timeout)
         except queue.Empty:
