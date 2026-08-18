@@ -350,6 +350,56 @@ async function triggerEngineDownload(context?: vscode.ExtensionContext): Promise
     );
 }
 
+let g_downloadPromptTimer: NodeJS.Timeout | null = null;
+let g_isDownloading: boolean = false;
+
+function stopDownloadPromptLoop() {
+    if (g_downloadPromptTimer) {
+        clearInterval(g_downloadPromptTimer);
+        g_downloadPromptTimer = null;
+    }
+}
+
+function startDownloadPromptLoop(context: vscode.ExtensionContext) {
+    if (g_downloadPromptTimer) return;
+
+    const showPrompt = () => {
+        const exe = findNeuroShellExecutable(context);
+        if (exe) {
+            stopDownloadPromptLoop();
+            configureTerminalProfile(exe);
+            return;
+        }
+
+        if (g_isDownloading) return;
+
+        vscode.window.showInformationMessage(
+            '⌬ NeuroShell Engine is required to power the AI terminal. Download & setup now in 1-click.',
+            '⚡ Download & Setup NeuroShell'
+        ).then((selection) => {
+            if (selection === '⚡ Download & Setup NeuroShell') {
+                g_isDownloading = true;
+                stopDownloadPromptLoop();
+                triggerEngineDownload(context).then((success) => {
+                    g_isDownloading = false;
+                    if (!success) {
+                        // If user cancelled or error, resume prompting after brief interval
+                        startDownloadPromptLoop(context);
+                    }
+                });
+            }
+        });
+    };
+
+    // Initial prompt
+    showPrompt();
+
+    // Re-prompt every 6 seconds until downloaded
+    g_downloadPromptTimer = setInterval(() => {
+        showPrompt();
+    }, 6000);
+}
+
 // ═══════════════════════════════════════════════════════════
 // Extension Activation & Lifecycle
 // ═══════════════════════════════════════════════════════════
@@ -357,20 +407,12 @@ async function triggerEngineDownload(context?: vscode.ExtensionContext): Promise
 export function activate(context: vscode.ExtensionContext) {
     console.log('NeuroShell Enterprise VS Code Extension active.');
 
-    // 1. Check if Engine is installed, otherwise prompt enterprise notification
+    // 1. Check if Engine is installed, otherwise start 6-second recurring prompt loop
     const installedExe = findNeuroShellExecutable(context);
     if (!installedExe) {
-        vscode.window.showInformationMessage(
-            '⌬ NeuroShell Engine is ready! Download & configure the native high-speed C++ terminal in 1-click.',
-            '⚡ Download & Setup NeuroShell',
-            'Remind Me Later'
-        ).then((selection) => {
-            if (selection === '⚡ Download & Setup NeuroShell') {
-                triggerEngineDownload(context);
-            }
-        });
+        startDownloadPromptLoop(context);
     } else {
-        // Auto-configure as default profile and ensure path points strictly to native C++ engine
+        stopDownloadPromptLoop();
         configureTerminalProfile(installedExe);
     }
 
@@ -565,4 +607,6 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(downloadCmd, askAICmd, explainCmd, fixErrorCmd, injectCmd, updateCmd);
 }
 
-export function deactivate() {}
+export function deactivate() {
+    stopDownloadPromptLoop();
+}
