@@ -230,10 +230,17 @@ function downloadFileWithProgress(url: string, destPath: string, progress: vscod
             return;
         }
 
+        let redirectCount = 0;
+        const maxRedirects = 6;
+
         const executeGet = (requestUrl: string) => {
+            if (redirectCount++ > maxRedirects) {
+                reject(new Error('Too many HTTP redirects.'));
+                return;
+            }
+
             const req = https.get(requestUrl, { headers: { 'User-Agent': 'NeuroShell-VSCode-Extension' } }, (res) => {
                 if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                    // Follow GitHub release redirect
                     executeGet(res.headers.location);
                     return;
                 }
@@ -252,7 +259,7 @@ function downloadFileWithProgress(url: string, destPath: string, progress: vscod
                 res.on('data', (chunk: Buffer) => {
                     if (token.isCancellationRequested) {
                         res.destroy();
-                        fileStream.close();
+                        fileStream.destroy();
                         fs.unlink(destPath, () => {});
                         reject(new Error('Download cancelled by user.'));
                         return;
@@ -283,16 +290,27 @@ function downloadFileWithProgress(url: string, destPath: string, progress: vscod
 
                 res.on('end', () => {
                     fileStream.end();
-                    if (!process.platform.startsWith('win')) {
-                        try {
-                            fs.chmodSync(destPath, 0o755);
-                        } catch {}
-                    }
-                    resolve();
+                });
+
+                fileStream.on('finish', () => {
+                    fileStream.close(() => {
+                        if (!process.platform.startsWith('win')) {
+                            try {
+                                fs.chmodSync(destPath, 0o755);
+                            } catch {}
+                        }
+                        resolve();
+                    });
+                });
+
+                fileStream.on('error', (err) => {
+                    fileStream.destroy();
+                    fs.unlink(destPath, () => {});
+                    reject(err);
                 });
 
                 res.on('error', (err) => {
-                    fileStream.close();
+                    fileStream.destroy();
                     fs.unlink(destPath, () => {});
                     reject(err);
                 });
@@ -439,8 +457,13 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // 4. Command: Explicit Native Terminal Opener
-    const openTermCmd = vscode.commands.registerCommand('neuroshell.openTerminal', () => {
-        const exePath = findNeuroShellExecutable(context) || getTargetInstallPath(context);
+    const openTermCmd = vscode.commands.registerCommand('neuroshell.openTerminal', async () => {
+        let exePath = findNeuroShellExecutable(context);
+        if (!exePath || !fs.existsSync(exePath)) {
+            const downloaded = await triggerEngineDownload(context);
+            if (!downloaded) return;
+            exePath = findNeuroShellExecutable(context) || getTargetInstallPath(context);
+        }
         const term = vscode.window.createTerminal({
             name: 'NeuroShell',
             shellPath: exePath,
