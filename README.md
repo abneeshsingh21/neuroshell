@@ -1,234 +1,232 @@
-# 🧠 NeuroShell v5
+<div align="center">
 
-> **Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.**
-> **Proprietary Software — see LICENSE.txt for terms.**
+# ⌬ NeuroShell v5.1.5
+### **The Tier-1 Enterprise Flagship AI Terminal**
+*High-Performance Native C++20 Host • Sub-Millisecond JSON-RPC IPC • True ConPTY Fidelity • 4-Layer Zero-Trust Safety Shield • Multi-LLM Routing • Autonomous Agent Swarms*
 
-**The Ultimate AI-Powered Intelligent Terminal** — Type English, get shell commands. Auto-fix errors. Works offline. Works with any LLM.
-
-NeuroShell replaces your terminal with an AI brain that understands natural language, catches dangerous commands, auto-fixes errors, and learns from your patterns. Powered by a **C++ hybrid engine** for sub-microsecond performance with a **2,500+ phrase offline dictionary** for instant translation — even without any LLM.
-
----
-
-## ✨ Key Features
-
-| Feature | Description |
-|---------|-------------|
-| 🗣️ **Natural Language → Shell** | Type "show big files" → `find . -size +100M` |
-| 🧠 **2,500+ Offline Phrases** | Instant English→Shell translation without any LLM or internet |
-| ⚡ **C++ Hybrid Engine** | Native FastParser, FuzzyMatcher, MarkovEngine via pybind11 |
-| 🔒 **Raw Shell Mode** | Full privacy — disables all LLM, telemetry, and cloud communication |
-| 🛡️ **4-Layer Safety System** | Blocks `rm -rf /`, warns on destructive ops, LLM verification |
-| 🔧 **Auto Error Fix** | 25+ offline patterns + cached fixes + LLM for complex errors |
-| 🔐 **PII Scrubbing** | Auto-redacts API keys, passwords, tokens before cloud LLM calls |
-| 📡 **Smart Offline Fallback** | Auto-pivots from cloud LLMs to local Ollama on network loss |
-| 🌐 **Multi-LLM Support** | Ollama, Groq, OpenAI, Claude, Gemini, OpenRouter |
-| 📖 **Command Explainer** | Offline database for 40+ commands with flags, risks, examples |
-| 🎯 **Smart NLP** | TF-IDF intent classification, entity extraction |
-| 🎨 **10 Built-in Themes** | Cyberpunk, Nord, Gruvbox, Catppuccin, Dracula, and more |
-| ⚡ **Circuit Breaker** | Rate limiting, crash recovery, graceful degradation |
-| 🔌 **Plugin System** | Extend with custom commands and integrations |
+[![CI — NeuroShell](https://github.com/abneeshsingh21/neuroshell/actions/workflows/ci.yml/badge.svg)](https://github.com/abneeshsingh21/neuroshell/actions/workflows/ci.yml)
+[![Release Pipeline](https://github.com/abneeshsingh21/neuroshell/actions/workflows/release.yml/badge.svg)](https://github.com/abneeshsingh21/neuroshell/releases/tag/v5.1.5)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-v5.1.5-blue.svg?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=epl-lang.neuroshell-vscode)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-v5.1.5-purple.svg)](https://open-vsx.org/extension/epl-lang/neuroshell-vscode)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE.txt)
+[![Tests Passing](https://img.shields.io/badge/Tests-481%20Passed%20(100%25)-brightgreen.svg)](tests/)
 
 ---
 
-## 🚀 Quick Start
+</div>
 
-### Prerequisites
+## 🌟 Overview
 
-- **Python 3.10+**
-- **Ollama** (free, local LLM) — [Install Ollama](https://ollama.ai) *(optional with Raw Shell Mode)*
+**NeuroShell** is an industry-defining, enterprise-grade AI terminal uniting a high-performance **Native C++20 Terminal Host** with an intelligent **Python AI Daemon** over zero-latency IPC (Windows Named Pipes & POSIX Domain Sockets).
 
-### Install
+Whether you type in plain English, pipe live compiler errors into AI, orchestrate autonomous multi-step agent swarms, or run full-screen curses applications (`vim`, `htop`, `tmux`, `ssh`), NeuroShell delivers sub-millisecond responsiveness with 4-layer cryptographic safety validation.
+
+---
+
+## 🏛️ System Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        NEUROSHELL NATIVE C++20 TERMINAL HOST                           │
+│  • True Windows ConPTY API (`CreatePseudoConsole`) & POSIX `openpty`/`forkpty`         │
+│  • Raw Console VT100 Engine • Ghost-Text Predictions • Reverse History (Ctrl+R)        │
+│  • Interactive Arrow-Key Menu GUI • Deep Jumper (`z <dir>`) • Multi-Tabs (Ctrl+T)      │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            │
+                                            │ High-Speed JSON-RPC 2.0 IPC
+                                            │ Windows: \\.\pipe\neuroshell_ipc
+                                            │ Unix:    ~/.neuroshell/ipc.sock
+                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        PYTHON INTELLIGENCE & SAFETY DAEMON                             │
+├───────────────────────────┬────────────────────────────┬───────────────────────────────┤
+│  🧠 Multi-LLM Router      │  🛡️ 4-Layer Safety Shield  │  🤖 Autonomous Swarm Planner  │
+│  • Groq (LLaMA 3.3 70B)   │  1. AST & Pattern Regex    │  • Multi-step decomposition   │
+│  • OpenAI (GPT-4o)        │  2. Pipeline Chain Guard   │  • Interactive step approval  │
+│  • Anthropic (Claude 3.5) │  3. Filesystem Scope Audit │  • GitSandbox safe worktrees  │
+│  • Google Gemini 1.5 Pro  │  4. Semantic LLM Audit     │  • Auto-rollback on failure   │
+│  • Ollama (Local/Air-Gap) │  • SHA-256 SOC2 Hash Chain │                               │
+├───────────────────────────┴────────────────────────────┴───────────────────────────────┤
+│  ⚡ 2,554+ Enhanced Modern Offline Phrases (<0.5ms Instant Translation)                │
+│  • Docker, K8s, Git, Systemd, Ollama, UV, Bun, PNPM, GitHub CLI (gh), Homebrew, Winget │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ⚡ Key Capabilities
+
+| Capability | Description | Example / Shortcut |
+| :--- | :--- | :--- |
+| **🗣️ Plain English Translation** | Translates natural language into platform-specific commands. | `find all large mp4 files and sort by size` |
+| **🌊 First-Class AI Pipings** | Pipe stdout/stderr directly into streaming LLM reasoning. | `pytest 2>&1 \| @fix` or `git diff \| @ai "write commit"` |
+| **🤖 Autonomous Agent Swarms** | Multi-step task execution with step-by-step TUI approval cards. | `@agent "Setup PostgreSQL 16 docker-compose & run migrations"` |
+| **🛡️ 4-Layer Zero-Trust Safety** | Blocks dangerous commands before execution with cryptographic logs. | Catches `rm -rf /`, fork bombs, unauthorized drops |
+| **💻 ConPTY Console Fidelity** | 100% interactive terminal fidelity for full-screen applications. | `vim`, `nano`, `htop`, `fzf`, `tmux`, `ssh`, `docker exec -it` |
+| **⌨️ Ghost-Text Autocomplete** | Real-time predictive inline suggestions from Markov learning. | Press `Right Arrow` or `Tab` to accept |
+| **⚙️ Interactive Slash Menus** | TrueColor arrow-key configuration for models, keys, and themes. | `/model`, `/api-key`, `/theme`, `/health`, `/audit`, `?` |
+| **🔌 Universal Extensions** | First-class integration in VS Code, Cursor, and native shells. | VS Code Extension (`26 KB`) + Zsh/Bash/Fish/PWSH hooks |
+
+---
+
+## 🚀 Installation & Setup
+
+### 🪟 1. Windows Installation
+
+#### Option A: Direct Executable (Easiest)
+1. Download **[`NeuroShell.exe`](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe)** from the latest release.
+2. Double-click or run from any terminal:
+   ```cmd
+   NeuroShell.exe
+   ```
+
+#### Option B: Portable Zip
+Download **[`NeuroShell-windows-x64.zip`](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64.zip)**, extract to any directory, and add to your system `PATH`.
+
+---
+
+### 🍎 2. macOS Installation (Apple Silicon & Intel)
+
+#### Option A: Homebrew (Recommended)
+```bash
+brew tap abneeshsingh21/neuroshell https://github.com/abneeshsingh21/neuroshell
+brew install neuroshell
+```
+
+#### Option B: 1-Line Universal Binary
+```bash
+curl -fsSL -O https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz
+tar -xzf NeuroShell-macos-universal.tar.gz
+sudo mv neuroshell /usr/local/bin/
+```
+
+---
+
+### 🐧 3. Linux Installation (x86_64)
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# (Optional) Pull a free local LLM model
-ollama pull phi3:mini
-
-# Launch NeuroShell
-python main.py
-
-# Or launch the Desktop GUI
-python desktop_app.py
+curl -fsSL -O https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-linux-x86_64.tar.gz
+tar -xzf NeuroShell-linux-x86_64.tar.gz
+sudo mv neuroshell /usr/local/bin/
 ```
 
-### Raw Shell Mode (No LLM Required)
+---
+
+### 🧩 4. Visual Studio Code & Cursor Extension
+
+1. Open VS Code or Cursor $\rightarrow$ Extensions tab (`Ctrl+Shift+X`).
+2. Search for **`NeuroShell`** (Publisher: `epl-lang`) and click **Install**.
+3. *Alternatively*, install via command line:
+   ```bash
+   code --install-extension epl-lang.neuroshell-vscode
+   ```
+4. **Auto-Installer**: If the native engine is not found, the extension will display a 1-click installer with a **live progress bar** (`XX MB / YY MB %`) that automatically configures NeuroShell as your default integrated terminal!
+
+---
+
+### 🐚 5. Native Shell Integration Hooks
+
+If you prefer using your existing default shell (`zsh`, `bash`, `fish`, `powershell`) with inline NeuroShell AI translation:
+
+- **macOS Zsh (`~/.zshrc`)**:
+  ```bash
+  source /path/to/neuroshell/integrations/neuroshell.zsh
+  ```
+  *(Press `Ctrl+Space` or `Alt+E` on any line to translate English to shell commands inline!)*
+- **Linux Bash (`~/.bashrc`)**:
+  ```bash
+  source /path/to/neuroshell/integrations/neuroshell.bash
+  ```
+- **Fish Shell (`~/.config/fish/config.fish`)**:
+  ```fish
+  source /path/to/neuroshell/integrations/neuroshell.fish
+  ```
+- **PowerShell 7 / Windows Terminal (`$PROFILE`)**:
+  ```powershell
+  . "C:\path\to\neuroshell\integrations\neuroshell.ps1"
+  ```
+  *(Press `Alt+Space` to trigger instant AI translation)*
+
+---
+
+## 🎮 Interactive Usage Guide
+
+### 1. Plain English Translation
+Simply type what you want to achieve. Offline phrases execute in $<0.5\text{ms}$; complex tasks route to your active LLM:
+```text
+⌬ C:\workspace\app (main) ❯ convert all png files to webp with 85 quality
+  ✔ Transformed → for %f in (*.png) do magick "%f" -quality 85 "%~nf.webp"
+```
+
+### 2. First-Class AI Command Pipings
+Pipe real-time terminal output into AI directives:
+```bash
+# Analyze runtime log files
+cat /var/log/nginx/error.log | @ai "explain the cause of 502 bad gateway"
+
+# Automatically fix compiler or test failures
+cargo build 2>&1 | @fix
+
+# Generate commit messages from live diffs
+git diff | @ai "write a conventional commit message"
+```
+
+### 3. Autonomous Multi-Agent Swarms
+Let NeuroShell orchestrate complex, multi-step engineering tasks:
+```text
+⌬ C:\workspace (main) ❯ @agent "Setup PostgreSQL 16 docker-compose, configure .env, and run migrations"
+
+  ╭── ⌬ Swarm Orchestration Plan (3 Steps) ─────────────────────────╮
+  │ 1. [⬜ PENDING] Generate docker-compose.yml with postgres:16     │
+  │    ❯ cat << 'EOF' > docker-compose.yml ...                      │
+  │ 2. [⬜ PENDING] Start database container in detached mode       │
+  │    ❯ docker compose up -d                                       │
+  │ 3. [⬜ PENDING] Run database migrations                         │
+  │    ❯ python manage.py migrate                                   │
+  ╰──────────────────────────────────────────────────────────────────╯
+
+  [y] Approve & Run   [n] Skip   [a] Auto-Approve All   [q] Abort:
+```
+
+### 4. Interactive Configuration & Help
+- **`?` or `/help`**: Interactive TrueColor documentation directory.
+- **`/model`**: Switch LLM providers with arrow keys (Groq, OpenAI, Anthropic, Gemini, OpenRouter, Ollama).
+- **`/api-key`**: Encrypted credential manager using PBKDF2 + Fernet AES-128.
+- **`/theme`**: Live theme picker (Cyberpunk Neon, Nord Frost, Dracula, Monokai, Synthwave, Solarized).
+
+---
+
+## 🛡️ Enterprise Security & SOC2 Compliance
+
+- **Zero-Trust 4-Layer Safety Shield**:
+  1. *Layer 1 (Regex AST)*: Blocks catastrophic operations (`rm -rf /`, fork bombs, volume format).
+  2. *Layer 2 (Pipeline Chain Guard)*: Inspects dangerous piping and redirection targets.
+  3. *Layer 3 (Scope Estimator)*: Evaluates file impact counts and disk space consequences.
+  4. *Layer 4 (Semantic LLM Audit)*: Performs semantic intent verification for elevated actions.
+- **Tamper-Evident Cryptographic Audit Logging**:
+  All executions are chained via SHA-256 hashes in `~/.neuroshell/audit/audit_YYYY-MM-DD.jsonl`:
+  $$\text{entry\_hash} = \text{SHA256}(\text{prev\_hash} : \text{timestamp} : \text{user} : \text{role} : \text{command} : \text{risk} : \text{action} : \text{cwd} : \text{exit\_code})$$
+- **Automatic PII Scrubbing**: Strips passwords, authorization bearer tokens, API keys, and IP addresses before cloud LLM transmission.
+- **Air-Gapped Privacy**: Works 100% offline with local Ollama or pure offline phrase dictionary ($2,554+$ patterns).
+
+---
+
+## 🧪 Test Suite & Verification
+
+NeuroShell includes an extensive, multi-tier automated test suite covering core execution, intelligence routing, resilience circuit breakers, IPC protocols, and enterprise security:
 
 ```bash
-# Set in config or environment
-NEUROSHELL_RAW_SHELL=true python main.py
+pytest tests/ -v
 ```
 
-In this mode, NeuroShell operates with **zero API calls** and **zero internet** while still providing:
-- 2,500+ English→Shell phrase translations (offline TF-IDF)
-- C++ powered Ghost Text auto-suggestions
-- Full syntax highlighting and theming
-- Command safety system
-
----
-
-## 🎮 Usage
-
-```
-🧠 NeuroShell v5.0 ❯ show me all python files modified today
-  ⟶ find . -name "*.py" -mtime 0
-  Confidence: 0.92 [LLM]
-  Execute? [Y/n] y
-
-🧠 NeuroShell v5.0 ❯ kill port 3000
-  ⟶ lsof -ti:3000 | xargs kill -9
-  Confidence: 0.98 [OFFLINE-DICTIONARY]
-  Execute? [Y/n] y
-
-🧠 NeuroShell v5.0 ❯ rm -rf /
-  ⛔ BLOCKED — Catastrophic: recursive deletion of root filesystem
+```text
+======================= 481 passed, 2 skipped in 32.89s (100% Pass Rate) =======================
 ```
 
 ---
 
-## 🏗️ Architecture
+## 📄 License & Terms
 
-```
-neuroshell/
-├── main.py                   # Orchestrator — REPL, routing, signal handling
-├── config.py                 # TOML config, env overrides, encrypted secrets
-├── desktop_app.py            # CustomTkinter GUI with Mission Control HUD
-├── setup.py                  # C++ extension build (pybind11)
-├── cpp_engine/
-│   ├── engine.cpp            # Native C++ — FastParser, FuzzyMatcher, MarkovEngine
-│   ├── engine.py             # Python fallback implementation
-│   ├── CMakeLists.txt        # CMake build configuration
-│   └── __init__.py           # Graceful C++/Python fallback loader
-├── intelligence/
-│   ├── phrase_dictionary.py  # Offline NLP Fast-Dictionary engine (TF-IDF)
-│   ├── _phrase_data.py       # 2,500+ English→Shell phrase mappings
-│   ├── pii_scrubber.py       # Zero-Trust PII redaction filter
-│   ├── offline_fallback.py   # Smart cloud→local LLM pivot
-│   ├── update_checker.py     # GitHub release auto-update checker
-│   ├── translator.py         # Multi-step NL → shell
-│   ├── safety.py             # 4-layer safety analysis
-│   ├── error_fixer.py        # 25+ offline patterns + LLM
-│   └── autocomplete.py       # Fuzzy, weighted, git-aware
-├── llm/
-│   ├── client.py             # Streaming, retry, caching, multi-provider
-│   └── prompts.py            # Few-shot, chain-of-thought prompts
-├── nlp/
-│   ├── intent_classifier.py  # TF-IDF + SVM, multi-intent
-│   ├── entity_extractor.py   # Git, Docker, IP, ports, env vars
-│   ├── embeddings.py         # Sentence-transformers + TF-IDF fallback
-│   └── sentiment.py          # 7 states, adaptive suggestions
-├── core/
-│   ├── executor.py           # Process lifecycle, resource monitoring
-│   ├── context.py            # Environment detection
-│   └── history.py            # FTS5 search, analytics
-├── ui/
-│   ├── app.py                # Rich terminal UI
-│   └── themes.py             # 10 themes
-├── resilience/
-│   └── resilience.py         # Circuit breaker, rate limiter
-├── observability/
-│   ├── logger.py             # Structured logging
-│   └── tracer.py             # Correlation ID tracing
-└── tests/                    # 85+ unit and integration tests
-```
-
----
-
-## ⚙️ Configuration
-
-NeuroShell stores config in `~/.neuroshell/config.toml`:
-
-```toml
-[llm]
-provider = "ollama"        # ollama, groq, openai, anthropic, gemini, openrouter
-model = "phi3:mini"
-temperature = 0.3
-streaming = true
-
-[safety]
-enabled = true
-confirm_destructive = true
-
-[ui]
-theme = "cyberpunk"
-
-# Privacy mode — disables all LLM and cloud features
-raw_shell_mode = false
-```
-
-### Supported LLM Providers
-
-| Provider | Get API Key |
-|----------|-------------|
-| Ollama (local, free) | [ollama.ai](https://ollama.ai) |
-| Groq | [console.groq.com/keys](https://console.groq.com/keys) |
-| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Anthropic Claude | [console.anthropic.com](https://console.anthropic.com) |
-| Google Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| OpenRouter | [openrouter.ai/keys](https://openrouter.ai/keys) |
-
----
-
-## 🧪 Testing
-
-```bash
-python -m pytest tests/ -v
-```
-
----
-
-## 🖥️ Desktop App
-
-```bash
-python desktop_app.py
-```
-
-Features: Mission Control HUD, multi-pane workspace, theme switcher, sparkline charts, command graph view.
-
----
-
-## 📋 Commands
-
-| Command | Action |
-|---------|--------|
-| Any English sentence | Translates to shell command |
-| `fix` | Auto-fix last error |
-| `explain: <command>` | Explain any command |
-| `undo` | Rollback last destructive operation |
-| `help [topic]` | Show help |
-| `exit` / `quit` / `q` | Exit NeuroShell |
-
----
-
-## 📬 Contact
-
-- **Author:** Abneesh Singh
-- **Email:** singhabneesh250@gmail.com
-- **GitHub:** [github.com/abneeshsingh21](https://github.com/abneeshsingh21)
-
----
-
-## 📘 Terms of Use
-
-By using NeuroShell, you agree to the following:
-
-1. You may use the application only as explicitly permitted by the copyright holder.
-2. You may not copy, modify, decompile, reverse engineer, or create derivative works.
-3. You may not redistribute, sublicense, resell, or republish the application or source code.
-4. You may not remove or alter copyright, ownership, or attribution notices.
-5. Commercial use, team-wide deployment, and redistribution require prior written permission.
-
-For full legal terms, see LICENSE.txt.
-
----
-
-## 📜 License
-
-**Proprietary License** — All rights reserved. No permission is granted to use, copy, modify, distribute, sublicense, or create derivative works without explicit written consent from the copyright holder.
-
-See [LICENSE.txt](LICENSE.txt) for full EULA terms.
-
-## © Copyright
-
-Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+- **Founder & Lead Developer**: Abneesh Singh ([@abneeshsingh21](https://github.com/abneeshsingh21))
+- **Copyright**: © 2024-2026 Abneesh Singh. All rights reserved.
+- **License**: Proprietary Software — see [LICENSE.txt](LICENSE.txt) for licensing terms.

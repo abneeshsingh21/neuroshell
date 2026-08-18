@@ -3,7 +3,7 @@
   "displayName": "NeuroShell — Autonomous AI Terminal",
   "description": "Enterprise AI terminal integration with sub-millisecond IPC, ConPTY fidelity, multi-LLM routing, and autonomous agent workflows.",
   "version": "5.1.5",
-  "publisher": "abneeshsingh21",
+  "publisher": "epl-lang",
   "engines": {
     "vscode": "^1.80.0"
   },
