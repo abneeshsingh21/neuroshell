@@ -7,6 +7,7 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <atomic>
 #include "ipc_client.hpp"
 
 #if defined(_WIN32)
@@ -21,14 +22,30 @@
 namespace NeuroShell::Daemon {
 
 class DaemonManager {
+private:
+    static inline std::atomic<bool> is_spawning_{false};
+
 public:
     static void EnsureDaemonRunningAsync(NeuroShell::IPC::NeuroIPCClient& ipc) {
         // Fast instant check
         if (ipc.Ping()) return;
 
+        // Prevent duplicate background spawn threads
+        if (is_spawning_.exchange(true)) {
+            return;
+        }
+
         // Spawn background Python daemon without blocking the UI main thread
         std::thread([&ipc]() {
 #if defined(_WIN32)
+            // Ensure single instance daemon on Windows via Named Mutex
+            HANDLE hDaemonMutex = CreateMutexW(NULL, TRUE, L"Local\\NeuroShell_Python_Daemon_Mutex");
+            if (GetLastError() == ERROR_ALREADY_EXISTS) {
+                if (hDaemonMutex) CloseHandle(hDaemonMutex);
+                is_spawning_.store(false);
+                return;
+            }
+
             STARTUPINFOW si;
             PROCESS_INFORMATION pi;
             ZeroMemory(&si, sizeof(si));
@@ -69,6 +86,7 @@ public:
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if (ipc.Ping()) break;
             }
+            is_spawning_.store(false);
         }).detach();
     }
 };
