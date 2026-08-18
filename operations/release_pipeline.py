@@ -30,7 +30,7 @@ class ReleasePipeline:
         self.dist_dir.mkdir(parents=True, exist_ok=True)
 
     def collect_artifacts(self) -> list[Path]:
-        patterns = ("*.whl", "*.tar.gz", "*.zip", "*.exe")
+        patterns = ("*.whl", "*.tar.gz", "*.zip", "*.exe", "*.vsix")
         artifacts: list[Path] = []
         for pattern in patterns:
             artifacts.extend(sorted(self.dist_dir.glob(pattern)))

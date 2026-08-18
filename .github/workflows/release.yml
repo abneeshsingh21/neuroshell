@@ -1,21 +1,153 @@
-name: Release Pipeline
+name: Enterprise Release Pipeline
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. 4.1.0)"
+        description: "Release version (e.g. 5.1.5)"
         required: true
-      stage:
-        description: "Deployment stage"
-        required: true
-        default: "production"
+        default: "5.1.5"
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
-  release:
+  # ═══════════════════════════════════════════════════════════
+  # 1. VS Code / Cursor Extension (.vsix)
+  # ═══════════════════════════════════════════════════════════
+  build-vscode-extension:
+    name: Package VS Code Extension (.vsix)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies & Compile TypeScript
+        working-directory: vscode-extension
+        run: |
+          npm ci
+          npm run compile
+
+      - name: Package VSIX bundle
+        working-directory: vscode-extension
+        run: |
+          npx @vscode/vsce package --no-git-tag-version --no-update-package-json
+
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: vscode-extension/*.vsix
+
+  # ═══════════════════════════════════════════════════════════
+  # 2. Windows Native Terminal Binary (.exe & .zip)
+  # ═══════════════════════════════════════════════════════════
+  build-windows:
+    name: Build Windows Native Terminal (MSVC x64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Compile Resource & C++20 Executable
+        shell: cmd
+        run: |
+          if not exist dist mkdir dist
+          rc.exe /fo "dist\resource.res" "cpp_engine\launcher\resource.rc"
+          cl.exe /O2 /std:c++20 /EHsc /utf-8 /DUNICODE /D_UNICODE "cpp_engine\launcher\main.cpp" "dist\resource.res" /Fe:"dist\NeuroShell.exe" /link user32.lib shell32.lib advapi32.lib
+
+      - name: Create Windows Release Zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\NeuroShell.exe", "LICENSE.txt", "README.md" -DestinationPath "dist\NeuroShell-windows-x64.zip"
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: |
+            dist/NeuroShell.exe
+            dist/NeuroShell-windows-x64.zip
+
+  # ═══════════════════════════════════════════════════════════
+  # 3. macOS Native Terminal Binary (Universal arm64 + x86_64)
+  # ═══════════════════════════════════════════════════════════
+  build-macos:
+    name: Build macOS Native Terminal (Universal)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile Universal C++20 Binary
+        run: |
+          mkdir -p dist
+          clang++ -std=c++20 -O3 -arch arm64 -arch x86_64 \
+            -D_XOPEN_SOURCE=700 \
+            cpp_engine/launcher/main.cpp \
+            -o dist/neuroshell \
+            -lpthread -lutil
+
+          tar -czvf dist/NeuroShell-macos-universal.tar.gz -C dist neuroshell -C ../ LICENSE.txt README.md
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries
+          path: |
+            dist/neuroshell
+            dist/NeuroShell-macos-universal.tar.gz
+
+  # ═══════════════════════════════════════════════════════════
+  # 4. Linux Native Terminal Binary (x86_64)
+  # ═══════════════════════════════════════════════════════════
+  build-linux:
+    name: Build Linux Native Terminal (GCC x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile Linux C++20 Binary
+        run: |
+          mkdir -p dist
+          g++ -std=c++20 -O3 \
+            -D_GNU_SOURCE \
+            cpp_engine/launcher/main.cpp \
+            -o dist/neuroshell \
+            -pthread -lutil
+
+          tar -czvf dist/NeuroShell-linux-x86_64.tar.gz -C dist neuroshell -C ../ LICENSE.txt README.md
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: |
+            dist/neuroshell
+            dist/NeuroShell-linux-x86_64.tar.gz
+
+  # ═══════════════════════════════════════════════════════════
+  # 5. Publish to GitHub Releases
+  # ═══════════════════════════════════════════════════════════
+  publish-release:
+    name: Publish GitHub Release & Checksums
+    needs: [build-vscode-extension, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -23,54 +155,33 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Build artifacts
-        env:
-          SOURCE_DATE_EPOCH: "1704067200"
-          PYTHONHASHSEED: "0"
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build
-
-      - name: Generate release manifest and checksums
-        run: |
-          python - <<'PY'
-          from operations.release_pipeline import ReleasePipeline
-          from operations.update_manager import UpdateManager
-          from pathlib import Path
-          rp = ReleasePipeline("dist")
-          rp.write_manifest(version="${{ github.event.inputs.version }}", stage="${{ github.event.inputs.stage }}", output_path="dist/release-manifest.json")
-          rp.write_checksums("dist/SHA256SUMS")
-
-          artifacts = [p for p in Path("dist").glob("*") if p.suffix in {".whl", ".gz", ".zip"}]
-          um = UpdateManager("dist")
-          manifest = um.build_manifest(
-              version="${{ github.event.inputs.version }}",
-              channel="stable",
-              artifacts=artifacts,
-              notes="Automated release manifest",
-          )
-          um.write_manifest(manifest, "dist/update-manifest.json")
-          PY
-
-      - name: Optionally sign update manifest
-        run: |
-          if [ -z "$NEUROSHELL_RELEASE_PRIVATE_KEY_PEM" ]; then
-            echo "No signing key in runner env (NEUROSHELL_RELEASE_PRIVATE_KEY_PEM); skipping manifest signing"
-            exit 0
-          fi
-          cat <<'KEY' > release-private.pem
-          $NEUROSHELL_RELEASE_PRIVATE_KEY_PEM
-          KEY
-          python - <<'PY'
-          from operations.update_manager import UpdateManager
-          um = UpdateManager("dist")
-          um.sign_manifest("dist/update-manifest.json", "release-private.pem")
-          PY
-          rm -f release-private.pem
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: release-${{ github.event.inputs.version }}
-          path: |
+          path: downloaded-artifacts
+
+      - name: Consolidate distribution assets
+        run: |
+          mkdir -p dist
+          find downloaded-artifacts -type f -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Generate Cryptographic SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.version }}
+          name: "NeuroShell ${{ github.ref_name || github.event.inputs.version }} — Autonomous AI Terminal"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
             dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
