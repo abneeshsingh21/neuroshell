@@ -1175,7 +1175,7 @@ private:
 
 public:
     EnterpriseTerminalHost() {
-        PlatformTerminal::SetTitle("NeuroShell v5.5.4 — Enterprise Flagship AI Terminal");
+        PlatformTerminal::SetTitle("NeuroShell v5.6.0 — Enterprise Flagship AI Terminal");
         fs::path cur = fs::current_path();
         tabs.push_back({1, cur.filename().string(), cur.string()});
         shmRing.initialize_as_host();
@@ -2741,12 +2741,12 @@ int main(int argc, char* argv[]) {
     if (argc >= 2) {
         std::string arg1 = argv[1];
         if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
-            std::cout << "NeuroShell v5.5.4 (Enterprise Cross-Platform Edition)\n";
+            std::cout << "NeuroShell v5.6.0 (Enterprise Cross-Platform Edition)\n";
             std::cout << "Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.\n";
             return 0;
         }
         if (arg1 == "--help" || arg1 == "-h" || arg1 == "help") {
-            std::cout << "⌬ NeuroShell v5.5.4 — Tier-1 Enterprise Flagship AI Terminal\n\n";
+            std::cout << "⌬ NeuroShell v5.6.0 — Tier-1 Enterprise Flagship AI Terminal\n\n";
             std::cout << "Usage: neuroshell [options] [command]\n\n";
             std::cout << "Options:\n";
             std::cout << "  init zsh          Output Zsh semantic shell integration\n";

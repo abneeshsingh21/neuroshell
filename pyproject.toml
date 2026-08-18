@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuroshell"
-version = "5.5.9"
+version = "5.6.0"
 description = "AI-Powered Intelligent Terminal — translates English to shell, auto-fixes errors, and understands plain language"
 readme = "README.md"
 license = {text = "Apache-2.0"}
