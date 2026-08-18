@@ -7,16 +7,16 @@
 class Neuroshell < Formula
   desc "Tier-1 Autonomous AI Terminal with ConPTY/PTY fidelity and sub-0.05ms execution"
   homepage "https://github.com/abneeshsingh21/neuroshell"
-  version "5.4.0"
+  version "5.6.0"
   license "Apache-2.0"
 
   on_macos do
-    url "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.4.0/NeuroShell-macos-universal.tar.gz"
+    url "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.6.0/NeuroShell-macos-universal.tar.gz"
     # sha256 dynamically verified from GitHub Release SHA256SUMS
   end
 
   on_linux do
-    url "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.4.0/NeuroShell-linux-x86_64.tar.gz"
+    url "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.6.0/NeuroShell-linux-x86_64.tar.gz"
   end
 
   def install
