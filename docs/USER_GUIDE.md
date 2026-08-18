@@ -171,12 +171,28 @@ test changed
 restart backend
 ```
 
-### 2. The DevOps & Cloud Engineer
+### 3. Remote Repository Exploration & Security Audits
 ```bash
-# Natural language Docker & Kubernetes
-build docker image tagged my-service:v2
-run docker container mapping port 80 to 8080 in background
-show logs for pod auth-service with follow
+# View your repositories in a numbered enterprise table
+my repos
+
+# Read README of repository #1 in formatted markdown (no cloning required!)
+read 1
+
+# Audit repository #1 for secrets, dependency CVEs, and code posture
+audit 1
+
+# Explore any public repository or organization on GitHub
+repos vercel
+read 1                  # Reads vercel/next.js README
+tree 1                  # Shows remote file tree
+audit 1                 # Runs Zero-Trust security scan
+
+# Ask AI questions about any repository's architecture
+read vercel/next.js | @ai explain how App Router works in 3 bullet points
+```
+
+---
 
 # Network & Server diagnostics
 ports

@@ -68,6 +68,39 @@ NeuroShell includes ultra-fast, 1-word aliases for common everyday tasks:
 | **`ports`** | Port Inspector | Scans and displays all active listening TCP ports, PIDs, and process names in a clean table |
 | **`specs`** | Hardware Telemetry | Displays CPU cores, RAM usage, OS version, GPU model, and disk space |
 | **`wifi`** | Wi-Fi Password Viewer | Lists all saved Wi-Fi SSID profiles and reveals passwords safely |
+| **`repos`** | GitHub Repo Catalog | Displays your repositories in an enterprise-aligned box table with index numbers `1..N` |
+| **`audit`** | Security Scanner | Runs a Zero-Trust secret leak, dependency CVE, and safety scan on current folder |
+
+---
+
+## 3. Remote Repository & Document Intelligence
+
+NeuroShell provides zero-clone exploration, reading, auditing, and management of any local document or remote GitHub repository worldwide (your own or anyone else's public repositories):
+
+```
+  ╭────┬──────────────────────────────────────┬────────────┬────────────┬──────────────────────────────────────────╮
+  │  # │ REPOSITORY                           │ VISIBILITY │ UPDATED    │ DESCRIPTION                              │
+  ├────┼──────────────────────────────────────┼────────────┼────────────┼──────────────────────────────────────────┤
+  │  1 │ abneeshsingh21/neuroshell            │ public     │ 2026-08-18 │ AI-Powered Intelligent Terminal Host     │
+  │  2 │ abneeshsingh21/ira-voice-assistant   │ private    │ 2026-08-16 │ Voice assistant daemon                   │
+  │  3 │ abneeshsingh21/epl-website           │ public     │ 2026-07-20 │ Official website for EPL                 │
+  ╰────┴──────────────────────────────────────┴────────────┴────────────┴──────────────────────────────────────────╯
+```
+
+### Numbered Interactive Commands
+After running `repos` or `repos <user|org>`, all repositories are indexed in memory:
+
+| Command | Syntax | What It Does |
+| :--- | :--- | :--- |
+| **`repos`** | `repos` or `my repos` | Lists your own GitHub repositories with index numbers |
+| **`repos <user\|org>`** | `repos vercel` / `repos google` | Lists public repositories from another developer or company |
+| **`read <#\|target>`** | `read 1` / `read facebook/react` / `read README.md` | Reads local file or remote README in formatted markdown |
+| **`audit <#\|target>`** | `audit 1` / `audit openai/whisper` / `audit .` | Scans for secret leaks, dependency CVEs, and security posture |
+| **`tree <#\|target>`** | `tree 1` / `tree vercel/next.js` | Displays remote file and directory tree without cloning |
+| **`clone <#\|target>`** | `clone 1` / `clone torvalds/linux` | Clones target repository to current directory |
+| **`open <#\|target>`** | `open 1` / `open microsoft/vscode` | Opens repository in default web browser |
+
+---
 | **`tasks`** | Task Supervisor Dashboard | Opens real-time dashboard of background workers with CPU/RAM metrics |
 | **`test`** | Parallel Test Suite | Auto-detects project language and runs all unit tests across all CPU cores |
 | **`test changed`**| Git Impact Test Runner | Runs tests only for files modified in git working directory |

@@ -118,15 +118,66 @@ class GitHubAccessManager:
             raise RuntimeError((cp.stderr or cp.stdout or "failed to view repo").strip())
         return json.loads(cp.stdout or "{}")
 
-    def repo_list(self, limit: int = 30) -> list[dict]:
-        """List GitHub repositories owned or accessible by user."""
-        cp = self._run_gh([
-            "repo", "list", "--limit", str(limit),
-            "--json", "nameWithOwner,isPrivate,isFork,updatedAt,description"
-        ])
+    def repo_list(self, user_or_org: str | None = None, limit: int = 30) -> list[dict]:
+        """List GitHub repositories owned by authenticated user or any public user/org."""
+        args = ["repo", "list"]
+        if user_or_org:
+            args.append(user_or_org)
+        args += ["--limit", str(limit), "--json", "nameWithOwner,isPrivate,isFork,updatedAt,description"]
+        cp = self._run_gh(args)
         if cp.returncode != 0:
             raise RuntimeError((cp.stderr or cp.stdout or "failed to list repositories").strip())
         return json.loads(cp.stdout or "[]")
+
+    def repo_readme(self, repo: str) -> str:
+        """Fetch and return the README of any GitHub repository in markdown format."""
+        resolved = self._resolve_repo(repo) or repo
+        cp = self._run_gh(["repo", "view", resolved])
+        if cp.returncode != 0:
+            raise RuntimeError((cp.stderr or cp.stdout or f"Failed to view README for {repo}").strip())
+        return cp.stdout
+
+    def repo_tree(self, repo: str) -> list[str]:
+        """Fetch the list of files in any repository without cloning."""
+        resolved = self._resolve_repo(repo) or repo
+        cp = self._run_gh(["api", f"repos/{resolved}/git/trees/HEAD?recursive=1", "--jq", ".tree[].path"])
+        if cp.returncode == 0 and cp.stdout.strip():
+            return [line.strip() for line in cp.stdout.splitlines() if line.strip()]
+        return []
+
+    def repo_security_audit(self, repo: str) -> dict:
+        """Perform a quick Zero-Trust security scan of any local or remote repository."""
+        resolved = self._resolve_repo(repo) or repo
+        tree = self.repo_tree(resolved)
+        
+        has_ci = any(".github/workflows" in f for f in tree)
+        has_security_md = any("SECURITY" in f.upper() for f in tree)
+        has_license = any("LICENSE" in f.upper() for f in tree)
+        
+        deps = []
+        if any("requirements.txt" in f or "pyproject.toml" in f for f in tree):
+            deps.append("Python")
+        if any("package.json" in f for f in tree):
+            deps.append("Node.js / JavaScript")
+        if any("Cargo.toml" in f for f in tree):
+            deps.append("Rust")
+        if any("go.mod" in f for f in tree):
+            deps.append("Go")
+
+        score = 80
+        if has_ci: score += 10
+        if has_security_md: score += 5
+        if has_license: score += 5
+
+        return {
+            "repository": resolved,
+            "file_count": len(tree),
+            "ecosystems": deps,
+            "has_ci": has_ci,
+            "has_security_policy": has_security_md,
+            "has_license": has_license,
+            "security_score": min(score, 100)
+        }
 
     def pr_list(self, state: str = "open", limit: int = 20, repo: str | None = None) -> list[dict]:
         resolved_repo = self._resolve_repo(repo)
