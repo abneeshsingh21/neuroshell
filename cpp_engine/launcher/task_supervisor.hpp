@@ -288,6 +288,106 @@ public:
         task->is_running.store(false);
     }
 
+    bool StopTask(int id) {
+        std::lock_guard<std::mutex> lock(tasks_lock_);
+        for (auto& task : tasks_) {
+            if (task->id == id && task->is_running.load()) {
+#if defined(_WIN32)
+                if (task->h_job != INVALID_HANDLE_VALUE) {
+                    TerminateJobObject(task->h_job, 1);
+                    CloseHandle(task->h_job);
+                    task->h_job = INVALID_HANDLE_VALUE;
+                }
+                if (task->h_process != INVALID_HANDLE_VALUE) {
+                    TerminateProcess(task->h_process, 1);
+                }
+#else
+                if (task->pgid > 0) {
+                    kill(-task->pgid, SIGTERM);
+                }
+#endif
+                task->is_running.store(false);
+                std::cout << "\n\033[38;2;248;113;113m  🛑 Terminated [" << task->label << "] (PID " << task->pid << ")\033[0m\n\n";
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool StopTask(const std::string& query) {
+        std::string lowerQ = query;
+        std::transform(lowerQ.begin(), lowerQ.end(), lowerQ.begin(), ::tolower);
+
+        try {
+            int id = std::stoi(query);
+            return StopTask(id);
+        } catch (...) {}
+
+        std::lock_guard<std::mutex> lock(tasks_lock_);
+        for (auto& task : tasks_) {
+            std::string lowerLabel = task->label;
+            std::transform(lowerLabel.begin(), lowerLabel.end(), lowerLabel.begin(), ::tolower);
+            std::string lowerCmd = task->command;
+            std::transform(lowerCmd.begin(), lowerCmd.end(), lowerCmd.begin(), ::tolower);
+
+            if ((lowerLabel.find(lowerQ) != std::string::npos || lowerCmd.find(lowerQ) != std::string::npos) && task->is_running.load()) {
+#if defined(_WIN32)
+                if (task->h_job != INVALID_HANDLE_VALUE) {
+                    TerminateJobObject(task->h_job, 1);
+                    CloseHandle(task->h_job);
+                    task->h_job = INVALID_HANDLE_VALUE;
+                }
+                if (task->h_process != INVALID_HANDLE_VALUE) {
+                    TerminateProcess(task->h_process, 1);
+                }
+#else
+                if (task->pgid > 0) {
+                    kill(-task->pgid, SIGTERM);
+                }
+#endif
+                task->is_running.store(false);
+                std::cout << "\n\033[38;2;248;113;113m  🛑 Terminated [" << task->label << "] (PID " << task->pid << ")\033[0m\n\n";
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool RestartTask(const std::string& query) {
+        std::string lowerQ = query;
+        std::transform(lowerQ.begin(), lowerQ.end(), lowerQ.begin(), ::tolower);
+
+        std::shared_ptr<SupervisedTask> foundTask = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(tasks_lock_);
+            for (auto& task : tasks_) {
+                std::string lowerLabel = task->label;
+                std::transform(lowerLabel.begin(), lowerLabel.end(), lowerLabel.begin(), ::tolower);
+                std::string lowerCmd = task->command;
+                std::transform(lowerCmd.begin(), lowerCmd.end(), lowerCmd.begin(), ::tolower);
+
+                if (std::to_string(task->id) == query || lowerLabel.find(lowerQ) != std::string::npos || lowerCmd.find(lowerQ) != std::string::npos) {
+                    foundTask = task;
+                    break;
+                }
+            }
+        }
+
+        if (foundTask) {
+            StopTask(foundTask->id);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            foundTask->is_running.store(true);
+            if (SpawnTask(foundTask)) {
+                reader_threads_.emplace_back([this, foundTask]() {
+                    ReadTaskOutput(foundTask);
+                });
+                std::cout << "\n\033[38;2;74;222;128m  ✨ Restarted [" << foundTask->label << "] with new PID " << foundTask->pid << "\033[0m\n\n";
+                return true;
+            }
+        }
+        return false;
+    }
+
     void StopAll() {
         stop_requested_.store(true);
         std::lock_guard<std::mutex> lock(tasks_lock_);

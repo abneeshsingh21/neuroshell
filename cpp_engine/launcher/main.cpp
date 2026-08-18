@@ -2077,6 +2077,24 @@ public:
             return;
         }
 
+        if (lowerTrim.rfind("stop ", 0) == 0 || lowerTrim.rfind("kill ", 0) == 0) {
+            std::string target = (lowerTrim.rfind("stop ", 0) == 0) ? input.substr(5) : input.substr(5);
+            target.erase(0, target.find_first_not_of(" \t\r\n"));
+            target.erase(target.find_last_not_of(" \t\r\n") + 1);
+            if (!target.empty() && target != "all" && target != "workers") {
+                if (taskSupervisor.StopTask(target)) return;
+            }
+        }
+
+        if (lowerTrim.rfind("restart ", 0) == 0) {
+            std::string target = input.substr(8);
+            target.erase(0, target.find_first_not_of(" \t\r\n"));
+            target.erase(target.find_last_not_of(" \t\r\n") + 1);
+            if (!target.empty()) {
+                if (taskSupervisor.RestartTask(target)) return;
+            }
+        }
+
         // Conversational Parallel Execution: "start frontend and backend", "run dev and api", "start X with Y"
         if (lowerTrim.rfind("@parallel ", 0) == 0 ||
             ((lowerTrim.rfind("run ", 0) == 0 || lowerTrim.rfind("start ", 0) == 0 || lowerTrim.rfind("launch ", 0) == 0) &&
