@@ -769,23 +769,113 @@ public:
 
     std::string Jump(const std::string& query, const std::string& currentCwd) {
         if (query.empty()) return "";
+        std::string lowerQ = query;
+        std::transform(lowerQ.begin(), lowerQ.end(), lowerQ.begin(), ::tolower);
+        lowerQ.erase(0, lowerQ.find_first_not_of(" \t\r\n"));
+        lowerQ.erase(lowerQ.find_last_not_of(" \t\r\n") + 1);
+
+        fs::path curPath(currentCwd);
+
+        // 1. Direct Parent / Back / Well-Known Special Keywords
+        if (lowerQ == ".." || lowerQ == "parent") {
+            return curPath.parent_path().string();
+        }
+        if (lowerQ == "..." || lowerQ == "../..") {
+            return curPath.parent_path().parent_path().string();
+        }
+        if (lowerQ == "...." || lowerQ == "../../..") {
+            return curPath.parent_path().parent_path().parent_path().string();
+        }
+        if (lowerQ == "back" || lowerQ == "-") {
+            return lastDir.empty() ? "" : lastDir;
+        }
+        if (lowerQ == "~" || lowerQ == "home") {
+            return PlatformFS::GetHomeDir().string();
+        }
+        if (lowerQ == "desktop") {
+            fs::path d = PlatformFS::GetHomeDir() / "Desktop";
+            if (fs::exists(d)) return d.string();
+        }
+        if (lowerQ == "downloads") {
+            fs::path d = PlatformFS::GetHomeDir() / "Downloads";
+            if (fs::exists(d)) return d.string();
+        }
+        if (lowerQ == "documents") {
+            fs::path d = PlatformFS::GetHomeDir() / "Documents";
+            if (fs::exists(d)) return d.string();
+        }
+
+        // 2. Bookmarks
         if (bookmarks.count(query) > 0) return bookmarks[query];
+        if (bookmarks.count(lowerQ) > 0) return bookmarks[lowerQ];
 
         std::vector<std::string> tokens = Tokenize(query);
         if (tokens.empty()) return "";
 
+        // 3. Ancestor Hierarchy Walk (Going UP the current directory tree)
+        // e.g. from C:\Users\lenovo\Desktop\IRA\python_brain\ira\autonomy\__pycache__
+        // walk up: autonomy -> ira -> python_brain -> IRA -> Desktop
+        fs::path walk = curPath.parent_path();
+        while (!walk.empty() && walk != walk.root_path()) {
+            std::string parentName = walk.filename().string();
+            std::string lowerParent = parentName;
+            std::transform(lowerParent.begin(), lowerParent.end(), lowerParent.begin(), ::tolower);
+
+            if (lowerParent == lowerQ || PathMatchesTokens(parentName, tokens)) {
+                return walk.string();
+            }
+            walk = walk.parent_path();
+        }
+
+        // 4. Direct Subdirectories (Going DOWN into current directory children)
         try {
             for (const auto& entry : fs::directory_iterator(currentCwd)) {
-                if (entry.is_directory() && PathMatchesTokens(entry.path().string(), tokens)) {
+                if (entry.is_directory()) {
+                    std::string childName = entry.path().filename().string();
+                    std::string lowerChild = childName;
+                    std::transform(lowerChild.begin(), lowerChild.end(), lowerChild.begin(), ::tolower);
+
+                    if (lowerChild == lowerQ) {
+                        return entry.path().string();
+                    }
+                }
+            }
+            for (const auto& entry : fs::directory_iterator(currentCwd)) {
+                if (entry.is_directory() && PathMatchesTokens(entry.path().filename().string(), tokens)) {
                     return entry.path().string();
                 }
             }
         } catch (...) {}
 
+        // 5. History Directories (Excluding currentCwd to prevent looping!)
+        // First Pass: Match directory folder name (basename)
         for (const auto& dir : historyDirs) {
+            try {
+                if (fs::equivalent(fs::path(dir), curPath)) continue;
+            } catch (...) {
+                if (dir == currentCwd) continue;
+            }
+
+            std::string base = fs::path(dir).filename().string();
+            std::string lowerBase = base;
+            std::transform(lowerBase.begin(), lowerBase.end(), lowerBase.begin(), ::tolower);
+            if (lowerBase == lowerQ || PathMatchesTokens(base, tokens)) {
+                return dir;
+            }
+        }
+
+        // Second Pass: Match full path substring
+        for (const auto& dir : historyDirs) {
+            try {
+                if (fs::equivalent(fs::path(dir), curPath)) continue;
+            } catch (...) {
+                if (dir == currentCwd) continue;
+            }
+
             if (PathMatchesTokens(dir, tokens)) return dir;
         }
 
+        // 6. Deep Scan (Desktop / Home)
         visited.clear();
         std::vector<std::string> deepMatches;
         fs::path home = PlatformFS::GetHomeDir();
@@ -793,7 +883,15 @@ public:
         if (fs::exists(desktop)) RecursiveScan(desktop, tokens, deepMatches, 0, 3);
         if (deepMatches.empty()) RecursiveScan(home, tokens, deepMatches, 0, 2);
 
-        return deepMatches.empty() ? "" : deepMatches[0];
+        for (const auto& m : deepMatches) {
+            try {
+                if (!fs::equivalent(fs::path(m), curPath)) return m;
+            } catch (...) {
+                if (m != currentCwd) return m;
+            }
+        }
+
+        return "";
     }
 
     std::vector<std::string> DeepFind(const std::string& query, const std::string& currentCwd) {
@@ -1849,22 +1947,30 @@ public:
 
         // 3. Smart Directory Jumper & Navigation Shortcuts
 
-        if (lowerTrim == ".." || lowerTrim == "...") {
+        // 3. Smart Directory Jumper & Navigation Shortcuts
+
+        if (lowerTrim == ".." || lowerTrim == "..." || lowerTrim == "....") {
             fs::path cur = fs::current_path();
             jumper.SetLastDir(cur.string());
 
-            fs::path dest = (lowerTrim == "..") ? cur.parent_path() : cur.parent_path().parent_path();
+            fs::path dest = cur.parent_path();
+            if (lowerTrim == "...") dest = dest.parent_path();
+            else if (lowerTrim == "....") dest = dest.parent_path().parent_path();
+
             try {
                 fs::current_path(dest);
                 fs::path newCwd = fs::current_path();
                 jumper.Record(newCwd.string());
                 tabs[activeTabIdx].cwd = newCwd.string();
                 tabs[activeTabIdx].name = newCwd.filename().string();
-            } catch (...) {}
+                std::cout << "  " << C_GREEN << "⚡ Moved up → " << C_BOLD << C_WHITE << newCwd.string() << C_RESET << "\n";
+            } catch (...) {
+                std::cout << "  " << C_RED << "❌ Cannot navigate above root directory." << C_RESET << "\n";
+            }
             return;
         }
 
-        if (lowerTrim == "back" || lowerTrim == "cd -") {
+        if (lowerTrim == "back" || lowerTrim == "cd -" || lowerTrim == "z back" || lowerTrim == "z -") {
             std::string last = jumper.GetLastDir();
             if (!last.empty()) {
                 fs::path cur = fs::current_path();
@@ -1876,9 +1982,11 @@ public:
                     tabs[activeTabIdx].cwd = newCwd.string();
                     tabs[activeTabIdx].name = newCwd.filename().string();
                     std::cout << "  " << C_GREEN << "⚡ Returned → " << C_BOLD << C_WHITE << newCwd.string() << C_RESET << "\n";
-                } catch (...) {}
+                } catch (...) {
+                    std::cout << "  " << C_RED << "❌ Previous directory '" << last << "' is no longer accessible." << C_RESET << "\n";
+                }
             } else {
-                std::cout << "  " << C_MUTED << "No previous directory recorded." << C_RESET << "\n";
+                std::cout << "  " << C_MUTED << "No previous directory recorded in session." << C_RESET << "\n";
             }
             return;
         }
@@ -1994,20 +2102,24 @@ public:
         }
 
         if (isJumpCmd) {
-            jumpQuery.erase(0, jumpQuery.find_first_not_of(" \t\r\n"));
-            jumpQuery.erase(jumpQuery.find_last_not_of(" \t\r\n") + 1);
+            jumpQuery.erase(0, jumpQuery.find_first_not_of(" \t\r\n\"'"));
+            jumpQuery.erase(jumpQuery.find_last_not_of(" \t\r\n\"'") + 1);
 
             std::string currentCwd = fs::current_path().string();
             std::string dest = jumper.Jump(jumpQuery, currentCwd);
 
             if (!dest.empty()) {
                 jumper.SetLastDir(currentCwd);
-                fs::current_path(dest);
-                fs::path newCwd = fs::current_path();
-                jumper.Record(newCwd.string());
-                tabs[activeTabIdx].cwd = newCwd.string();
-                tabs[activeTabIdx].name = newCwd.filename().string();
-                std::cout << "  " << C_GREEN << "⚡ Jumped → " << C_BOLD << C_WHITE << newCwd.string() << C_RESET << "\n";
+                try {
+                    fs::current_path(dest);
+                    fs::path newCwd = fs::current_path();
+                    jumper.Record(newCwd.string());
+                    tabs[activeTabIdx].cwd = newCwd.string();
+                    tabs[activeTabIdx].name = newCwd.filename().string();
+                    std::cout << "  " << C_GREEN << "⚡ Jumped → " << C_BOLD << C_WHITE << newCwd.string() << C_RESET << "\n";
+                } catch (...) {
+                    std::cout << "  " << C_RED << "❌ Failed to change directory to: " << dest << C_RESET << "\n";
+                }
                 return;
             } else {
                 std::cout << "  " << C_RED << "❌ Directory matching '" << jumpQuery << "' not found." << C_RESET << "\n";
@@ -2017,19 +2129,53 @@ public:
 
         if (input.rfind("cd ", 0) == 0 || input == "cd") {
             std::string target = (input.length() > 3) ? input.substr(3) : "";
-            target.erase(0, target.find_first_not_of(" \t\r\n"));
-            target.erase(target.find_last_not_of(" \t\r\n") + 1);
+            target.erase(0, target.find_first_not_of(" \t\r\n\"'"));
+            target.erase(target.find_last_not_of(" \t\r\n\"'") + 1);
 
             std::string prevCwd = fs::current_path().string();
             jumper.SetLastDir(prevCwd);
 
             if (target.empty() || target == "~") {
                 fs::current_path(PlatformFS::GetHomeDir());
+            } else if (target == "-" || target == "back") {
+                std::string last = jumper.GetLastDir();
+                if (!last.empty()) {
+                    try {
+                        fs::current_path(last);
+                        std::cout << "  " << C_GREEN << "⚡ Returned → " << C_BOLD << C_WHITE << last << C_RESET << "\n";
+                    } catch (...) {
+                        std::cout << "  " << C_RED << "❌ Previous directory not accessible." << C_RESET << "\n";
+                    }
+                } else {
+                    std::cout << "  " << C_MUTED << "No previous directory recorded in session." << C_RESET << "\n";
+                }
+            } else if (target == "...") {
+                try { fs::current_path(fs::path(prevCwd).parent_path().parent_path()); } catch (...) {}
+            } else if (target == "....") {
+                try { fs::current_path(fs::path(prevCwd).parent_path().parent_path().parent_path()); } catch (...) {}
             } else {
+                bool moved = false;
                 try {
-                    fs::current_path(target);
-                } catch (...) {
-                    std::cout << "  " << C_RED << "❌ Directory error: Path not found." << C_RESET << "\n";
+                    if (fs::exists(target) && fs::is_directory(target)) {
+                        fs::current_path(target);
+                        moved = true;
+                    }
+                } catch (...) {}
+
+                if (!moved) {
+                    // Try smart jumping for loose names (e.g. cd desktop, cd ira)
+                    std::string smartDest = jumper.Jump(target, prevCwd);
+                    if (!smartDest.empty()) {
+                        try {
+                            fs::current_path(smartDest);
+                            moved = true;
+                            std::cout << "  " << C_GREEN << "⚡ Smart Jumped → " << C_BOLD << C_WHITE << smartDest << C_RESET << "\n";
+                        } catch (...) {}
+                    }
+                }
+
+                if (!moved) {
+                    std::cout << "  " << C_RED << "❌ Directory error: Path '" << target << "' not found." << C_RESET << "\n";
                 }
             }
             fs::path newCwd = fs::current_path();
