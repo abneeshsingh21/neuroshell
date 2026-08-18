@@ -295,16 +295,12 @@ class NeuroShell:
             self.swarm_orchestrator = SwarmOrchestrator(self.llm, self.context)
 
             # ── Intelligence Background Services ─────────
-            from intelligence.memory.auto_dream import AutoDreamDaemon
-            from intelligence.services.magic_docs import MagicDocs
-
-            self.magic_docs = MagicDocs(self.llm)
-            self.auto_dream = AutoDreamDaemon(
-                self.session_memory, self.llm,
-                magic_docs=self.magic_docs,
-                ui_callback=lambda m: self.logger.debug("auto_dream", message=m)
-            )
-            self.auto_dream.start()
+            try:
+                from intelligence.services.magic_docs import MagicDocs
+                self.magic_docs = MagicDocs(self.llm)
+            except Exception:
+                self.magic_docs = None
+            self.auto_dream = None
 
             # ── Learning ─────────────────────────────────
             from learning.feedback_loop import FeedbackLoop
