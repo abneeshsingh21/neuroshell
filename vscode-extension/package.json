@@ -4,6 +4,7 @@
   "description": "Enterprise AI terminal integration with sub-millisecond IPC, ConPTY fidelity, multi-LLM routing, and autonomous agent workflows.",
   "version": "5.1.5",
   "publisher": "epl-lang",
+  "license": "Apache-2.0",
   "engines": {
     "vscode": "^1.80.0"
   },

@@ -8,7 +8,7 @@
 [![Release Pipeline](https://github.com/abneeshsingh21/neuroshell/actions/workflows/release.yml/badge.svg)](https://github.com/abneeshsingh21/neuroshell/releases/tag/v5.1.5)
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-v5.1.5-blue.svg?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=epl-lang.neuroshell-vscode)
 [![Open VSX](https://img.shields.io/badge/Open%20VSX-v5.1.5-purple.svg)](https://open-vsx.org/extension/epl-lang/neuroshell-vscode)
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE.txt)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Tests Passing](https://img.shields.io/badge/Tests-481%20Passed%20(100%25)-brightgreen.svg)](tests/)
 
 ---
@@ -229,4 +229,4 @@ pytest tests/ -v
 
 - **Founder & Lead Developer**: Abneesh Singh ([@abneeshsingh21](https://github.com/abneeshsingh21))
 - **Copyright**: © 2024-2026 Abneesh Singh. All rights reserved.
-- **License**: Proprietary Software — see [LICENSE.txt](LICENSE.txt) for licensing terms.
+- **License**: Licensed under the **Apache License, Version 2.0** (the "License"). You may obtain a copy of the License at [LICENSE](LICENSE) or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0).

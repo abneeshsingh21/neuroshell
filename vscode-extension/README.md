@@ -4,7 +4,8 @@
 [![Version](https://img.shields.io/badge/Version-v5.1.5-blue.svg)](package.json)
 [![Publisher](https://img.shields.io/badge/Publisher-epl--lang-purple.svg)](https://marketplace.visualstudio.com/items?itemName=epl-lang.neuroshell-vscode)
 [![Open VSX](https://img.shields.io/badge/Open%20VSX-v5.1.5-green.svg)](https://open-vsx.org/extension/epl-lang/neuroshell-vscode)
-[![Package Size](https://img.shields.io/badge/Size-26%20KB-brightgreen.svg)](neuroshell-vscode-5.1.5.vsix)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
+[![Package Size](https://img.shields.io/badge/Size-27%20KB-brightgreen.svg)](neuroshell-vscode-5.1.5.vsix)
 
 Seamlessly integrates **NeuroShell** as your default integrated AI terminal in Visual Studio Code, Antigravity IDE, Cursor, and VSCodium with zero latency.
 
@@ -64,4 +65,4 @@ code --install-extension epl-lang.neuroshell-vscode
 - **Founder & Lead Developer**: Abneesh Singh ([@abneeshsingh21](https://github.com/abneeshsingh21))
 - **Publisher**: `epl-lang`
 - **Copyright**: © 2024-2026 Abneesh Singh. All rights reserved.
-- **License**: Proprietary Software — see [LICENSE.txt](LICENSE.txt) for details.
+- **License**: Licensed under the **Apache License, Version 2.0**. See [LICENSE.txt](LICENSE.txt) for details.

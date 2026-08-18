@@ -7,7 +7,7 @@ name = "neuroshell"
 version = "5.1.5"
 description = "AI-Powered Intelligent Terminal — translates English to shell, auto-fixes errors, and understands plain language"
 readme = "README.md"
-license = {text = "Proprietary — All Rights Reserved"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "Abneesh Singh", email = "singhabneesh250@gmail.com"}
@@ -19,7 +19,7 @@ classifiers = [
     "Environment :: Win32 (MS Windows)",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
