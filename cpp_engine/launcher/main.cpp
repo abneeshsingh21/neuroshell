@@ -431,6 +431,9 @@ private:
 public:
     PredictionEngine() {
         dictionary = {
+            "test", "test changed", "test all", "test modified files",
+            "start frontend and backend", "run dev and api", "run backend and worker",
+            "tasks", "stop all", "show wifi passwords", "show open ports", "system specs",
             "git status", "git commit -m \"update\"", "git push origin main", "git pull origin main",
             "git add .", "git diff", "git log --oneline -n 10", "git checkout -b ", "git branch -a",
             "python main.py", "python -m pytest", "python -m venv .venv",
@@ -441,7 +444,7 @@ public:
             "open file explorer", "open current folder", "find all python files", "find all javascript files",
             "show my github repos", "list my repos", "kill port 8000", "kill port 3000", "show active ports",
             "system info", "ipconfig", "clear", "exit",
-            "/api-key", "/model", "/theme", "/swarm", "/plan", "/stats", "/help"
+            "/palette", "/api-key", "/model", "/theme", "/tasks", "/help"
         };
     }
 
@@ -2063,21 +2066,64 @@ public:
         }
 
         // 2d. Multi-Process Task Supervisor & Parallel Testing
-        if (lowerTrim == "/tasks" || lowerTrim == "tasks") {
+        if (lowerTrim == "/tasks" || lowerTrim == "tasks" || lowerTrim == "jobs" || lowerTrim == "status" || lowerTrim == "ps") {
             taskSupervisor.PrintDashboard();
             return;
         }
 
-        if (lowerTrim.rfind("@parallel ", 0) == 0 || (lowerTrim.rfind("run ", 0) == 0 && lowerTrim.find(",") != std::string::npos)) {
-            std::string sub = (lowerTrim.rfind("@parallel ", 0) == 0) ? input.substr(10) : input.substr(4);
+        if (lowerTrim == "stop all" || lowerTrim == "kill all" || lowerTrim == "stop workers") {
+            taskSupervisor.StopAll();
+            std::cout << "\n" << C_GREEN << "  🛑 Stopped all background services." << C_RESET << "\n\n";
+            return;
+        }
+
+        // Conversational Parallel Execution: "start frontend and backend", "run dev and api", "start X with Y"
+        if (lowerTrim.rfind("@parallel ", 0) == 0 ||
+            ((lowerTrim.rfind("run ", 0) == 0 || lowerTrim.rfind("start ", 0) == 0 || lowerTrim.rfind("launch ", 0) == 0) &&
+             (lowerTrim.find(" and ") != std::string::npos || lowerTrim.find(" with ") != std::string::npos || lowerTrim.find(",") != std::string::npos))) {
+            
+            std::string sub = input;
+            if (lowerTrim.rfind("@parallel ", 0) == 0) sub = input.substr(10);
+            else if (lowerTrim.rfind("run ", 0) == 0) sub = input.substr(4);
+            else if (lowerTrim.rfind("start ", 0) == 0) sub = input.substr(6);
+            else if (lowerTrim.rfind("launch ", 0) == 0) sub = input.substr(7);
+
+            // Replace " and ", " with ", " & " with ","
+            std::string normalized = sub;
+            auto replaceAll = [](std::string& str, const std::string& from, const std::string& to) {
+                size_t start_pos = 0;
+                while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+                    str.replace(start_pos, from.length(), to);
+                    start_pos += to.length();
+                }
+            };
+            replaceAll(normalized, " and ", ",");
+            replaceAll(normalized, " with ", ",");
+            replaceAll(normalized, " & ", ",");
+
             std::vector<std::string> rawCmds;
-            std::stringstream ss(sub);
+            std::stringstream ss(normalized);
             std::string item;
             while (std::getline(ss, item, ',')) {
                 size_t s = item.find_first_not_of(" \t\r\n\"'");
                 if (s != std::string::npos) {
                     size_t e = item.find_last_not_of(" \t\r\n\"'");
-                    rawCmds.push_back(item.substr(s, e - s + 1));
+                    std::string c = item.substr(s, e - s + 1);
+                    std::string lowerC = c;
+                    std::transform(lowerC.begin(), lowerC.end(), lowerC.begin(), ::tolower);
+
+                    // Smart translation for simple terms
+                    if (lowerC == "frontend" || lowerC == "web" || lowerC == "client") {
+                        if (fs::exists("package.json")) c = "npm run dev";
+                    } else if (lowerC == "backend" || lowerC == "api" || lowerC == "server") {
+                        if (fs::exists("main.py")) c = "python main.py";
+                        else if (fs::exists("server.py")) c = "python server.py";
+                        else if (fs::exists("app.py")) c = "python app.py";
+                        else if (fs::exists("package.json")) c = "npm start";
+                    } else if (lowerC == "worker" || lowerC == "queue") {
+                        if (fs::exists("worker.py")) c = "python worker.py";
+                    }
+                    rawCmds.push_back(c);
                 }
             }
             if (!rawCmds.empty()) {
@@ -2086,14 +2132,15 @@ public:
             return;
         }
 
-        if (lowerTrim == "@test" || lowerTrim == "test" || lowerTrim == "@test all") {
+        // Short Developer Testing Aliases: "test", "test changed", "test diff", "test all"
+        if (lowerTrim == "@test" || lowerTrim == "test" || lowerTrim == "tests" || lowerTrim == "@test all" || lowerTrim == "test all" || lowerTrim == "test everything") {
             std::string testCmd = neuroshell::TestOrchestrator::GetParallelTestCommand({}, fs::current_path());
             std::cout << "\n" << C_CYAN << "  🧪 Running Parallel Test Suite: " << C_BOLD << C_WHITE << testCmd << C_RESET << "\n\n";
             ExecuteCommand(testCmd);
             return;
         }
 
-        if (lowerTrim == "@test changed" || lowerTrim == "test changed" || lowerTrim == "test modified") {
+        if (lowerTrim == "@test changed" || lowerTrim == "test changed" || lowerTrim == "test diff" || lowerTrim == "test git" || lowerTrim == "test modified" || lowerTrim == "test my changes") {
             std::vector<std::string> changed = neuroshell::TestOrchestrator::GetChangedTestFiles();
             if (changed.empty()) {
                 std::cout << "\n" << C_GREEN << "  ✨ No modified test files detected in git repository." << C_RESET << "\n\n";
@@ -2102,6 +2149,20 @@ public:
                 std::cout << "\n" << C_CYAN << "  🎯 Running Impact-Aware Tests: " << C_BOLD << C_WHITE << testCmd << C_RESET << "\n\n";
                 ExecuteCommand(testCmd);
             }
+            return;
+        }
+
+        // Short Aliases for Wi-Fi passwords, Ports, Specs
+        if (lowerTrim == "wifi" || lowerTrim == "passwords" || lowerTrim == "wifi passwords") {
+            ExecuteCommand("show wifi passwords");
+            return;
+        }
+        if (lowerTrim == "ports" || lowerTrim == "open ports" || lowerTrim == "sockets") {
+            ExecuteCommand("show open ports");
+            return;
+        }
+        if (lowerTrim == "specs" || lowerTrim == "hardware" || lowerTrim == "system specs") {
+            ExecuteCommand("system specs");
             return;
         }
 
