@@ -152,6 +152,22 @@ public:
             R"(du -sh "$1"/* 2>/dev/null | sort -hr | head -n 25)",
             {"dir"}
         });
+
+        // 14. Multi-File Parallel Testing
+        // e.g. "test changed files" or "run modified tests"
+        rules_.push_back({
+            std::regex(R"((?:test|run)\s+(?:all\s+)?(?:changed|modified)\s+(?:test\s+)?files)", std::regex::icase),
+            R"(pytest -n auto -v)",
+            R"(pytest -n auto -v || npm test -- --findRelatedTests || cargo test)",
+            {}
+        });
+
+        rules_.push_back({
+            std::regex(R"(test\s+all\s+(?:files\s+in\s+)?tests?)", std::regex::icase),
+            R"(pytest -n auto -v tests)",
+            R"(pytest -n auto -v tests || npm test || cargo test)",
+            {}
+        });
     }
 
     std::string ExtractAndTransform(std::string_view english_query, bool is_windows = true) const {

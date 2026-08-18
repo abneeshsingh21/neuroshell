@@ -73,6 +73,8 @@
 #include "ast_extractor.hpp"
 #include "command_palette.hpp"
 #include "os_vault.hpp"
+#include "task_supervisor.hpp"
+#include "test_orchestrator.hpp"
 
 namespace fs = std::filesystem;
 
@@ -1160,6 +1162,7 @@ private:
     neuroshell::NativePhraseDictionary nativeDictionary;
     neuroshell::ASTParameterExtractor astExtractor;
     neuroshell::InTerminalCommandPalette cmdPalette;
+    neuroshell::TaskSupervisor taskSupervisor;
 
     std::vector<HistoryEntry> history;
     int historyIndex = 0;
@@ -2056,6 +2059,49 @@ public:
         if (lowerTrim.rfind("@cluster ", 0) == 0) {
             std::string clusterCmd = input.substr(9);
             splitPanes.broadcast_command(clusterCmd);
+            return;
+        }
+
+        // 2d. Multi-Process Task Supervisor & Parallel Testing
+        if (lowerTrim == "/tasks" || lowerTrim == "tasks") {
+            taskSupervisor.PrintDashboard();
+            return;
+        }
+
+        if (lowerTrim.rfind("@parallel ", 0) == 0 || (lowerTrim.rfind("run ", 0) == 0 && lowerTrim.find(",") != std::string::npos)) {
+            std::string sub = (lowerTrim.rfind("@parallel ", 0) == 0) ? input.substr(10) : input.substr(4);
+            std::vector<std::string> rawCmds;
+            std::stringstream ss(sub);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                size_t s = item.find_first_not_of(" \t\r\n\"'");
+                if (s != std::string::npos) {
+                    size_t e = item.find_last_not_of(" \t\r\n\"'");
+                    rawCmds.push_back(item.substr(s, e - s + 1));
+                }
+            }
+            if (!rawCmds.empty()) {
+                taskSupervisor.RunParallel(rawCmds);
+            }
+            return;
+        }
+
+        if (lowerTrim == "@test" || lowerTrim == "test" || lowerTrim == "@test all") {
+            std::string testCmd = neuroshell::TestOrchestrator::GetParallelTestCommand({}, fs::current_path());
+            std::cout << "\n" << C_CYAN << "  🧪 Running Parallel Test Suite: " << C_BOLD << C_WHITE << testCmd << C_RESET << "\n\n";
+            ExecuteCommand(testCmd);
+            return;
+        }
+
+        if (lowerTrim == "@test changed" || lowerTrim == "test changed" || lowerTrim == "test modified") {
+            std::vector<std::string> changed = neuroshell::TestOrchestrator::GetChangedTestFiles();
+            if (changed.empty()) {
+                std::cout << "\n" << C_GREEN << "  ✨ No modified test files detected in git repository." << C_RESET << "\n\n";
+            } else {
+                std::string testCmd = neuroshell::TestOrchestrator::GetParallelTestCommand(changed, fs::current_path());
+                std::cout << "\n" << C_CYAN << "  🎯 Running Impact-Aware Tests: " << C_BOLD << C_WHITE << testCmd << C_RESET << "\n\n";
+                ExecuteCommand(testCmd);
+            }
             return;
         }
 

@@ -36,7 +36,9 @@ public:
             {"🔖 Saved Directory Bookmarks", "List all pinned folder bookmarks", "Navigation", "bookmarks"},
             {"🌐 Show Wi-Fi Passwords", "Display clean table of all saved Wi-Fi keys", "DevOps", "show wifi passwords"},
             {"🔌 Show Open Ports", "List all active TCP listening sockets", "DevOps", "show open ports"},
-            {"💻 System Hardware Specs", "Display CPU, RAM, and OS telemetry", "System", "system specs"},
+            {"⚡ Parallel Task Supervisor", "View running background services and worker statuses", "Tasks", "/tasks"},
+            {"🧪 Parallel Test Runner", "Run project test suite across all CPU cores", "Testing", "@test"},
+            {"🎯 Test Modified Files", "Run tests only for files changed in git", "Testing", "@test changed"},
             {"🧹 Clear Screen & Redraw", "Clear console viewport and display banner", "Display", "clear"},
             {"❓ Comprehensive Help Directory", "View complete shortcut and command reference", "Help", "/help"},
             {"🚪 Exit NeuroShell", "Gracefully terminate terminal session", "System", "exit"}
