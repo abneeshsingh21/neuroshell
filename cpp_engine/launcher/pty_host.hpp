@@ -146,6 +146,8 @@ public:
 #endif
     }
 
+    bool IsActive() const { return isRunning.load(); }
+
     void WriteInput(const char* data, size_t len) {
 #if defined(_WIN32)
         if (hPipeInWrite != INVALID_HANDLE_VALUE) {
@@ -157,6 +159,10 @@ public:
             write(masterFd, data, len);
         }
 #endif
+    }
+
+    void WriteInput(const std::string& data) {
+        WriteInput(data.data(), data.size());
     }
 
     void StreamOutput(std::function<void(const char*, size_t)> onData) {

@@ -65,6 +65,10 @@
 #include "ipc_client.hpp"
 #include "daemon_spawner.hpp"
 #include "pty_host.hpp"
+#include "dlp_masker.hpp"
+#include "shm_ipc.hpp"
+#include "stream_recorder.hpp"
+#include "split_pane.hpp"
 
 namespace fs = std::filesystem;
 
@@ -1031,6 +1035,10 @@ private:
     SmartDirectoryJumper jumper;
     PlatformTerminal terminal;
     NeuroShell::IPC::NeuroIPCClient ipcClient;
+    neuroshell::DLPMasker dlpMasker;
+    neuroshell::SHMRingBuffer shmRing;
+    neuroshell::StreamRecorder streamRecorder;
+    neuroshell::SplitPaneManager splitPanes;
 
     std::vector<HistoryEntry> history;
     int historyIndex = 0;
@@ -1040,9 +1048,10 @@ private:
 
 public:
     EnterpriseTerminalHost() {
-        PlatformTerminal::SetTitle("NeuroShell v5.0.6 — AI Terminal");
+        PlatformTerminal::SetTitle("NeuroShell v5.2.0 — Enterprise Flagship AI Terminal");
         fs::path cur = fs::current_path();
         tabs.push_back({1, cur.filename().string(), cur.string()});
+        shmRing.initialize_as_host();
         LoadConfig();
         LoadHistory();
         NeuroShell::Daemon::DaemonManager::EnsureDaemonRunning(ipcClient);
@@ -1119,16 +1128,17 @@ public:
 
     void PrintBanner() {
         std::cout << C_CYAN << "╭──────────────────────────────────────────────────────────────────────────╮\n"
-                  << "│  " << C_BOLD << C_WHITE << "⌬ NeuroShell" << C_RESET << C_MAGENTA " v5.0.6" 
-                  << C_CYAN " — AI-Powered Intelligent Terminal                 │\n"
-                  << "│  " << C_MUTED << "Sub-2ms Native Host • 4-Layer Safety • Multi-LLM Routing (" << activeProvider << ")" 
+                  << "│  " << C_BOLD << C_WHITE << "⌬ NeuroShell" << C_RESET << C_MAGENTA " v5.2.0" 
+                  << C_CYAN " — Tier-1 Enterprise Flagship AI Terminal           │\n"
+                  << "│  " << C_MUTED << "C++20 Host • ConPTY • Zero-Trust DLP • SHM Ring (" << activeProvider << ")" 
                   << C_CYAN "  │\n"
                   << "╰──────────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n";
         
-        std::cout << C_MUTED << "  • Type in plain English (e.g. 'open file explorer', 'find all python files')\n"
-                  << "  • Deep Jumper: 'z <name>', 'f <name>' • Inline Ghost-Text & Tab Complete\n"
+        std::cout << C_MUTED << "  • Type in plain English • Pipe AI: 'cat file | @ai', 'pytest | @fix'\n"
+                  << "  • Swarms: '@agent <task>' • Split Panes: 'vsplit', 'hsplit' • Cluster: '@cluster <cmd>'\n"
+                  << "  • DLP Masking: [Ctrl+U] to unmask/re-mask • Time-Travel Scrub: [Ctrl+Shift+H]\n"
                   << "  • Reverse History: [Ctrl+R] • Multi-Tabs: [Ctrl+T] / [Ctrl+W]\n"
-                  << "  • Settings: /api-key, /model, /theme, /help\n\n" << C_RESET;
+                  << "  • Settings: /api-key, /model, /theme, /dlp, /help\n\n" << C_RESET;
     }
 
     void RenderTabBar() {
@@ -1769,9 +1779,50 @@ public:
             return;
         }
 
-        // 3. Smart Directory Jumper & Navigation Shortcuts
+        // 2b. Viewport DLP & Secret Masker Commands
         std::string lowerTrim = input;
         std::transform(lowerTrim.begin(), lowerTrim.end(), lowerTrim.begin(), ::tolower);
+
+        if (lowerTrim == "/dlp" || lowerTrim == "dlp") {
+            std::cout << "\n" << C_CYAN << "  🛡️ Viewport Secret DLP Status:\n" << C_RESET;
+            std::cout << "  • Real-Time Scanning: " << (dlpMasker.is_enabled() ? (std::string(C_GREEN) + "ACTIVE" + C_RESET) : (std::string(C_RED) + "DISABLED" + C_RESET)) << "\n";
+            std::cout << "  • Unmask Mode:        " << (dlpMasker.is_unmasked() ? (std::string(C_YELLOW) + "UNMASKED (Press Ctrl+U to re-mask)" + C_RESET) : (std::string(C_GREEN) + "MASKED (Secure)" + C_RESET)) << "\n";
+            std::cout << "  • Total Secrets Masked: " << C_BOLD << C_WHITE << dlpMasker.get_total_masked() << C_RESET << "\n\n";
+            return;
+        }
+
+        if (lowerTrim == "/unmask" || lowerTrim == "unmask") {
+            dlpMasker.toggle_unmask();
+            std::cout << "  " << (dlpMasker.is_unmasked() ? (std::string(C_YELLOW) + "🔓 Secrets temporarily unmasked. Use /unmask or Ctrl+U to re-mask." + C_RESET) : (std::string(C_GREEN) + "🔒 Secrets re-masked." + C_RESET)) << "\n\n";
+            return;
+        }
+
+        if (lowerTrim == "/export-session" || lowerTrim == "export session") {
+            std::string exportPath = "neuroshell_session.cast";
+            if (streamRecorder.export_asciinema(exportPath)) {
+                std::cout << "  " << C_GREEN << "✨ Session successfully exported to " << C_BOLD << C_WHITE << exportPath << C_RESET << C_GREEN << " (Asciinema v2 format)\n\n" << C_RESET;
+            } else {
+                std::cout << "  " << C_RED << "❌ Failed to export session recording.\n\n" << C_RESET;
+            }
+            return;
+        }
+
+        // 2c. 2D Split Panes & Cluster Broadcasting
+        if (lowerTrim == "vsplit" || lowerTrim == "/vsplit") {
+            splitPanes.split_vertical(fs::current_path().string());
+            return;
+        }
+        if (lowerTrim == "hsplit" || lowerTrim == "/hsplit") {
+            splitPanes.split_horizontal(fs::current_path().string());
+            return;
+        }
+        if (lowerTrim.rfind("@cluster ", 0) == 0) {
+            std::string clusterCmd = input.substr(9);
+            splitPanes.broadcast_command(clusterCmd);
+            return;
+        }
+
+        // 3. Smart Directory Jumper & Navigation Shortcuts
 
         if (lowerTrim == ".." || lowerTrim == "...") {
             fs::path cur = fs::current_path();
@@ -2086,6 +2137,12 @@ public:
 
         // 6. Cross-Platform Process Runner
         PlatformProcessRunner::ExecResult execRes = PlatformProcessRunner::Execute(commandToRun);
+
+        // Real-Time Viewport DLP Masking & Stream Recording
+        execRes.output = dlpMasker.filter_stream(execRes.output);
+        streamRecorder.record_input(commandToRun);
+        streamRecorder.record_output(execRes.output);
+        shmRing.write_message("{\"event\":\"command_executed\",\"cmd\":\"" + commandToRun + "\"}");
 
         // Smart Error Shield (Local Pattern + Python AST / LLM Diagnosis via IPC)
         if (execRes.exitCode != 0) {
