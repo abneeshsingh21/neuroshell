@@ -9,17 +9,22 @@ import os
 from pathlib import Path
 from intelligence._phrase_data import PHRASES
 
+win_wifi_table = r'powershell -NoProfile -Command "$p=(netsh wlan show profiles)|Select-String \"All User Profile\s*:\s*(.+)$\"|%{ $_.Matches.Groups[1].Value.Trim() }; $r=foreach($n in $p){ $o=netsh wlan show profile name=\"$n\" key=clear 2>$null; $m=$o|Select-String \"Key Content\s*:\s*(.+)$\"; [PSCustomObject]@{ \"Wi-Fi Network (SSID)\" = $n; \"Password\" = if($m){ $m.Matches.Groups[1].Value.Trim() }else{ \"[Open Network]\" } } }; $r|Format-Table -AutoSize"'
+
 additional_phrases = [
-    # Wi-Fi & Wireless
-    ("show wifi passwords", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password 2>/dev/null || sudo grep -r '^psk=' /etc/NetworkManager/system-connections/"),
-    ("show wifi password", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password"),
-    ("wifi passwords", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password"),
-    ("wifi password", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password"),
-    ("get wifi password", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password"),
-    ("view wifi passwords", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password"),
-    ("check wifi passwords", "powershell -Command \"netsh wlan show profiles | Select-String '\\:(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); netsh wlan show profile name=\\\"$n\\\" key=clear}\"", "sudo nmcli device wifi show-password"),
-    ("list wifi passwords", "netsh wlan show profiles", "nmcli connection show"),
-    ("show wifi profiles", "netsh wlan show profiles", "nmcli connection show"),
+    # Wi-Fi & Wireless (Clean Structured Table)
+    ("show wifi passwords", win_wifi_table, "sudo nmcli device wifi show-password 2>/dev/null || sudo grep -r '^psk=' /etc/NetworkManager/system-connections/"),
+    ("show wifi password", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("wifi passwords", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("wifi password", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("get wifi password", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("get wifi passwords", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("view wifi passwords", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("view wifi password", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("check wifi passwords", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("check wifi password", win_wifi_table, "sudo nmcli device wifi show-password"),
+    ("list wifi passwords", win_wifi_table, "nmcli connection show"),
+    ("show wifi profiles", win_wifi_table, "nmcli connection show"),
     ("show wifi networks", "netsh wlan show networks", "nmcli dev wifi list"),
     ("list wifi networks", "netsh wlan show networks", "nmcli dev wifi list"),
     ("scan wifi", "netsh wlan show networks mode=bssid", "nmcli dev wifi rescan && nmcli dev wifi list"),

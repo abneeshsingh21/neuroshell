@@ -1492,7 +1492,7 @@ public:
             ssid.erase(ssid.find_last_not_of(" \t\r\n\"'") + 1);
             if (!ssid.empty()) {
 #if defined(NEUROSHELL_PLATFORM_WINDOWS)
-                return "powershell -Command \"netsh wlan show profile name=\\\"" + ssid + "\\\" key=clear\"";
+                return "powershell -NoProfile -Command \"$m = (netsh wlan show profile name=\\\"" + ssid + "\\\" key=clear 2>$null | Select-String 'Key Content\\\\s*:\\\\s*(.+)$'); if ($m) { [PSCustomObject]@{ 'Wi-Fi Network' = '" + ssid + "'; 'Password' = $m.Matches.Groups[1].Value.Trim() } | Format-List } else { Write-Host 'No password found or Open Network for \\\"" + ssid + "\\\"' }\"";
 #elif defined(__APPLE__)
                 return "security find-generic-password -ga \"" + ssid + "\" -w";
 #else
