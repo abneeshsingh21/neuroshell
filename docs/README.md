@@ -11,12 +11,13 @@ Welcome to the **NeuroShell Official Documentation Hub**. Whether you are a begi
                                              │
       ┌──────────────────┬───────────────────┼───────────────────┬──────────────────┐
       ▼                  ▼                   ▼                   ▼                  ▼
-📖 User Guide      📚 Command Ref      🏛️ Architecture     🤖 AI Agents       ⚙️ Config & FAQ
- (Getting Started)  (50+ Commands)      (Safety & IPC)      (MCP & Coding)     (TOML & Fixes)
+📖 User Guide      📚 Command Ref      🏛️ Architecture     🤖 AI Agents       📖 Master Catalog
+ (Getting Started)  (50+ Commands)      (Safety & IPC)      (MCP & Coding)     (70+ Modules)
 ```
 
 | Document | Description | Target Audience |
 | :--- | :--- | :--- |
+| [**📖 Full Feature Catalog & Architecture Bible**](FULL_FEATURE_CATALOG.md) | **Exhaustive catalog** of all 70+ modules, classes, algorithms, configs, and features with zero gaps | All Engineers, Architects |
 | [**📖 User Guide**](USER_GUIDE.md) | Getting started, first 5 minutes, core concepts, installation, and developer workflows | Beginners, New Users, Developers |
 | [**📚 Command & Syntax Reference**](COMMAND_REFERENCE.md) | Exhaustive directory of all 50+ commands, 1-word shortcuts, task supervisor, and AI pipes | All Users, Power Users |
 | [**🏛️ Architecture & Safety Deep Dive**](ARCHITECTURE_AND_SAFETY.md) | C++20 ConPTY engine, 4-layer Zero-Trust Safety Shield, JSON-RPC IPC, and Viewport DLP | Architects, Security Teams |
