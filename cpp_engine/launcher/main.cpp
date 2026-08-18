@@ -69,6 +69,7 @@
 #include "shm_ipc.hpp"
 #include "stream_recorder.hpp"
 #include "split_pane.hpp"
+#include "native_phrases.hpp"
 
 namespace fs = std::filesystem;
 
@@ -1039,6 +1040,7 @@ private:
     neuroshell::SHMRingBuffer shmRing;
     neuroshell::StreamRecorder streamRecorder;
     neuroshell::SplitPaneManager splitPanes;
+    neuroshell::NativePhraseDictionary nativeDictionary;
 
     std::vector<HistoryEntry> history;
     int historyIndex = 0;
@@ -1470,7 +1472,50 @@ public:
         size_t last = lower.find_last_not_of(" \t\r\n");
         lower = lower.substr(first, last - first + 1);
 
-        // 1. File Explorer & Browser Openers
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        const bool isWindows = true;
+#else
+        const bool isWindows = false;
+#endif
+
+        // 1. Native O(1) Fast Embedded Phrase Dictionary (2,630+ phrases)
+        std::string dictMatch = nativeDictionary.Lookup(lower, isWindows);
+        if (!dictMatch.empty()) {
+            return dictMatch;
+        }
+
+        // 2. Dynamic Wi-Fi Specific Network Lookup
+        if (lower.rfind("show wifi password for ", 0) == 0 || lower.rfind("wifi password for ", 0) == 0 || lower.rfind("wifi password ", 0) == 0) {
+            size_t p = lower.find("for ");
+            std::string ssid = (p != std::string::npos) ? input.substr(p + 4) : input.substr(14);
+            ssid.erase(0, ssid.find_first_not_of(" \t\r\n\"'"));
+            ssid.erase(ssid.find_last_not_of(" \t\r\n\"'") + 1);
+            if (!ssid.empty()) {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+                return "powershell -Command \"netsh wlan show profile name=\\\"" + ssid + "\\\" key=clear\"";
+#elif defined(__APPLE__)
+                return "security find-generic-password -ga \"" + ssid + "\" -w";
+#else
+                return "sudo nmcli -s -g 802-11-wireless-security.psk connection show \"" + ssid + "\" 2>/dev/null || sudo grep -r '^psk=' /etc/NetworkManager/system-connections/\"" + ssid + "\".nmconnection";
+#endif
+            }
+        }
+
+        // 3. Port Killer (kill port 8080, free port 3000, etc.)
+        if (lower.rfind("kill port ", 0) == 0 || lower.rfind("free port ", 0) == 0 || lower.rfind("terminate port ", 0) == 0) {
+            std::string portStr = input.substr(10);
+            portStr.erase(0, portStr.find_first_not_of(" \t\r\n"));
+            portStr.erase(portStr.find_last_not_of(" \t\r\n") + 1);
+            if (!portStr.empty()) {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+                return "powershell -Command \"Stop-Process -Id (Get-NetTCPConnection -LocalPort " + portStr + " -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue\"";
+#else
+                return "fuser -k " + portStr + "/tcp 2>/dev/null || lsof -ti:" + portStr + " | xargs kill -9 2>/dev/null";
+#endif
+            }
+        }
+
+        // 4. File Explorer & Browser Openers
         if (lower == "open file explorer" || lower == "open explorer" || lower == "file explorer" || lower == "open current folder") {
 #if defined(NEUROSHELL_PLATFORM_WINDOWS)
             return "explorer .";
@@ -1530,7 +1575,7 @@ public:
             }
         }
 
-        // 2. Web & Browser Download Operations
+        // 5. Web & Browser Download Operations
         if (lower.rfind("download ", 0) == 0) {
             std::string url = input.substr(9);
             url.erase(0, url.find_first_not_of(" \t\r\n"));
@@ -1542,7 +1587,7 @@ public:
             return "curl -sL \"" + url + "\"";
         }
 
-        // 3. GitHub & Git Operations
+        // 6. GitHub & Git Operations
         if (lower == "show my github repos" || lower == "list my repos" || lower == "my repos" || lower == "view my repos" || lower == "github repos") {
             return "gh repo list || git log --oneline -n 5";
         }
@@ -1588,7 +1633,7 @@ public:
             return "git add . && git commit -m \"" + msg + "\"";
         }
 
-        // 4. File Searching & Utilities
+        // 7. File Searching & Utilities
         if (lower.rfind("find all ", 0) == 0 && lower.find(" files") != std::string::npos) {
             size_t extStart = 9;
             size_t extEnd = lower.find(" files");
@@ -1608,27 +1653,7 @@ public:
 #endif
         }
 
-        // 5. System info
-        if (lower == "system info" || lower == "show system info" || lower == "specs") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            return "systeminfo";
-#elif defined(__APPLE__)
-            return "uname -a && sw_vers";
-#else
-            return "uname -a && lscpu || uname -a";
-#endif
-        }
-        if (lower == "my ip" || lower == "show ip" || lower == "ip address") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            return "ipconfig";
-#elif defined(__APPLE__)
-            return "ifconfig";
-#else
-            return "ip a || ifconfig";
-#endif
-        }
-
-        // 6. Query Python Intelligence IPC Daemon (Multi-LLM Router + 2554+ Phrase Dictionary + 4-Layer Safety Shield)
+        // 8. Query Python Intelligence IPC Daemon (Multi-LLM Router + 2630+ Phrase Dictionary + 4-Layer Safety Shield)
         NeuroShell::IPC::TranslationResult trans = ipcClient.Translate(input, fs::current_path().string());
         if (trans.success && !trans.command.empty() && trans.command != input) {
             return trans.command;
@@ -2133,6 +2158,25 @@ public:
             std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << input << "'..." << C_RESET << "\n";
             std::cout << "  " << C_GREEN << "✔ Transformed → " << C_BOLD << C_WHITE << transformed << C_RESET << "\n\n";
             commandToRun = transformed;
+        } else {
+            // Check if input looks like an unmapped natural language query
+            std::string lowerTrim = input;
+            std::transform(lowerTrim.begin(), lowerTrim.end(), lowerTrim.begin(), ::tolower);
+            const std::vector<std::string> nlPrefixes = {
+                "show ", "how to ", "what is ", "where is ", "how do i ", "tell me ", "give me ", "can you "
+            };
+            bool isNL = false;
+            for (const auto& pfx : nlPrefixes) {
+                if (lowerTrim.rfind(pfx, 0) == 0) {
+                    isNL = true;
+                    break;
+                }
+            }
+            if (isNL) {
+                std::cout << "  " << C_YELLOW << "💡 Recognized natural language query: '" << input << "'." << C_RESET << "\n";
+                std::cout << "  " << C_MUTED << "No offline mapping matched. Configure an AI provider using /api-key for open-ended translation." << C_RESET << "\n\n";
+                return;
+            }
         }
 
         // 6. Cross-Platform Process Runner
