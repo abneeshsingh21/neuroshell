@@ -186,6 +186,7 @@ python manage.py migrate | @fix
 | Slash Command | Description | Action |
 | :--- | :--- | :--- |
 | **`/help`** or **`help`** | Enterprise Reference Directory | Displays categorized command reference box |
+| **`/update`** or **`update`** | In-Place Self-Updater | Downloads and applies the latest release in 1-click |
 | **`/api-key`** | Configure AI Providers | Interactive wizard to set Groq, OpenAI, Claude, Gemini API keys |
 | **`/model`** | Model Switcher | Switch active language model (e.g. `llama-3.3-70b-versatile`, `gpt-4o`) |
 | **`/theme`** | Theme Picker | Switch between 10 terminal color themes (Cyberpunk, Tokyo Night, Dracula, Matrix...) |

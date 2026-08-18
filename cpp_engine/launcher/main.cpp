@@ -1173,15 +1173,128 @@ private:
     std::vector<Tab> tabs;
     int activeTabIdx = 0;
 
+    static inline std::atomic<bool> g_update_available{false};
+    static inline std::string g_remote_version = "";
+
+    void CheckForUpdatesAsync() {
+        std::thread([]() {
+            try {
+                fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
+                bool shouldCheck = true;
+
+                if (fs::exists(cachePath)) {
+                    std::ifstream f(cachePath);
+                    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                    size_t tsPos = content.find("\"last_check\":");
+                    if (tsPos != std::string::npos) {
+                        long long lastCheck = std::stoll(content.substr(tsPos + 13));
+                        long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                        if (now - lastCheck < 86400) { // 24 hours
+                            shouldCheck = false;
+                            size_t verPos = content.find("\"latest_version\":\"");
+                            if (verPos != std::string::npos) {
+                                size_t endVer = content.find("\"", verPos + 18);
+                                if (endVer != std::string::npos) {
+                                    std::string cachedVer = content.substr(verPos + 18, endVer - verPos - 18);
+                                    if (!cachedVer.empty() && cachedVer != "5.7.0" && cachedVer > "5.7.0") {
+                                        g_remote_version = cachedVer;
+                                        g_update_available.store(true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (shouldCheck) {
+#if defined(_WIN32)
+                    std::string apiCmd = "powershell -NoProfile -Command \"try { (Invoke-RestMethod -Uri 'https://api.github.com/repos/abneeshsingh21/neuroshell/releases/latest' -TimeoutSec 3).tag_name } catch {}\"";
+                    FILE* pipe = _popen(apiCmd.c_str(), "r");
+#else
+                    std::string apiCmd = "curl -s -m 3 https://api.github.com/repos/abneeshsingh21/neuroshell/releases/latest | grep '\"tag_name\":' | sed -E 's/.*\"([^\"]+)\".*/\\1/'";
+                    FILE* pipe = popen(apiCmd.c_str(), "r");
+#endif
+                    if (pipe) {
+                        char buf[128];
+                        std::string tag = "";
+                        if (fgets(buf, sizeof(buf), pipe)) {
+                            tag = buf;
+                            while (!tag.empty() && (tag.back() == '\r' || tag.back() == '\n' || tag.back() == ' ')) tag.pop_back();
+                            if (tag.rfind("v", 0) == 0) tag = tag.substr(1);
+                        }
+#if defined(_WIN32)
+                        _pclose(pipe);
+#else
+                        pclose(pipe);
+#endif
+                        if (!tag.empty()) {
+                            long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                            fs::create_directories(cachePath.parent_path());
+                            std::ofstream out(cachePath);
+                            out << "{\"last_check\":" << now << ",\"latest_version\":\"" << tag << "\"}";
+                            if (tag != "5.7.0" && tag > "5.7.0") {
+                                g_remote_version = tag;
+                                g_update_available.store(true);
+                            }
+                        }
+                    }
+                }
+            } catch (...) {}
+        }).detach();
+    }
+
 public:
     EnterpriseTerminalHost() {
-        PlatformTerminal::SetTitle("NeuroShell v5.6.0 — Enterprise Flagship AI Terminal");
+        PlatformTerminal::SetTitle("NeuroShell v5.7.0 — Enterprise Flagship AI Terminal");
         fs::path cur = fs::current_path();
         tabs.push_back({1, cur.filename().string(), cur.string()});
         shmRing.initialize_as_host();
         LoadConfig();
         LoadHistory();
         NeuroShell::Daemon::DaemonManager::EnsureDaemonRunningAsync(ipcClient);
+        CheckForUpdatesAsync();
+    }
+
+    void HandleSlashUpdate() {
+        std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ NeuroShell In-Place Self-Updater" << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Downloading latest release from GitHub CDN..." << C_RESET << "\n\n";
+
+#if defined(_WIN32)
+        std::string downloadCmd = "powershell -NoProfile -Command \"Invoke-WebRequest -Uri 'https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe' -OutFile '$env:TEMP\\NeuroShell_new.exe' -UseBasicParsing\"";
+        int ret = system(downloadCmd.c_str());
+        if (ret == 0) {
+            std::string moveCmd = "powershell -NoProfile -Command \"$dest = '$env:LOCALAPPDATA\\Programs\\NeuroShell\\NeuroShell.exe'; if (Test-Path $dest) { Rename-Item $dest ('NeuroShell.exe.old_' + [int][double]::Parse((Get-Date -UFormat %s))) -Force }; Move-Item '$env:TEMP\\NeuroShell_new.exe' $dest -Force\"";
+            system(moveCmd.c_str());
+
+            g_update_available.store(false);
+            g_remote_version = "";
+            fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
+            long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            std::ofstream out(cachePath);
+            out << "{\"last_check\":" << now << ",\"latest_version\":\"5.7.0\"}";
+
+            std::cout << "  " << C_BOLD << C_GREEN << "✨ Successfully updated NeuroShell to the latest release!" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Please restart your terminal to activate the new version." << C_RESET << "\n\n";
+        } else {
+            std::cout << "  " << C_RED << "❌ Failed to download update. You can manually download from https://github.com/abneeshsingh21/neuroshell/releases" << C_RESET << "\n\n";
+        }
+#else
+        std::string downloadCmd = "curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash";
+        int ret = system(downloadCmd.c_str());
+        if (ret == 0) {
+            g_update_available.store(false);
+            g_remote_version = "";
+            fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
+            long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            std::ofstream out(cachePath);
+            out << "{\"last_check\":" << now << ",\"latest_version\":\"5.7.0\"}";
+
+            std::cout << "  " << C_BOLD << C_GREEN << "✨ Successfully updated NeuroShell to the latest release!" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Please restart your terminal to activate the new version." << C_RESET << "\n\n";
+        } else {
+            std::cout << "  " << C_RED << "❌ Failed to update. You can run 'brew upgrade neuroshell' or download from GitHub releases." << C_RESET << "\n\n";
+        }
+#endif
     }
 
     fs::path GetConfigPath() {
@@ -1255,7 +1368,11 @@ public:
 
     void PrintBanner() {
         std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ " << C_BOLD << C_WHITE << "NeuroShell" << C_RESET << "\n";
-        std::cout << "  " << C_MUTED << "Type plain English or press [F1] for Command Palette • /help for commands" << C_RESET << "\n\n";
+        std::cout << "  " << C_MUTED << "Type plain English or press [F1] for Command Palette • /help for commands" << C_RESET << "\n";
+        if (g_update_available.load() && !g_remote_version.empty()) {
+            std::cout << "  " << C_BOLD << C_YELLOW << "✨ Update available: " << C_RESET << C_WHITE << "v5.7.0 → v" << g_remote_version << C_RESET << C_MUTED << " • Type /update to upgrade in 1-click" << C_RESET << "\n";
+        }
+        std::cout << "\n";
     }
 
     void RenderTabBar() {
@@ -1999,6 +2116,7 @@ public:
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/api-key" << C_RESET << "             Configure AI providers (Groq, OpenAI, Ollama...)\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/model" << C_RESET << "               Switch active AI language model\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/theme" << C_RESET << "               Select terminal color theme\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/update" << C_RESET << "              Check and install latest updates in-place\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/dlp" << C_RESET << "                 View DLP secret masking status\n"
                       << C_CYAN << "╰─────────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
         }
@@ -2010,6 +2128,9 @@ public:
         }
         else if (lower == "/theme") {
             HandleSlashTheme();
+        }
+        else if (lower == "/update" || lower == "update") {
+            HandleSlashUpdate();
         }
         else {
             std::cout << C_MUTED << "  ℹ️ Executed slash command: " << input << C_RESET << "\n\n";
@@ -2043,6 +2164,11 @@ public:
 
         if (lowerTrim == "help" || lowerTrim == "/help") {
             HandleSlashCommand("/help");
+            return;
+        }
+
+        if (lowerTrim == "update" || lowerTrim == "/update") {
+            HandleSlashUpdate();
             return;
         }
 
@@ -2741,17 +2867,23 @@ int main(int argc, char* argv[]) {
     if (argc >= 2) {
         std::string arg1 = argv[1];
         if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
-            std::cout << "NeuroShell v5.6.0 (Enterprise Cross-Platform Edition)\n";
+            std::cout << "NeuroShell v5.7.0 (Enterprise Cross-Platform Edition)\n";
             std::cout << "Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.\n";
             return 0;
         }
+        if (arg1 == "update" || arg1 == "--update") {
+            EnterpriseTerminalHost host;
+            host.HandleSlashUpdate();
+            return 0;
+        }
         if (arg1 == "--help" || arg1 == "-h" || arg1 == "help") {
-            std::cout << "⌬ NeuroShell v5.6.0 — Tier-1 Enterprise Flagship AI Terminal\n\n";
+            std::cout << "⌬ NeuroShell v5.7.0 — Tier-1 Enterprise Flagship AI Terminal\n\n";
             std::cout << "Usage: neuroshell [options] [command]\n\n";
             std::cout << "Options:\n";
             std::cout << "  init zsh          Output Zsh semantic shell integration\n";
             std::cout << "  init bash         Output Bash semantic shell integration\n";
             std::cout << "  init fish         Output Fish semantic shell integration\n";
+            std::cout << "  update            Check and download latest in-place update\n";
             std::cout << "  --version, -v     Display release version and build info\n";
             std::cout << "  --help, -h        Display this help directory\n";
             return 0;

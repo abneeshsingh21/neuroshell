@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = ROOT_DIR / "dist"
-VERSION = "5.6.0"
+VERSION = "5.7.0"
 
 DIST_DIR.mkdir(parents=True, exist_ok=True)
 

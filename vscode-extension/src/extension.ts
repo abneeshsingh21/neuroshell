@@ -624,10 +624,52 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 10. Command: Check for Updates
     const updateCmd = vscode.commands.registerCommand('neuroshell.checkForUpdates', () => {
-        vscode.window.showInformationMessage('NeuroShell is up to date.');
+        checkRemoteUpdates(context, false);
     });
 
     context.subscriptions.push(downloadCmd, askAICmd, explainCmd, fixErrorCmd, injectCmd, updateCmd);
+
+    // 11. Passive Background Update Check (Non-blocking)
+    checkRemoteUpdates(context, true);
+}
+
+async function checkRemoteUpdates(context: vscode.ExtensionContext, silent: boolean = true) {
+    try {
+        const req = https.get(
+            `https://api.github.com/repos/${REPO}/releases/latest`,
+            { headers: { 'User-Agent': 'NeuroShell-VSCode-Extension' } },
+            (res) => {
+                let body = '';
+                res.on('data', (c) => (body += c.toString()));
+                res.on('end', async () => {
+                    try {
+                        const parsed = JSON.parse(body);
+                        let remoteTag = parsed.tag_name || '';
+                        if (remoteTag.startsWith('v')) remoteTag = remoteTag.substring(1);
+
+                        const currentVer = '5.7.0';
+                        if (remoteTag && remoteTag > currentVer) {
+                            const choice = await vscode.window.showInformationMessage(
+                                `✨ NeuroShell update available: v${currentVer} → v${remoteTag}.`,
+                                '⚡ Update Now',
+                                'Remind Me Later'
+                            );
+                            if (choice === '⚡ Update Now') {
+                                await triggerEngineDownload(context);
+                            }
+                        } else if (!silent) {
+                            vscode.window.showInformationMessage(`NeuroShell v${currentVer} is up to date.`);
+                        }
+                    } catch {}
+                });
+            }
+        );
+        req.on('error', () => {
+            if (!silent) {
+                vscode.window.showWarningMessage('Could not reach GitHub Releases server.');
+            }
+        });
+    } catch {}
 }
 
 export function deactivate() {

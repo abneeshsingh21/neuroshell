@@ -1,11 +1,11 @@
 <div align="center">
 
-# ⌬ NeuroShell v5.6.0
+# ⌬ NeuroShell v5.7.0
 ### **The Tier-1 Enterprise Flagship AI Terminal**
 *High-Performance Native C++20 Host • Sub-Millisecond JSON-RPC IPC • True ConPTY Fidelity • 4-Layer Zero-Trust Safety Shield • Multi-LLM Routing • Autonomous Agent Swarms*
 
-[![Release](https://img.shields.io/badge/GitHub%20Release-v5.6.0-blue.svg?logo=github)](https://github.com/abneeshsingh21/neuroshell/releases/latest)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Extension-v5.6.0-blue.svg?logo=visual-studio-code)](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.6.0.vsix)
+[![Release](https://img.shields.io/badge/GitHub%20Release-v5.7.0-blue.svg?logo=github)](https://github.com/abneeshsingh21/neuroshell/releases/latest)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Extension-v5.7.0-blue.svg?logo=visual-studio-code)](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.7.0.vsix)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Tests Passing](https://img.shields.io/badge/Tests-481%20Passed%20(100%25)-brightgreen.svg)](tests/)
 
@@ -15,10 +15,10 @@
 
 | Platform | 1-Click Graphical Installer | Portable / Command Line |
 | :--- | :--- | :--- |
-| 🪟 **Windows** | [**📥 Download Windows Setup Wizard (.msi)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64-5.6.0.msi) | [**`NeuroShell.exe` (Standalone)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe) • `irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 \| iex` |
+| 🪟 **Windows** | [**📥 Download Windows Setup Wizard (.msi)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64-5.7.0.msi) | [**`NeuroShell.exe` (Standalone)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe) • `irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 \| iex` |
 | 🍎 **macOS** | [**📥 Download macOS Universal Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `brew install neuroshell` |
 | 🐧 **Linux** | [**📥 Download Linux x86_64 Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-linux-x86_64.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `pip install neuroshell` |
-| 💻 **VS Code** | [**📥 Download VS Code Extension (.vsix)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.6.0.vsix) | 1-Click `⚡ Download & Setup NeuroShell` prompt |
+| 💻 **VS Code** | [**📥 Download VS Code Extension (.vsix)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.7.0.vsix) | 1-Click `⚡ Download & Setup NeuroShell` prompt |
 
 ---
 

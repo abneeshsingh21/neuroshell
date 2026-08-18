@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION="5.6.0"
+VERSION="5.7.0"
 REPO="abneeshsingh21/neuroshell"
 GITHUB_RELEASE="https://github.com/${REPO}/releases/download/v${VERSION}"
 INSTALL_DIR="/usr/local/bin"
