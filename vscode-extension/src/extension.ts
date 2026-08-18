@@ -323,8 +323,19 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
     } else {
-        // Auto-configure as default profile
-        vscode.workspace.getConfiguration().update(settingKey, 'NeuroShell', vscode.ConfigurationTarget.Global);
+        // Auto-configure as default profile and ensure path points strictly to native C++ engine
+        const config = vscode.workspace.getConfiguration();
+        config.update(settingKey, 'NeuroShell', vscode.ConfigurationTarget.Global);
+        if (isWindows) {
+            const profiles: any = Object.assign({}, config.get('terminal.integrated.profiles.windows'));
+            profiles['NeuroShell'] = {
+                path: installedExe,
+                args: [],
+                icon: 'terminal'
+            };
+            config.update('terminal.integrated.profiles.windows', profiles, vscode.ConfigurationTarget.Global);
+            config.update('neuroshell.executablePath', installedExe, vscode.ConfigurationTarget.Global);
+        }
     }
 
     // 2. Status Bar Item
