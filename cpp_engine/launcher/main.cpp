@@ -70,6 +70,8 @@
 #include "stream_recorder.hpp"
 #include "split_pane.hpp"
 #include "native_phrases.hpp"
+#include "ast_extractor.hpp"
+#include "command_palette.hpp"
 
 namespace fs = std::filesystem;
 
@@ -136,7 +138,10 @@ enum class KeyCode {
     Ctrl_L,
     Ctrl_R,
     Ctrl_T,
-    Ctrl_W
+    Ctrl_W,
+    Ctrl_K,
+    Ctrl_P,
+    F1
 };
 
 struct KeyEvent {
@@ -265,7 +270,9 @@ public:
         if (ch == 8) { ev.code = KeyCode::Backspace; return ev; }
         if (ch == 9) { ev.code = KeyCode::Tab; return ev; }
         if (ch == 3) { ev.code = KeyCode::Ctrl_C; return ev; }
+        if (ch == 11) { ev.code = KeyCode::Ctrl_K; return ev; }
         if (ch == 12) { ev.code = KeyCode::Ctrl_L; return ev; }
+        if (ch == 16) { ev.code = KeyCode::Ctrl_P; return ev; }
         if (ch == 18) { ev.code = KeyCode::Ctrl_R; return ev; }
         if (ch == 20) { ev.code = KeyCode::Ctrl_T; return ev; }
         if (ch == 23) { ev.code = KeyCode::Ctrl_W; return ev; }
@@ -280,6 +287,7 @@ public:
             else if (code == 71) ev.code = KeyCode::Home;
             else if (code == 79) ev.code = KeyCode::End;
             else if (code == 83) ev.code = KeyCode::Delete;
+            else if (code == 59) ev.code = KeyCode::F1;
             return ev;
         }
 
@@ -942,9 +950,19 @@ public:
     static bool IsInteractiveTUI(const std::string& cmd) {
         std::string lower = cmd;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-        std::vector<std::string> tuis = {"vim", "vi", "nano", "htop", "top", "fzf", "less", "man"};
+        size_t s = lower.find_first_not_of(" \t");
+        if (s != std::string::npos) lower = lower.substr(s);
+
+        const std::vector<std::string> tuis = {
+            "vim", "vi", "nvim", "nano", "htop", "top", "fzf", "less", "more", "man",
+            "ssh", "sftp", "python -i", "python3 -i", "node -i", "pwsh", "powershell", "cmd"
+        };
         for (const auto& t : tuis) {
             if (lower == t || lower.rfind(t + " ", 0) == 0) return true;
+        }
+        if (lower.find("docker exec -it") != std::string::npos || lower.find("docker run -it") != std::string::npos ||
+            lower.find("kubectl exec -it") != std::string::npos) {
+            return true;
         }
         return false;
     }
@@ -1139,6 +1157,8 @@ private:
     neuroshell::StreamRecorder streamRecorder;
     neuroshell::SplitPaneManager splitPanes;
     neuroshell::NativePhraseDictionary nativeDictionary;
+    neuroshell::ASTParameterExtractor astExtractor;
+    neuroshell::InTerminalCommandPalette cmdPalette;
 
     std::vector<HistoryEntry> history;
     int historyIndex = 0;
@@ -1228,16 +1248,16 @@ public:
 
     void PrintBanner() {
         std::cout << C_CYAN << "╭──────────────────────────────────────────────────────────────────────────╮\n"
-                  << "│  " << C_BOLD << C_WHITE << "⌬ NeuroShell" << C_RESET << C_MAGENTA " v5.2.0" 
+                  << "│  " << C_BOLD << C_WHITE << "⌬ NeuroShell" << C_RESET << C_MAGENTA " v5.3.0" 
                   << C_CYAN " — Tier-1 Enterprise Flagship AI Terminal           │\n"
-                  << "│  " << C_MUTED << "C++20 Host • ConPTY • Zero-Trust DLP • SHM Ring (" << activeProvider << ")" 
+                  << "│  " << C_MUTED << "C++20 Host • Universal ConPTY • Zero-Trust DLP • SHM Ring (" << activeProvider << ")" 
                   << C_CYAN "  │\n"
                   << "╰──────────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n";
         
         std::cout << C_MUTED << "  • Type in plain English • Pipe AI: 'cat file | @ai', 'pytest | @fix'\n"
+                  << "  • Command Palette: [F1 / Ctrl+P] or '/palette' • Reverse Search: [Ctrl+R]\n"
                   << "  • Swarms: '@agent <task>' • Split Panes: 'vsplit', 'hsplit' • Cluster: '@cluster <cmd>'\n"
-                  << "  • DLP Masking: [Ctrl+U] to unmask/re-mask • Time-Travel Scrub: [Ctrl+Shift+H]\n"
-                  << "  • Reverse History: [Ctrl+R] • Multi-Tabs: [Ctrl+T] / [Ctrl+W]\n"
+                  << "  • DLP Masking: [Ctrl+U] to unmask/re-mask • Multi-Tabs: [Ctrl+T] / [Ctrl+W]\n"
                   << "  • Settings: /api-key, /model, /theme, /dlp, /help\n\n" << C_RESET;
     }
 
@@ -1322,6 +1342,15 @@ public:
             }
             if (ev.code == KeyCode::Ctrl_R) {
                 std::string chosen = ReverseSearchModal();
+                if (!chosen.empty()) {
+                    buffer = chosen;
+                    cursorPos = (int)buffer.length();
+                }
+                Redraw();
+                continue;
+            }
+            if (ev.code == KeyCode::Ctrl_K || ev.code == KeyCode::Ctrl_P || ev.code == KeyCode::F1) {
+                std::string chosen = CommandPaletteModal();
                 if (!chosen.empty()) {
                     buffer = chosen;
                     cursorPos = (int)buffer.length();
@@ -1477,6 +1506,76 @@ public:
     }
 
     // ═══════════════════════════════════════════════════════
+    // In-Terminal Command Palette Modal (Ctrl+Shift+P / F1)
+    // ═══════════════════════════════════════════════════════
+
+    std::string CommandPaletteModal() {
+        std::string query = "";
+        int selectedIdx = 0;
+        bool firstRender = true;
+        std::cout << "\033[?25l";
+
+        while (true) {
+            std::vector<neuroshell::PaletteCommand> matches = cmdPalette.Search(query);
+            int displayCount = std::min((int)matches.size(), 8);
+            if (selectedIdx >= displayCount) selectedIdx = std::max(0, displayCount - 1);
+
+            if (!firstRender) {
+                std::cout << "\033[" << (displayCount + 4) << "A\r";
+            }
+            firstRender = false;
+
+            std::cout << C_CYAN << "  ╭── ⌬ NeuroShell Command Palette ─────────────────────────────────╮\033[K\n";
+            std::cout << "  │  " << C_BOLD << C_MAGENTA << "> " << C_WHITE << query << C_RESET << std::string(std::max(0, 58 - (int)query.length()), ' ') << C_CYAN << "│\033[K\n";
+            std::cout << "  ├─────────────────────────────────────────────────────────────────┤\033[K\n";
+
+            if (displayCount == 0) {
+                std::cout << C_CYAN << "  │  " << C_MUTED << "No matching commands found.                          " << C_CYAN << "│\033[K\n";
+            } else {
+                for (int i = 0; i < displayCount; ++i) {
+                    const auto& cmd = matches[i];
+                    std::string label = cmd.title + " (" + cmd.action_command + ")";
+                    if (label.length() > 60) label = label.substr(0, 57) + "...";
+
+                    if (i == selectedIdx) {
+                        std::cout << C_CYAN << "  │ " << C_BOLD << C_GREEN << " ❯ " << label << C_RESET 
+                                  << std::string(std::max(0, 59 - (int)label.length()), ' ') << C_CYAN << "│\033[K\n";
+                    } else {
+                        std::cout << C_CYAN << "  │   " << C_DIM << C_WHITE << label << C_RESET 
+                                  << std::string(std::max(0, 59 - (int)label.length()), ' ') << C_CYAN << "│\033[K\n";
+                    }
+                }
+            }
+
+            std::cout << C_CYAN << "  ╰─────────────────────────────────────────────────────────────────╯\033[K\n";
+
+            KeyEvent ev = terminal.ReadKey();
+            if (ev.code == KeyCode::Escape || ev.code == KeyCode::Ctrl_C) {
+                std::cout << "\033[?25h\n";
+                return "";
+            } else if (ev.code == KeyCode::Enter) {
+                std::cout << "\033[?25h\n";
+                if (!matches.empty() && selectedIdx >= 0 && selectedIdx < (int)matches.size()) {
+                    return matches[selectedIdx].action_command;
+                }
+                return "";
+            } else if (ev.code == KeyCode::Up) {
+                if (displayCount > 0) selectedIdx = (selectedIdx - 1 + displayCount) % displayCount;
+            } else if (ev.code == KeyCode::Down) {
+                if (displayCount > 0) selectedIdx = (selectedIdx + 1) % displayCount;
+            } else if (ev.code == KeyCode::Backspace) {
+                if (!query.empty()) {
+                    query.pop_back();
+                    selectedIdx = 0;
+                }
+            } else if (ev.code == KeyCode::Printable) {
+                query.push_back(ev.ch);
+                selectedIdx = 0;
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
     // In-Place Arrow-Key Menu Selector for Slash Commands
     // ═══════════════════════════════════════════════════════
 
@@ -1580,6 +1679,12 @@ public:
         std::string dictMatch = nativeDictionary.Lookup(lower, isWindows);
         if (!dictMatch.empty()) {
             return dictMatch;
+        }
+
+        // 2. Dynamic AST Parameter Extractor (<0.05ms)
+        std::string astMatch = astExtractor.ExtractAndTransform(input, isWindows);
+        if (!astMatch.empty()) {
+            return astMatch;
         }
 
         // 2. Dynamic Wi-Fi Specific Network Lookup
@@ -1917,6 +2022,14 @@ public:
         if (lowerTrim == "/unmask" || lowerTrim == "unmask") {
             dlpMasker.toggle_unmask();
             std::cout << "  " << (dlpMasker.is_unmasked() ? (std::string(C_YELLOW) + "🔓 Secrets temporarily unmasked. Use /unmask or Ctrl+U to re-mask." + C_RESET) : (std::string(C_GREEN) + "🔒 Secrets re-masked." + C_RESET)) << "\n\n";
+            return;
+        }
+
+        if (lowerTrim == "/palette" || lowerTrim == "palette" || lowerTrim == "/cmd") {
+            std::string action = CommandPaletteModal();
+            if (!action.empty()) {
+                ExecuteCommand(action);
+            }
             return;
         }
 

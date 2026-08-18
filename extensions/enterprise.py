@@ -5,6 +5,7 @@ NeuroShell Workflow Engine + Vulnerability Scanner + Audit Trail
 Tier 1+2: Natural language workflows, security scanning, compliance logging.
 """
 
+from __future__ import annotations
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger("neuroshell.enterprise")
 
@@ -260,13 +262,17 @@ class AuditTrail:
         return True, "OK"
 
     def log(self, command: str, risk_score: int, action: str, cwd: str = ".",
-            duration_ms: float = 0, exit_code: int = 0) -> AuditEntry:
+            duration_ms: float = 0, exit_code: int = 0, hmac_key: Optional[bytes] = None) -> AuditEntry:
         """Log command execution with tamper-evident cryptographic hash chaining."""
-        import hashlib
+        import hashlib, hmac
         ts = datetime.now().isoformat()
         prev = self._last_hash
         payload = f"{prev}:{ts}:{self._user}:{self._current_role}:{command}:{risk_score}:{action}:{cwd}:{exit_code}"
-        curr_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        
+        if hmac_key:
+            curr_hash = hmac.new(hmac_key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        else:
+            curr_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
         entry = AuditEntry(
             timestamp=ts,
@@ -286,6 +292,46 @@ class AuditTrail:
         except Exception as e:
             logger.warning("Audit log write failed: %s", e)
         return entry
+
+    def verify_chain(self, hmac_key: Optional[bytes] = None) -> tuple[bool, int, str]:
+        """Verify cryptographic integrity of all chained audit records.
+        Returns: (is_valid, total_verified_count, message)
+        """
+        import hashlib, hmac
+        log_files = sorted(self.log_dir.glob("audit_*.jsonl"))
+        if not log_files:
+            return True, 0, "No audit logs to verify."
+
+        expected_prev = "0" * 64
+        total_count = 0
+
+        for log_file in log_files:
+            try:
+                for line in log_file.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    item = json.loads(line)
+                    curr_prev = item.get("prev_hash", "")
+                    
+                    if curr_prev != expected_prev and total_count > 0:
+                        return False, total_count, f"Hash chain broken at {item.get('timestamp')}: expected {expected_prev[:8]}.. got {curr_prev[:8]}.."
+
+                    payload = f"{curr_prev}:{item.get('timestamp')}:{item.get('user')}:{item.get('role')}:{item.get('command')}:{item.get('risk_score')}:{item.get('action')}:{item.get('cwd')}:{item.get('exit_code', 0)}"
+                    
+                    if hmac_key:
+                        recomputed = hmac.new(hmac_key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+                    else:
+                        recomputed = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+                    if recomputed != item.get("entry_hash"):
+                        return False, total_count, f"Signature mismatch at {item.get('timestamp')}: data was altered."
+
+                    expected_prev = item.get("entry_hash")
+                    total_count += 1
+            except Exception as e:
+                return False, total_count, f"Audit verification error: {e}"
+
+        return True, total_count, f"Cryptographic integrity verified: {total_count} records valid."
 
     def export_report(self, days: int = 30) -> str:
         """Export audit report for compliance review."""
