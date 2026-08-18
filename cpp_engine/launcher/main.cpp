@@ -72,6 +72,7 @@
 #include "native_phrases.hpp"
 #include "ast_extractor.hpp"
 #include "command_palette.hpp"
+#include "os_vault.hpp"
 
 namespace fs = std::filesystem;
 
@@ -2553,7 +2554,54 @@ void NeuroShellPosixSignalHandler(int sig, siginfo_t* info, void* ucontext) {
 }
 #endif
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc >= 2) {
+        std::string arg1 = argv[1];
+        if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
+            std::cout << "NeuroShell v5.4.0 (Enterprise Cross-Platform Edition)\n";
+            std::cout << "Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.\n";
+            return 0;
+        }
+        if (arg1 == "--help" || arg1 == "-h" || arg1 == "help") {
+            std::cout << "⌬ NeuroShell v5.4.0 — Tier-1 Enterprise Flagship AI Terminal\n\n";
+            std::cout << "Usage: neuroshell [options] [command]\n\n";
+            std::cout << "Options:\n";
+            std::cout << "  init zsh          Output Zsh semantic shell integration\n";
+            std::cout << "  init bash         Output Bash semantic shell integration\n";
+            std::cout << "  init fish         Output Fish semantic shell integration\n";
+            std::cout << "  --version, -v     Display release version and build info\n";
+            std::cout << "  --help, -h        Display this help directory\n";
+            return 0;
+        }
+        if (arg1 == "init" && argc >= 3) {
+            std::string shell = argv[2];
+            if (shell == "zsh") {
+                std::cout << "# NeuroShell Zsh Semantic Integration\n"
+                          << "if [[ -z \"$NEUROSHELL_SHELL_INTEGRATION_ACTIVE\" ]]; then\n"
+                          << "  export NEUROSHELL_SHELL_INTEGRATION_ACTIVE=1\n"
+                          << "  autoload -Uz add-zsh-hook\n"
+                          << "  add-zsh-hook precmd () { printf \"\\033]133;D;%s\\007\\033]7;file://%s%s\\007\\033]133;A\\007\" \"$?\" \"$HOST\" \"$PWD\"; }\n"
+                          << "  add-zsh-hook preexec () { printf \"\\033]133;C\\007\"; }\n"
+                          << "fi\n";
+                return 0;
+            } else if (shell == "bash") {
+                std::cout << "# NeuroShell Bash Semantic Integration\n"
+                          << "if [[ -z \"$NEUROSHELL_SHELL_INTEGRATION_ACTIVE\" ]]; then\n"
+                          << "  export NEUROSHELL_SHELL_INTEGRATION_ACTIVE=1\n"
+                          << "  neuroshell_precmd() { printf \"\\033]133;D;%s\\007\\033]7;file://%s%s\\007\\033]133;A\\007\" \"$?\" \"$HOSTNAME\" \"$PWD\"; }\n"
+                          << "  PROMPT_COMMAND=\"neuroshell_precmd; $PROMPT_COMMAND\"\n"
+                          << "fi\n";
+                return 0;
+            } else if (shell == "fish") {
+                std::cout << "# NeuroShell Fish Semantic Integration\n"
+                          << "function __neuroshell_postexec --on-event fish_postexec\n"
+                          << "  printf \"\\033]133;D;%s\\007\\033]7;file://%s%s\\007\" \"$status\" (hostname) \"$PWD\"\n"
+                          << "end\n";
+                return 0;
+            }
+        }
+    }
+
     EnterpriseTerminalHost host;
     host.Run();
     return 0;

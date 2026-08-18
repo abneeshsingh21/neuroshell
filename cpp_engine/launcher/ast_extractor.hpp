@@ -110,8 +110,47 @@ public:
         rules_.push_back({
             std::regex(R"((?:show\s+|get\s+|view\s+)?wifi\s+password\s+(?:for\s+|of\s+)?["']?([^"']+)["']?)", std::regex::icase),
             R"(powershell -NoProfile -Command "$m = (netsh wlan show profile name='$1' key=clear 2>$null | Select-String 'Key Content\s*:\s*(.+)$'); if ($m) { [PSCustomObject]@{ 'Wi-Fi Network' = '$1'; 'Password' = $m.Matches.Groups[1].Value.Trim() } | Format-List } else { Write-Host 'No password found or Open Network for $1' }")",
-            R"(sudo nmcli -s -g 802-11-wireless-security.psk connection show "$1" 2>/dev/null || sudo grep -r '^psk=' /etc/NetworkManager/system-connections/"$1".nmconnection)",
+            R"(sudo nmcli -s -g 802-11-wireless-security.psk connection show "$1" 2>/dev/null || sudo grep -r '^psk=' /etc/NetworkManager/system-connections/"$1".nmconnection 2>/dev/null || security find-generic-password -ga "$1" -w 2>/dev/null)",
             {"ssid"}
+        });
+
+        // 11. Service status / restart / logs
+        // e.g. "status of service nginx" or "restart service docker"
+        rules_.push_back({
+            std::regex(R"((?:status\s+of\s+service|service\s+status|check\s+service)\s+([^\s]+))", std::regex::icase),
+            R"(powershell -NoProfile -Command "Get-Service -Name '$1' -ErrorAction SilentlyContinue | Format-Table -AutoSize")",
+            R"(systemctl status "$1" 2>/dev/null || brew services info "$1" 2>/dev/null || launchctl list | grep "$1")",
+            {"service"}
+        });
+
+        rules_.push_back({
+            std::regex(R"((?:restart\s+service|restart)\s+([^\s]+))", std::regex::icase),
+            R"(powershell -NoProfile -Command "Restart-Service -Name '$1' -Force")",
+            R"(sudo systemctl restart "$1" 2>/dev/null || brew services restart "$1" 2>/dev/null)",
+            {"service"}
+        });
+
+        rules_.push_back({
+            std::regex(R"((?:logs\s+for\s+service|service\s+logs)\s+([^\s]+))", std::regex::icase),
+            R"(powershell -NoProfile -Command "Get-EventLog -LogName Application -Source '$1' -Newest 50 -ErrorAction SilentlyContinue | Format-Table -AutoSize")",
+            R"(journalctl -u "$1" -n 50 -f 2>/dev/null || log show --predicate 'process == "$1"' --info --last 10m)",
+            {"service"}
+        });
+
+        // 12. Clipboard Copy / Paste
+        rules_.push_back({
+            std::regex(R"(copy\s+file\s+([^\s]+)\s+to\s+clipboard)", std::regex::icase),
+            R"(powershell -NoProfile -Command "Get-Content '$1' | Set-Clipboard")",
+            R"(pbcopy < "$1" 2>/dev/null || wl-copy < "$1" 2>/dev/null || xclip -selection clipboard < "$1")",
+            {"file"}
+        });
+
+        // 13. Disk Usage in directory
+        rules_.push_back({
+            std::regex(R"((?:disk\s+usage|folder\s+size|directory\s+size)\s+(?:in\s+)?([^\s]+))", std::regex::icase),
+            R"(powershell -NoProfile -Command "Get-ChildItem -Path '$1' | Select-Object Name, @{Name='Size(MB)';Expression={[math]::Round($_.Length/1MB,2)}} | Sort-Object 'Size(MB)' -Descending | Format-Table -AutoSize")",
+            R"(du -sh "$1"/* 2>/dev/null | sort -hr | head -n 25)",
+            {"dir"}
         });
     }
 

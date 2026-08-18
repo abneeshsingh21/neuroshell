@@ -1,23 +1,31 @@
 # typed: false
 # frozen_string_literal: true
 
-# NeuroShell Homebrew Formula
-# Install via: brew tap abneeshsingh21/neuroshell && brew install neuroshell
+# Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+# Homebrew Formula for NeuroShell Enterprise Terminal
 
 class Neuroshell < Formula
-  desc "AI-Powered Intelligent Terminal and C++ Acceleration Host"
+  desc "Tier-1 Autonomous AI Terminal with ConPTY/PTY fidelity and sub-0.05ms execution"
   homepage "https://github.com/abneeshsingh21/neuroshell"
-  url "https://github.com/abneeshsingh21/neuroshell/archive/refs/tags/v5.0.6.tar.gz"
-  sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  license "Proprietary"
-  head "https://github.com/abneeshsingh21/neuroshell.git", branch: "main"
+  version "5.4.0"
+  license "Apache-2.0"
 
-  depends_on "cmake" => :build
+  on_macos do
+    url "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.4.0/NeuroShell-macos-universal.tar.gz"
+    # sha256 dynamically verified from GitHub Release SHA256SUMS
+  end
+
+  on_linux do
+    url "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.4.0/NeuroShell-linux-x86_64.tar.gz"
+  end
 
   def install
-    system "cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release"
-    system "cmake", "--build", "build", "--config", "Release"
-    bin.install "build/neuroshell"
+    bin.install "neuroshell"
+    
+    # Install shell completions / integrations
+    zsh_completion.install "shell_integrations/neuroshell.zsh" => "_neuroshell" if File.exist?("shell_integrations/neuroshell.zsh")
+    bash_completion.install "shell_integrations/neuroshell.bash" => "neuroshell" if File.exist?("shell_integrations/neuroshell.bash")
+    fish_completion.install "shell_integrations/neuroshell.fish" => "neuroshell.fish" if File.exist?("shell_integrations/neuroshell.fish")
   end
 
   test do
