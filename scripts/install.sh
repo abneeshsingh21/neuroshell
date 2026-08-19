@@ -64,20 +64,22 @@ curl -fsSL "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ASSET}" || {
 echo "📦 Extracting release archive..."
 tar -xzf "${TMP_DIR}/${ASSET}" -C "${TMP_DIR}"
 
-if [ ! -f "${TMP_DIR}/neuroshell" ]; then
-    echo "${RED}❌ Binary missing in release archive.${RESET}"
-    exit 1
-fi
+APP_DIR="/usr/local/share/neuroshell"
 
-chmod +x "${TMP_DIR}/neuroshell"
-
-echo "🚀 Installing binary to ${INSTALL_DIR}/neuroshell..."
-if [ -w "${INSTALL_DIR}" ]; then
-    mv "${TMP_DIR}/neuroshell" "${INSTALL_DIR}/neuroshell"
+if [ "$EUID" -ne 0 ] && [ ! -w "${INSTALL_DIR}" ]; then
+    SUDO="sudo"
 else
-    echo "🔑 Sudo privileges required to write to ${INSTALL_DIR}"
-    sudo mv "${TMP_DIR}/neuroshell" "${INSTALL_DIR}/neuroshell"
+    SUDO=""
 fi
+
+echo "🚀 Installing NeuroShell to ${INSTALL_DIR}/neuroshell..."
+$SUDO mkdir -p "${APP_DIR}" "${INSTALL_DIR}"
+$SUDO cp -R "${TMP_DIR}"/* "${APP_DIR}/"
+$SUDO chmod +x "${APP_DIR}/neuroshell"
+if [ -f "${APP_DIR}/neuroshell.command" ]; then
+    $SUDO chmod +x "${APP_DIR}/neuroshell.command"
+fi
+$SUDO ln -sf "${APP_DIR}/neuroshell" "${INSTALL_DIR}/neuroshell"
 
 # 4. Success Banner
 printf "\n${GREEN}✨ NeuroShell v%s successfully installed to %s/neuroshell!${RESET}\n\n" "$VERSION" "$INSTALL_DIR"

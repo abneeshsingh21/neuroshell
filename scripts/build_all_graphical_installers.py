@@ -49,25 +49,123 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
     zf.write(ROOT_DIR / "README.md", "README.md")
 print(f"  ✓ Created: {zip_path}")
 
-# 3. macOS Universal Archive & DMG Staging
-print("\n[3/5] Packaging macOS Assets...")
+# 3. Helper to build Universal POSIX bundles for macOS & Linux
+def create_unix_bundle(output_tar_path: Path, is_macos: bool = False):
+    import io
+    import tarfile
+
+    launcher_content = """#!/usr/bin/env bash
+# NeuroShell Universal Executable Launcher for macOS and Linux
+# Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$DIR:$PYTHONPATH"
+
+if command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+elif command -v python >/dev/null 2>&1; then
+    PY="python"
+else
+    echo "❌ Python 3 is required to run NeuroShell on macOS/Linux."
+    echo "   Install Python 3 from https://www.python.org/ or via 'brew install python3' (macOS) / 'apt install python3' (Linux)."
+    exit 1
+fi
+
+"$PY" -c "import rich, psutil, toml, cryptography" >/dev/null 2>&1 || {
+    echo "📦 Setting up NeuroShell dependencies..."
+    "$PY" -m pip install --quiet rich psutil toml cryptography 2>/dev/null || true
+}
+
+exec "$PY" "$DIR/main.py" "$@"
+""".replace("\r\n", "\n").encode("utf-8")
+
+    mac_command_content = """#!/usr/bin/env bash
+# macOS 1-Click Finder Launcher for NeuroShell
+# Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+chmod +x "$DIR/neuroshell" 2>/dev/null
+exec "$DIR/neuroshell" "$@"
+""".replace("\r\n", "\n").encode("utf-8")
+
+    install_script_content = """#!/usr/bin/env bash
+# Global Installer for macOS / Linux
+# Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
+
+set -e
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="/usr/local/bin"
+APP_DIR="/usr/local/share/neuroshell"
+
+echo "🚀 Installing NeuroShell v5.7.0 for macOS/Linux..."
+
+if [ "$EUID" -ne 0 ] && [ ! -w "$TARGET_DIR" ]; then
+    SUDO="sudo"
+else
+    SUDO=""
+fi
+
+$SUDO mkdir -p "$APP_DIR" "$TARGET_DIR"
+$SUDO cp -R "$DIR"/* "$APP_DIR/"
+$SUDO chmod +x "$APP_DIR/neuroshell"
+if [ -f "$APP_DIR/neuroshell.command" ]; then
+    $SUDO chmod +x "$APP_DIR/neuroshell.command"
+fi
+$SUDO ln -sf "$APP_DIR/neuroshell" "$TARGET_DIR/neuroshell"
+
+echo "✨ NeuroShell successfully installed to $TARGET_DIR/neuroshell!"
+echo "   Run 'neuroshell' in any terminal to start."
+""".replace("\r\n", "\n").encode("utf-8")
+
+    with tarfile.open(output_tar_path, "w:gz") as tf:
+        def add_bytes(content: bytes, name: str, mode: int = 0o755):
+            ti = tarfile.TarInfo(name=name)
+            ti.size = len(content)
+            ti.mode = mode
+            ti.mtime = 1787094000
+            tf.addfile(ti, io.BytesIO(content))
+
+        # Add executable entrypoints
+        add_bytes(launcher_content, "neuroshell", 0o755)
+        if is_macos:
+            add_bytes(mac_command_content, "neuroshell.command", 0o755)
+        add_bytes(install_script_content, "install.sh", 0o755)
+
+        def exclude_pycache(tarinfo):
+            if "__pycache__" in tarinfo.name or tarinfo.name.endswith((".pyc", ".pyo", ".pyd", ".obj", ".res", ".wixpdb")):
+                return None
+            return tarinfo
+
+        # Add all project source directories & files
+        bundled_dirs = [
+            "core", "intelligence", "nlp", "llm", "operations",
+            "resilience", "extensions", "observability", "learning",
+            "ui", "help", "cpp_engine", "deploy", "docs"
+        ]
+        for d in bundled_dirs:
+            p = ROOT_DIR / d
+            if p.exists():
+                tf.add(p, arcname=d, filter=exclude_pycache)
+
+        bundled_files = [
+            "main.py", "config.py", "neuroshell_cli.py",
+            "pyproject.toml", "requirements.txt", "LICENSE", "README.md"
+        ]
+        for f in bundled_files:
+            p = ROOT_DIR / f
+            if p.exists():
+                tf.add(p, arcname=f)
+
+# 3. macOS Universal Archive
+print("\n[3/5] Packaging macOS Universal Bundle (.tar.gz)...")
 macos_tar = DIST_DIR / "NeuroShell-macos-universal.tar.gz"
-with tarfile.open(macos_tar, "w:gz") as tf:
-    # Use dist/NeuroShell.exe or stub if cross-compiling
-    if (DIST_DIR / "NeuroShell.exe").exists():
-        tf.add(DIST_DIR / "NeuroShell.exe", arcname="neuroshell")
-    tf.add(ROOT_DIR / "LICENSE", arcname="LICENSE")
-    tf.add(ROOT_DIR / "README.md", arcname="README.md")
+create_unix_bundle(macos_tar, is_macos=True)
 print(f"  ✓ Created: {macos_tar}")
 
-# 4. Linux Debian Package & AppImage Archive
-print("\n[4/5] Packaging Linux Assets (.deb / .tar.gz)...")
+# 4. Linux Archive (.tar.gz)
+print("\n[4/5] Packaging Linux Universal Bundle (.tar.gz)...")
 linux_tar = DIST_DIR / "NeuroShell-linux-x86_64.tar.gz"
-with tarfile.open(linux_tar, "w:gz") as tf:
-    if (DIST_DIR / "NeuroShell.exe").exists():
-        tf.add(DIST_DIR / "NeuroShell.exe", arcname="neuroshell")
-    tf.add(ROOT_DIR / "LICENSE", arcname="LICENSE")
-    tf.add(ROOT_DIR / "README.md", arcname="README.md")
+create_unix_bundle(linux_tar, is_macos=False)
 print(f"  ✓ Created: {linux_tar}")
 
 # 5. Summary of Built Release Assets
