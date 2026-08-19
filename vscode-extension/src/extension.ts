@@ -327,20 +327,54 @@ function downloadFileWithProgress(url: string, destPath: string, progress: vscod
 
 async function triggerEngineDownload(context?: vscode.ExtensionContext): Promise<boolean> {
     const isWindows = process.platform === 'win32';
-    const assetName = isWindows ? 'NeuroShell.exe' : 'neuroshell';
+    const isMac = process.platform === 'darwin';
+    let assetName: string;
+    if (isWindows) {
+        assetName = 'NeuroShell.exe';
+    } else if (isMac) {
+        assetName = 'NeuroShell-macos-universal.tar.gz';
+    } else {
+        assetName = 'NeuroShell-linux-x86_64.tar.gz';
+    }
+
     const downloadUrl = `${GITHUB_DOWNLOAD_BASE}/${assetName}`;
     const destPath = getTargetInstallPath(context);
 
     return await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: '⌬ Downloading NeuroShell Native Engine...',
+            title: '⌬ Downloading NeuroShell Engine...',
             cancellable: true
         },
         async (progress, token) => {
             try {
                 progress.report({ increment: 0, message: 'Connecting to GitHub CDN...' });
-                await downloadFileWithProgress(downloadUrl, destPath, progress, token);
+                if (isWindows) {
+                    await downloadFileWithProgress(downloadUrl, destPath, progress, token);
+                } else {
+                    const tmpArchive = path.join(os.tmpdir(), assetName);
+                    await downloadFileWithProgress(downloadUrl, tmpArchive, progress, token);
+
+                    const appDir = path.join(os.homedir(), '.local', 'share', 'neuroshell');
+                    const binDir = path.join(os.homedir(), '.local', 'bin');
+                    fs.mkdirSync(appDir, { recursive: true });
+                    fs.mkdirSync(binDir, { recursive: true });
+
+                    cp.execSync(`tar -xzf "${tmpArchive}" -C "${appDir}"`);
+                    try { fs.unlinkSync(tmpArchive); } catch {}
+
+                    const targetBin = path.join(appDir, 'neuroshell');
+                    fs.chmodSync(targetBin, 0o755);
+
+                    const linkBin = path.join(binDir, 'neuroshell');
+                    try { fs.unlinkSync(linkBin); } catch {}
+                    try {
+                        fs.symlinkSync(targetBin, linkBin);
+                    } catch {
+                        fs.copyFileSync(targetBin, linkBin);
+                    }
+                    fs.chmodSync(linkBin, 0o755);
+                }
 
                 // Auto-configure terminal profiles across all settings
                 await configureTerminalProfile(destPath);

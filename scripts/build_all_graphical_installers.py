@@ -168,7 +168,31 @@ linux_tar = DIST_DIR / "NeuroShell-linux-x86_64.tar.gz"
 create_unix_bundle(linux_tar, is_macos=False)
 print(f"  ✓ Created: {linux_tar}")
 
-# 5. Summary of Built Release Assets
+# 5. Standalone POSIX Launcher (dist/neuroshell)
+print("\n[5/6] Creating Standalone POSIX Launcher...")
+standalone_launcher = b"#!/usr/bin/env bash\n# NeuroShell Universal POSIX Launcher\nDIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\nexport PYTHONPATH=\"$DIR:$PYTHONPATH\"\nif command -v python3 >/dev/null 2>&1; then PY=\"python3\"; else PY=\"python\"; fi\nexec \"$PY\" \"$DIR/main.py\" \"$@\"\n"
+(DIST_DIR / "neuroshell").write_bytes(standalone_launcher)
+print(f"  ✓ Created: {DIST_DIR / 'neuroshell'}")
+
+# 6. Upload All Assets to GitHub Release v5.7.0
+print("\n[6/6] Publishing All Assets to GitHub Release v5.7.0...")
+release_assets = [
+    DIST_DIR / "NeuroShell-macos-universal.tar.gz",
+    DIST_DIR / "NeuroShell-linux-x86_64.tar.gz",
+    DIST_DIR / "neuroshell",
+    DIST_DIR / "neuroshell-vscode-5.7.0.vsix",
+    DIST_DIR / "NeuroShell.exe",
+    DIST_DIR / "NeuroShell-windows-x64.zip",
+    DIST_DIR / f"NeuroShell-windows-x64-{VERSION}.msi",
+    DIST_DIR / "NeuroShell-Setup-x64.msi",
+    ROOT_DIR / "scripts" / "install.sh",
+    ROOT_DIR / "scripts" / "install.ps1",
+]
+upload_cmd = ["gh", "release", "upload", f"v{VERSION}"] + [str(p) for p in release_assets if p.exists()] + ["--clobber"]
+subprocess.run(upload_cmd, cwd=ROOT_DIR, check=False)
+print("  ✓ All assets uploaded to GitHub Release v5.7.0")
+
+# Summary of Built Release Assets
 print("\n" + "=" * 60)
 print("  All Graphical & Native Release Packages Built Successfully:")
 print("=" * 60)
