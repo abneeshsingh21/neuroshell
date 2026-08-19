@@ -16,9 +16,9 @@
 | Platform | 1-Click Graphical Installer | Portable / Command Line |
 | :--- | :--- | :--- |
 | 🪟 **Windows** | [**📥 Download Windows Setup Wizard (.msi)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64-5.7.0.msi) | [**`NeuroShell.exe` (Standalone)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe) • `irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 \| iex` |
-| 🍎 **macOS** | [**📥 Download macOS Universal Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `brew install neuroshell` |
+| 🍎 **macOS** | [**📥 Download macOS Universal Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `brew install https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/Formula/neuroshell.rb` |
 | 🐧 **Linux** | [**📥 Download Linux x86_64 Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-linux-x86_64.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `pip install neuroshell` |
-| 💻 **VS Code** | [**📥 Download VS Code Extension (.vsix)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.7.0.vsix) | 1-Click `⚡ Download & Setup NeuroShell` prompt |
+| 💻 **VS Code** | [**📥 Download VS Code Extension (.vsix)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.7.0.vsix) | 1-Click `⚡ Download & Setup NeuroShell` auto-configuration |
 
 ---
 
@@ -69,12 +69,13 @@ Whether you type in plain English, pipe live compiler errors into AI, orchestrat
 | :--- | :--- | :--- |
 | **🗣️ Plain English Translation** | Translates natural language into platform-specific commands. | `find all large mp4 files and sort by size` |
 | **🌊 First-Class AI Pipings** | Pipe stdout/stderr directly into streaming LLM reasoning. | `pytest 2>&1 \| @fix` or `git diff \| @ai "write commit"` |
+| **🐙 Remote Repo Intelligence** | Explore, read, and audit any GitHub repo worldwide without cloning. | `repos vercel`, `read 1`, `audit 1`, `tree 1` |
 | **🤖 Autonomous Agent Swarms** | Multi-step task execution with step-by-step TUI approval cards. | `@agent "Setup PostgreSQL 16 docker-compose & run migrations"` |
 | **🛡️ 4-Layer Zero-Trust Safety** | Blocks dangerous commands before execution with cryptographic logs. | Catches `rm -rf /`, fork bombs, unauthorized drops |
 | **💻 ConPTY Console Fidelity** | 100% interactive terminal fidelity for full-screen applications. | `vim`, `nano`, `htop`, `fzf`, `tmux`, `ssh`, `docker exec -it` |
 | **⌨️ Ghost-Text Autocomplete** | Real-time predictive inline suggestions from Markov learning. | Press `Right Arrow` or `Tab` to accept |
-| **⚙️ Interactive Slash Menus** | TrueColor arrow-key configuration for models, keys, and themes. | `/model`, `/api-key`, `/theme`, `/health`, `/audit`, `?` |
-| **🔌 Universal Extensions** | First-class integration in VS Code, Cursor, and native shells. | VS Code Extension (`26 KB`) + Zsh/Bash/Fish/PWSH hooks |
+| **⚙️ Interactive Slash Menus** | TrueColor arrow-key configuration for models, keys, and themes. | `/model`, `/api-key`, `/theme`, `/update`, `/repos` |
+| **🔌 Universal Extensions** | First-class integration in VS Code, Cursor, and native shells. | VS Code Extension (`28 KB`) + Zsh/Bash/Fish/PWSH hooks |
 
 ---
 
@@ -82,41 +83,54 @@ Whether you type in plain English, pipe live compiler errors into AI, orchestrat
 
 ### 🪟 1. Windows Installation
 
-#### Option A: Direct Executable (Easiest)
-1. Download **[`NeuroShell.exe`](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe)** from the latest release.
-2. Double-click or run from any terminal:
-   ```cmd
-   NeuroShell.exe
-   ```
+#### Option A: Direct Installer (Recommended)
+Download and run [**`NeuroShell-Setup-x64.msi`**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64-5.7.0.msi).
 
-#### Option B: Portable Zip
-Download **[`NeuroShell-windows-x64.zip`](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64.zip)**, extract to any directory, and add to your system `PATH`.
+#### Option B: Standalone Portable Executable
+Download **[`NeuroShell.exe`](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe)** and double-click to launch.
 
----
-
-### 🍎 2. macOS Installation (Apple Silicon & Intel)
-
-#### Option A: Homebrew (Recommended)
-```bash
-brew tap abneeshsingh21/neuroshell https://github.com/abneeshsingh21/neuroshell
-brew install neuroshell
-```
-
-#### Option B: 1-Line Universal Binary
-```bash
-curl -fsSL -O https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz
-tar -xzf NeuroShell-macos-universal.tar.gz
-sudo mv neuroshell /usr/local/bin/
+#### Option C: 1-Line PowerShell
+```powershell
+irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 | iex
 ```
 
 ---
 
-### 🐧 3. Linux Installation (x86_64)
+### 🍎 2. macOS Installation (Apple Silicon M1/M2/M3/M4 & Intel)
 
+#### Option A: 1-Line Universal Script (Recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash
+```
+
+#### Option B: Homebrew
+```bash
+# 1-Line Direct Formula Install:
+brew install https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/Formula/neuroshell.rb
+
+# OR via Homebrew Tap:
+brew tap abneeshsingh21/neuroshell && brew install neuroshell
+```
+
+#### Option C: 1-Click Finder Launcher (Zero Terminal Setup)
+1. Download [**`NeuroShell-macos-universal.tar.gz`**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz).
+2. Extract the archive in your Downloads folder.
+3. Double-click **`neuroshell.command`** in Finder $\rightarrow$ Launches NeuroShell in Terminal.app instantly!
+
+---
+
+### 🐧 3. Linux Installation (Ubuntu, Debian, Fedora, Arch, WSL2)
+
+#### Option A: 1-Line Universal Script
+```bash
+curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash
+```
+
+#### Option B: Portable Tarball
 ```bash
 curl -fsSL -O https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-linux-x86_64.tar.gz
 tar -xzf NeuroShell-linux-x86_64.tar.gz
-sudo mv neuroshell /usr/local/bin/
+sudo ./install.sh
 ```
 
 ---
