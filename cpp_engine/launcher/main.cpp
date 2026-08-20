@@ -3445,25 +3445,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-#if defined(_WIN32)
-    // 400ms Multi-Click Debounce Guard: Prevents mouse bounce/rapid clicks from spawning duplicate windows
-    HANDLE hLaunchGuard = CreateMutexW(NULL, FALSE, L"Local\\NeuroShell_Launch_Debounce_Mutex");
-    if (hLaunchGuard && GetLastError() == ERROR_ALREADY_EXISTS) {
-        DWORD waitRes = WaitForSingleObject(hLaunchGuard, 400);
-        if (waitRes != WAIT_OBJECT_0) {
-            CloseHandle(hLaunchGuard);
-            return 0;
-        }
-    }
-#endif
-
     EnterpriseTerminalHost host;
     host.Run();
-#if defined(_WIN32)
-    if (hLaunchGuard) {
-        ReleaseMutex(hLaunchGuard);
-        CloseHandle(hLaunchGuard);
-    }
-#endif
     return 0;
 }
