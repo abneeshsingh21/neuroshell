@@ -2442,6 +2442,123 @@ public:
         std::cout << "\n  " << C_GREEN << "🌐 Opened in browser: " << C_BOLD << C_WHITE << url << C_RESET << "\n\n";
     }
 
+    void HandleMkCommand(const std::string& rawInput) {
+        std::string expr = rawInput;
+        if (expr.rfind("mk ", 0) == 0) expr = expr.substr(3);
+        else if (expr.rfind("new ", 0) == 0) expr = expr.substr(4);
+        else if (expr.rfind("create ", 0) == 0) expr = expr.substr(7);
+
+        while (!expr.empty() && (expr.front() == ' ' || expr.front() == '\t')) expr.erase(0, 1);
+        while (!expr.empty() && (expr.back() == ' ' || expr.back() == '\t')) expr.pop_back();
+
+        if (expr.empty() || expr == "mk" || expr == "new") {
+            std::cout << "\n" << C_BOLD << C_CYAN << "╭── ⚡ NeuroShell Fast Scaffolder (mk) ────────────────────────────────╮" << C_RESET << "\n";
+            std::cout << C_CYAN << "│ " << C_WHITE << "Ultra-compact shortcut to create files & directories with 1 command" << C_RESET << "\n";
+            std::cout << C_CYAN << "│\n" << C_RESET;
+            std::cout << C_CYAN << "│ " << C_BOLD << C_WHITE << "1. Create file with auto-parents:   " << C_YELLOW << "mk src/components/Button.tsx" << C_RESET << "\n";
+            std::cout << C_CYAN << "│ " << C_BOLD << C_WHITE << "2. Brace expansion (multi-files):   " << C_YELLOW << "mk api/{routes.py,models.py,db.py}" << C_RESET << "\n";
+            std::cout << C_CYAN << "│ " << C_BOLD << C_WHITE << "3. Folder colon syntax:             " << C_YELLOW << "mk backend: main.py, .env, server.py" << C_RESET << "\n";
+            std::cout << C_CYAN << "│ " << C_BOLD << C_WHITE << "4. Create folder only:              " << C_YELLOW << "mk my-project/" << C_RESET << "\n";
+            std::cout << C_CYAN << "╰──────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        }
+
+        std::vector<std::string> targets;
+        size_t colonPos = expr.find(':');
+
+        if (colonPos != std::string::npos && expr.find("http://") == std::string::npos && expr.find("https://") == std::string::npos) {
+            std::string baseDir = expr.substr(0, colonPos);
+            std::string subList = expr.substr(colonPos + 1);
+            while (!baseDir.empty() && (baseDir.front() == ' ' || baseDir.front() == '\t')) baseDir.erase(0, 1);
+            while (!baseDir.empty() && (baseDir.back() == ' ' || baseDir.back() == '\t')) baseDir.pop_back();
+
+            std::stringstream ss(subList);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) item.erase(0, 1);
+                while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) item.pop_back();
+                if (!item.empty()) {
+                    targets.push_back((fs::path(baseDir) / item).string());
+                }
+            }
+        }
+        else if (expr.find('{') != std::string::npos && expr.find('}') != std::string::npos) {
+            size_t bOpen = expr.find('{');
+            size_t bClose = expr.find('}');
+            std::string prefix = expr.substr(0, bOpen);
+            std::string suffix = (bClose + 1 < expr.length()) ? expr.substr(bClose + 1) : "";
+            std::string inner = expr.substr(bOpen + 1, bClose - bOpen - 1);
+
+            std::stringstream ss(inner);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) item.erase(0, 1);
+                while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) item.pop_back();
+                if (!item.empty()) {
+                    targets.push_back(prefix + item + suffix);
+                }
+            }
+        }
+        else {
+            std::stringstream ss(expr);
+            std::string item;
+            while (ss >> item) {
+                targets.push_back(item);
+            }
+        }
+
+        if (targets.empty()) return;
+
+        int createdFiles = 0;
+        int createdDirs = 0;
+        std::cout << "\n  " << C_BOLD << C_CYAN << "⚡ Materializing Scaffolding (" << targets.size() << " target" << (targets.size() > 1 ? "s" : "") << "):" << C_RESET << "\n";
+
+        for (const auto& rawT : targets) {
+            std::string t = rawT;
+            std::replace(t.begin(), t.end(), '\\', '/');
+            fs::path p(t);
+
+            bool isExplicitDir = (t.back() == '/') || (!p.has_extension() && (colonPos != std::string::npos || (targets.size() == 1 && expr.find('.') == std::string::npos && expr.find('/') == std::string::npos)));
+
+            try {
+                if (isExplicitDir) {
+                    if (!fs::exists(p)) {
+                        fs::create_directories(p);
+                        createdDirs++;
+                        std::cout << "    • " << C_CYAN << "📁 Created directory: " << C_BOLD << C_WHITE << p.string() << C_RESET << "\n";
+                    } else {
+                        std::cout << "    • " << C_MUTED << "📁 Directory exists:    " << p.string() << C_RESET << "\n";
+                    }
+                } else {
+                    if (p.has_parent_path() && !fs::exists(p.parent_path())) {
+                        fs::create_directories(p.parent_path());
+                        createdDirs++;
+                        std::cout << "    • " << C_CYAN << "📁 Created parent dir: " << C_WHITE << p.parent_path().string() << C_RESET << "\n";
+                    }
+
+                    if (!fs::exists(p)) {
+                        std::ofstream f(p);
+                        if (f.is_open()) {
+                            if (p.filename() == ".gitignore") {
+                                f << "node_modules/\n__pycache__/\n*.pyc\n.env\ndist/\nbuild/\n.DS_Store\n";
+                            } else if (p.filename() == "README.md") {
+                                f << "# " << p.stem().string() << "\n\nCreated with NeuroShell.\n";
+                            }
+                            f.close();
+                            createdFiles++;
+                            std::cout << "    • " << C_GREEN << "📄 Created file:       " << C_BOLD << C_WHITE << p.string() << C_RESET << "\n";
+                        }
+                    } else {
+                        std::cout << "    • " << C_MUTED << "📄 File exists:        " << p.string() << C_RESET << "\n";
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cout << "    • " << C_RED << "❌ Error creating " << t << ": " << e.what() << C_RESET << "\n";
+            }
+        }
+        std::cout << "\n";
+    }
+
     void HandleSlashCommand(const std::string& input) {
         std::string lower = input;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -2767,14 +2884,15 @@ public:
             HandleTreeCommand(target);
             return;
         }
-        if (lowerTrim.rfind("clone ", 0) == 0) {
-            std::string target = lowerTrim.substr(6);
-            HandleCloneCommand(target);
-            return;
-        }
         if (lowerTrim.rfind("open ", 0) == 0 && (isdigit((unsigned char)lowerTrim[5]) || lowerTrim.find("/") != std::string::npos)) {
             std::string target = lowerTrim.substr(5);
             HandleOpenRepoCommand(target);
+            return;
+        }
+
+        // ── Smart File & Folder Scaffolder: "mk", "new" ──
+        if (lowerTrim == "mk" || lowerTrim.rfind("mk ", 0) == 0 || lowerTrim.rfind("new ", 0) == 0) {
+            HandleMkCommand(input);
             return;
         }
 

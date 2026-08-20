@@ -27,6 +27,21 @@ print("=" * 60)
 print(f"  Packaging Commercial Graphical Installers v{VERSION}")
 print("=" * 60)
 
+# 0. Compile C++ Launcher Host with MSVC C++20
+vcvars_candidates = [
+    r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+    r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+    r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+    r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+]
+vcvars = next((p for p in vcvars_candidates if os.path.exists(p)), None)
+if vcvars:
+    print("\n[0/6] Compiling C++ Launcher Host (MSVC C++20)...")
+    cl_cmd = f'call "{vcvars}" && rc /nologo /fo dist\\resource.res cpp_engine\\launcher\\resource.rc && cl /nologo /O2 /EHsc /std:c++20 /W3 /D_CRT_SECURE_NO_WARNINGS /DWIN32_LEAN_AND_MEAN /utf-8 /I. cpp_engine\\launcher\\main.cpp dist\\resource.res user32.lib shell32.lib advapi32.lib /link /SUBSYSTEM:CONSOLE /OUT:dist\\NeuroShell.exe /MANIFEST:EMBED'
+    res = subprocess.run(cl_cmd, shell=True, cwd=ROOT_DIR)
+    if res.returncode == 0:
+        print("  ✓ Compiled: dist/NeuroShell.exe")
+
 # 1. Windows MSI Installer (WiX Toolset v6)
 print("\n[1/5] Building Windows MSI Installers...")
 subprocess.run([

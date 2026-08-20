@@ -1452,6 +1452,13 @@ class NeuroShell:
             self.tracer.end_trace(cid)
             return
 
+        if lower == "mk" or lower.startswith("mk ") or lower.startswith("new ") or lower.startswith("scaffold "):
+            self._handle_mk_command(user_input)
+            total_ms = (time.time() - start_time) * 1000
+            self.metrics.record_latency("total_pipeline", total_ms)
+            self.tracer.end_trace(cid)
+            return
+
         if lower.startswith("github"):
             self._handle_github_command(user_input)
             total_ms = (time.time() - start_time) * 1000
@@ -1762,6 +1769,72 @@ class NeuroShell:
             console.print()
         except Exception as e:
             console.print(f"  [red]❌ Failed to fetch remote tree: {e}[/red]")
+
+    def _handle_mk_command(self, user_input: str):
+        """Universal high-speed file & folder scaffolder."""
+        raw = user_input.strip()
+        for prefix in ("mk ", "new ", "scaffold "):
+            if raw.lower().startswith(prefix):
+                raw = raw[len(prefix):].strip()
+                break
+
+        if not raw or raw in ("mk", "new"):
+            self.ui.print_info("  ⚡ NeuroShell Fast Scaffolder (mk)")
+            self.ui.print_info("  Usage:")
+            self.ui.print_info("    • mk src/components/Button.tsx     (Auto-creates folder + file)")
+            self.ui.print_info("    • mk api/{routes.py,models.py}      (Brace expansion)")
+            self.ui.print_info("    • mk backend: main.py, .env, db.py  (Folder colon syntax)")
+            self.ui.print_info("    • mk my-folder/                     (Folder only)")
+            return
+
+        targets = []
+        if ":" in raw and not raw.startswith("http"):
+            base, items = raw.split(":", 1)
+            base = base.strip()
+            for it in items.split(","):
+                it = it.strip()
+                if it:
+                    targets.append(os.path.join(base, it))
+        elif "{" in raw and "}" in raw:
+            b_open = raw.find("{")
+            b_close = raw.find("}")
+            prefix = raw[:b_open]
+            suffix = raw[b_close + 1:]
+            inner = raw[b_open + 1:b_close]
+            for it in inner.split(","):
+                it = it.strip()
+                if it:
+                    targets.append(prefix + it + suffix)
+        else:
+            targets = [t.strip() for t in raw.split() if t.strip()]
+
+        if not targets:
+            return
+
+        from pathlib import Path
+        self.ui.print_info(f"  ⚡ Materializing Scaffolding ({len(targets)} targets):")
+        for t in targets:
+            t_norm = os.path.normpath(t)
+            is_dir = t.endswith(("/", "\\")) or (not os.path.splitext(t)[1] and len(targets) == 1 and ":" not in raw and "{" not in user_input)
+            try:
+                if is_dir:
+                    os.makedirs(t_norm, exist_ok=True)
+                    self.ui.print_info(f"    • 📁 Created directory: {t_norm}")
+                else:
+                    parent = os.path.dirname(t_norm)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    if not os.path.exists(t_norm):
+                        with open(t_norm, "w", encoding="utf-8") as f:
+                            if os.path.basename(t_norm) == ".gitignore":
+                                f.write("node_modules/\n__pycache__/\n*.pyc\n.env\ndist/\nbuild/\n.DS_Store\n")
+                            elif os.path.basename(t_norm) == "README.md":
+                                f.write(f"# {Path(t_norm).stem}\n\nCreated with NeuroShell.\n")
+                        self.ui.print_info(f"    • 📄 Created file:       {t_norm}")
+                    else:
+                        self.ui.print_info(f"    • 📄 File exists:        {t_norm}")
+            except Exception as e:
+                self.ui.print_error(f"    • ❌ Error creating {t_norm}: {e}")
 
     def _handle_github_command(self, user_input: str):
         """Handle GitHub API-style commands via GitHub CLI."""
