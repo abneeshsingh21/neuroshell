@@ -1,54 +1,123 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License").
 """
-NeuroShell High-Performance Shared Memory (SHM) IPC Bridge
-Connects to C++20 SHMRingBuffer for sub-50μs zero-copy IPC streaming.
+NeuroShell High-Performance Shared Memory (SHM) IPC Bridge.
+
+Connects to the C++20 SHMRingBuffer (cpp_engine/launcher/shm_ipc.hpp) for
+zero-copy IPC streaming. The binary ABI (v2) is:
+
+    offset   0  u32  magic        "NEUR" (0x4E455552)
+    offset   4  u32  version      == 2
+    offset   8  u32  capacity
+    offset  12  u32  flags
+    offset  64  u64  write_cursor
+    offset  72  u64  read_cursor
+    offset  80  u32  message_sequence
+    offset 128  u8[] ring data (capacity bytes)
+
+v5.8 improvements:
+  * ABI version + capacity validation on connect (rejects mismatched peers).
+  * Wrap-aware bulk slice copies replace byte-by-byte Python loops
+    (orders of magnitude faster for large payloads).
+  * message_sequence is bumped on write to mirror the C++ host behaviour.
 """
+
+from __future__ import annotations
 
 import os
 import struct
 import sys
-import time
+import threading
 from typing import Optional
 
-SHM_RING_CAPACITY = 8 * 1024 * 1024  # 8 MB
+SHM_RING_CAPACITY = 8 * 1024 * 1024  # 8 MB — must match C++ host
 SHM_MAGIC = 0x4E455552  # "NEUR"
+SHM_ABI_VERSION = 2
+SHM_HEADER_SIZE = 128
 SHM_WIN_NAME = "Local\\NeuroShell_SHM_Ring"
 SHM_POSIX_NAME = "/neuroshell_shm_ring"
 
+_OFF_MAGIC = 0
+_OFF_WRITE = 64
+_OFF_READ = 72
+_OFF_SEQ = 80
+
 
 class SHMClientBridge:
+    """Peer-side attachment to the host-owned shared-memory ring."""
+
     def __init__(self):
         self._buf = None
         self._is_connected = False
+        self._lock = threading.Lock()
         self._connect()
 
-    def _connect(self):
+    # ── Connection ────────────────────────────────────────────
+
+    def _connect(self) -> None:
+        total = SHM_HEADER_SIZE + SHM_RING_CAPACITY
         try:
+            import mmap
+
             if sys.platform == "win32":
-                import mmap
-
-                # Windows Named Shared Memory
-                self._buf = mmap.mmap(0, SHM_RING_CAPACITY + 128, tagname=SHM_WIN_NAME)
-                self._is_connected = True
+                self._buf = mmap.mmap(-1, total, tagname=SHM_WIN_NAME)
             else:
-                import mmap
-
-                # POSIX Shared Memory
-                if os.path.exists("/dev/shm" + SHM_POSIX_NAME):
-                    fd = os.open("/dev/shm" + SHM_POSIX_NAME, os.O_RDWR)
-                    self._buf = mmap.mmap(fd, SHM_RING_CAPACITY + 128)
+                path = "/dev/shm" + SHM_POSIX_NAME
+                if not os.path.exists(path):
+                    return
+                fd = os.open(path, os.O_RDWR)
+                try:
+                    self._buf = mmap.mmap(fd, total)
+                finally:
                     os.close(fd)
-                    self._is_connected = True
+
+            if not self._validate_header():
+                self.close()
+                return
+            self._is_connected = True
         except Exception:
             self._is_connected = False
+            self._buf = None
+
+    def _validate_header(self) -> bool:
+        if self._buf is None:
+            return False
+        magic, version, capacity, _flags = struct.unpack_from("<IIII", self._buf, _OFF_MAGIC)
+        return magic == SHM_MAGIC and version == SHM_ABI_VERSION and capacity == SHM_RING_CAPACITY
 
     @property
     def is_connected(self) -> bool:
         return self._is_connected
 
+    # ── Cursor helpers ────────────────────────────────────────
+
+    def _get_cursors(self) -> tuple[int, int]:
+        (w,) = struct.unpack_from("<Q", self._buf, _OFF_WRITE)
+        (r,) = struct.unpack_from("<Q", self._buf, _OFF_READ)
+        return w, r
+
+    def _ring_write(self, pos: int, data: bytes) -> None:
+        """Wrap-aware bulk copy into the ring."""
+        start = pos % SHM_RING_CAPACITY
+        first = min(len(data), SHM_RING_CAPACITY - start)
+        base = SHM_HEADER_SIZE
+        self._buf[base + start : base + start + first] = data[:first]
+        if first < len(data):
+            self._buf[base : base + len(data) - first] = data[first:]
+
+    def _ring_read(self, pos: int, length: int) -> bytes:
+        start = pos % SHM_RING_CAPACITY
+        first = min(length, SHM_RING_CAPACITY - start)
+        base = SHM_HEADER_SIZE
+        out = bytes(self._buf[base + start : base + start + first])
+        if first < length:
+            out += bytes(self._buf[base : base + length - first])
+        return out
+
+    # ── Public API ────────────────────────────────────────────
+
     def write_message(self, message: str) -> bool:
-        if not self._is_connected or not self._buf:
+        if not self._is_connected or self._buf is None:
             return False
 
         try:
@@ -57,79 +126,47 @@ class SHMClientBridge:
             if data_len + 4 > SHM_RING_CAPACITY // 2:
                 return False
 
-            self._buf.seek(0)
-            magic, version, capacity, flags = struct.unpack("<IIII", self._buf.read(16))
-            if magic != SHM_MAGIC:
-                return False
+            with self._lock:
+                write_cursor, read_cursor = self._get_cursors()
+                if (write_cursor - read_cursor) + data_len + 4 > SHM_RING_CAPACITY:
+                    return False  # Ring full — backpressure
 
-            # Read cursors at alignment offset 64
-            self._buf.seek(64)
-            (write_cursor,) = struct.unpack("<Q", self._buf.read(8))
-            (read_cursor,) = struct.unpack("<Q", self._buf.read(8))
+                self._ring_write(write_cursor, struct.pack("<I", data_len))
+                self._ring_write(write_cursor + 4, data)
 
-            # Check capacity
-            if (write_cursor - read_cursor) + data_len + 4 > SHM_RING_CAPACITY:
-                return False  # Buffer full
-
-            # Write length + payload into circular buffer
-            data_offset = 128
-            len_bytes = struct.pack("<I", data_len)
-
-            for i in range(4):
-                idx = data_offset + ((write_cursor + i) % SHM_RING_CAPACITY)
-                self._buf[idx] = len_bytes[i]
-
-            for i in range(data_len):
-                idx = data_offset + ((write_cursor + 4 + i) % SHM_RING_CAPACITY)
-                self._buf[idx] = data[i]
-
-            # Update write cursor
-            self._buf.seek(64)
-            self._buf.write(struct.pack("<Q", write_cursor + 4 + data_len))
+                # Publish: cursor last (matches release semantics on C++ side)
+                struct.pack_into("<Q", self._buf, _OFF_WRITE, write_cursor + 4 + data_len)
+                (seq,) = struct.unpack_from("<I", self._buf, _OFF_SEQ)
+                struct.pack_into("<I", self._buf, _OFF_SEQ, (seq + 1) & 0xFFFFFFFF)
             return True
         except Exception:
             return False
 
     def read_message(self) -> Optional[str]:
-        if not self._is_connected or not self._buf:
+        if not self._is_connected or self._buf is None:
             return None
 
         try:
-            self._buf.seek(64)
-            (write_cursor,) = struct.unpack("<Q", self._buf.read(8))
-            (read_cursor,) = struct.unpack("<Q", self._buf.read(8))
+            with self._lock:
+                write_cursor, read_cursor = self._get_cursors()
+                if read_cursor >= write_cursor:
+                    return None
 
-            if read_cursor >= write_cursor:
-                return None
+                (data_len,) = struct.unpack("<I", self._ring_read(read_cursor, 4))
+                if data_len > SHM_RING_CAPACITY // 2 or read_cursor + 4 + data_len > write_cursor:
+                    # Desync recovery — fast-forward to writer position
+                    struct.pack_into("<Q", self._buf, _OFF_READ, write_cursor)
+                    return None
 
-            data_offset = 128
-            len_bytes = bytearray(4)
-            for i in range(4):
-                idx = data_offset + ((read_cursor + i) % SHM_RING_CAPACITY)
-                len_bytes[i] = self._buf[idx]
+                payload = self._ring_read(read_cursor + 4, data_len)
+                struct.pack_into("<Q", self._buf, _OFF_READ, read_cursor + 4 + data_len)
 
-            (data_len,) = struct.unpack("<I", len_bytes)
-            if data_len > SHM_RING_CAPACITY // 2:
-                # Desync recovery
-                self._buf.seek(72)
-                self._buf.write(struct.pack("<Q", write_cursor))
-                return None
-
-            payload_bytes = bytearray(data_len)
-            for i in range(data_len):
-                idx = data_offset + ((read_cursor + 4 + i) % SHM_RING_CAPACITY)
-                payload_bytes[i] = self._buf[idx]
-
-            # Update read cursor
-            self._buf.seek(72)
-            self._buf.write(struct.pack("<Q", read_cursor + 4 + data_len))
-
-            return payload_bytes.decode("utf-8", errors="replace")
+            return payload.decode("utf-8", errors="replace")
         except Exception:
             return None
 
-    def close(self):
-        if self._buf:
+    def close(self) -> None:
+        if self._buf is not None:
             try:
                 self._buf.close()
             except Exception:

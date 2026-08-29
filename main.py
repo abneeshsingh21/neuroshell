@@ -2729,7 +2729,9 @@ class NeuroShell:
             return True
 
         if cmd in ("clip", "clipboard"):
-            self._handle_slash_clip(args)
+            # Pass the raw argument string too: shlex strips quoting, which
+            # corrupted copied text ("echo 'Hello World'" -> "echo Hello World").
+            self._handle_slash_clip(args, raw_args=arg_str)
             return True
 
         if cmd in ("profile", "workspace"):
@@ -3072,7 +3074,7 @@ class NeuroShell:
         else:
             self.ui.print_info("  Usage: /record [start <desc>|stop|list|replay <file.json.gz>]")
 
-    def _handle_slash_clip(self, args: list[str]):
+    def _handle_slash_clip(self, args: list[str], raw_args: str = ""):
         """Clipboard copy/paste commands."""
         if not hasattr(self, "ext_clipboard") or not self.ext_clipboard:
             self.ui.print_error("  Clipboard manager unavailable.")
@@ -3080,7 +3082,13 @@ class NeuroShell:
 
         sub = args[0].lower() if args else "paste"
         if sub == "copy" and len(args) >= 2:
-            txt = " ".join(args[1:])
+            # Use the verbatim text after the "copy" keyword so quotes and
+            # spacing survive the round-trip exactly as typed.
+            if raw_args:
+                _, _, verbatim = raw_args.partition(args[0])
+                txt = verbatim.strip() or " ".join(args[1:])
+            else:
+                txt = " ".join(args[1:])
             if self.ext_clipboard.copy(txt):
                 self.ui.print_info(f"  📋 Copied {len(txt)} chars to clipboard")
             else:

@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Version = "5.7.0"
+$Version = "5.8.0"
 $Repo = "abneeshsingh21/neuroshell"
 $DownloadUrl = "https://github.com/$Repo/releases/latest/download/NeuroShell.exe"
 

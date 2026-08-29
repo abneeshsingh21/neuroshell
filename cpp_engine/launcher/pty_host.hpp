@@ -9,6 +9,10 @@
 #include <atomic>
 #include <thread>
 
+#if !defined(_WIN32)
+    #include <poll.h>
+#endif
+
 #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
@@ -156,7 +160,12 @@ public:
         }
 #else
         if (masterFd >= 0) {
-            write(masterFd, data, len);
+            size_t off = 0;
+            while (off < len) {
+                ssize_t n = write(masterFd, data + off, len - off);
+                if (n <= 0) break; // child gone / EIO — stop forwarding
+                off += (size_t)n;
+            }
         }
 #endif
     }
@@ -176,6 +185,48 @@ public:
         ssize_t n = 0;
         while ((n = read(masterFd, buffer, sizeof(buffer))) > 0) {
             onData(buffer, (size_t)n);
+        }
+#endif
+    }
+
+    // Forward local stdin keystrokes into the child PTY until the child exits.
+    // Without this pump, full-screen apps (vim, htop, ssh) rendered but never
+    // received input — the terminal appeared frozen.
+    void PumpStdinLoop() {
+#if defined(_WIN32)
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        if (hStdin == INVALID_HANDLE_VALUE) return;
+        char buf[512];
+        while (isRunning.load()) {
+            DWORD waitRes = WaitForSingleObject(hStdin, 50);
+            if (waitRes != WAIT_OBJECT_0) continue;
+
+            INPUT_RECORD records[64];
+            DWORD count = 0;
+            if (!PeekConsoleInputA(hStdin, records, 64, &count) || count == 0) continue;
+
+            DWORD readCount = 0;
+            if (!ReadConsoleInputA(hStdin, records, 64, &readCount)) break;
+
+            size_t len = 0;
+            for (DWORD i = 0; i < readCount && len < sizeof(buf); ++i) {
+                if (records[i].EventType == KEY_EVENT &&
+                    records[i].Event.KeyEvent.bKeyDown &&
+                    records[i].Event.KeyEvent.uChar.AsciiChar != 0) {
+                    buf[len++] = records[i].Event.KeyEvent.uChar.AsciiChar;
+                }
+            }
+            if (len > 0) WriteInput(buf, len);
+        }
+#else
+        char buf[512];
+        while (isRunning.load()) {
+            struct pollfd pfd = { STDIN_FILENO, POLLIN, 0 };
+            int pr = poll(&pfd, 1, 50);
+            if (pr <= 0) continue;
+            ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+            if (n <= 0) break;
+            WriteInput(buf, (size_t)n);
         }
 #endif
     }

@@ -31,6 +31,8 @@
 #include <map>
 #include <set>
 #include <unordered_set>
+#include <regex>
+#include <functional>
 #include <thread>
 #include <mutex>
 #include <cctype>
@@ -75,6 +77,8 @@
 #include "os_vault.hpp"
 #include "task_supervisor.hpp"
 #include "test_orchestrator.hpp"
+#include "version.hpp"
+#include "safe_exec.hpp"
 
 namespace fs = std::filesystem;
 
@@ -93,6 +97,32 @@ namespace fs = std::filesystem;
 #define C_BOLD    "\033[1m"
 #define C_DIM     "\033[2m"
 #define C_RESET   "\033[0m"
+
+// Active foreground child process group. When non-zero, a SIGINT received by
+// the host is relayed to this group so Ctrl+C actually interrupts the running
+// command (raw mode disables ISIG, so without this Ctrl+C was swallowed).
+#include <atomic>
+static std::atomic<long> g_foreground_pgid{0};
+
+#if defined(NEUROSHELL_PLATFORM_POSIX)
+static void NeuroShellSigintRelay(int) {
+    long pgid = g_foreground_pgid.load(std::memory_order_relaxed);
+    if (pgid > 0) {
+        kill(-(pid_t)pgid, SIGINT);
+    }
+}
+#endif
+
+// Repeat a multi-byte UTF-8 glyph N times. std::string(n, '─') is undefined for
+// multi-byte glyphs (multi-character constant overflows to a single garbage byte).
+static inline std::string RepeatGlyph(const char* glyph, int count) {
+    std::string out;
+    if (count <= 0) return out;
+    size_t glen = std::strlen(glyph);
+    out.reserve(static_cast<size_t>(count) * glen);
+    for (int i = 0; i < count; ++i) out += glyph;
+    return out;
+}
 
 // Forward Declaration for Crash Filters
 #if defined(NEUROSHELL_PLATFORM_WINDOWS)
@@ -206,6 +236,16 @@ public:
         sigaction(SIGFPE, &sa, nullptr);
         sigaction(SIGILL, &sa, nullptr);
 
+        // SIGINT relay: forward Ctrl+C to the active foreground child job.
+        struct sigaction saInt;
+        memset(&saInt, 0, sizeof(saInt));
+        saInt.sa_handler = NeuroShellSigintRelay;
+        saInt.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &saInt, nullptr);
+
+        // Don't die on writes to a closed pipe (child exits mid-stream).
+        signal(SIGPIPE, SIG_IGN);
+
         if (isatty(STDIN_FILENO)) {
             if (tcgetattr(STDIN_FILENO, &origTermios) == 0) {
                 struct termios raw = origTermios;
@@ -232,6 +272,37 @@ public:
         if (rawEnabled) {
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
             rawEnabled = false;
+        }
+#endif
+    }
+
+    // Temporarily hand the terminal back to a foreground child process:
+    // restores cooked mode (ISIG on) so Ctrl+C reaches the child instead of
+    // being swallowed by our raw-mode input loop.
+    void SuspendRaw() {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        if (hIn != INVALID_HANDLE_VALUE) SetConsoleMode(hIn, origInMode);
+#else
+        if (rawEnabled) {
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
+        }
+#endif
+    }
+
+    void ResumeRaw() {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        if (hIn != INVALID_HANDLE_VALUE) {
+            DWORD dwInMode = origInMode | ENABLE_VIRTUAL_TERMINAL_INPUT;
+            SetConsoleMode(hIn, dwInMode);
+        }
+#else
+        if (rawEnabled && isatty(STDIN_FILENO)) {
+            struct termios raw = origTermios;
+            raw.c_lflag &= ~(ICANON | ECHO | ISIG | IEXTEN);
+            raw.c_iflag &= ~(IXON | ICRNL);
+            raw.c_cc[VMIN] = 1;
+            raw.c_cc[VTIME] = 0;
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
         }
 #endif
     }
@@ -263,6 +334,22 @@ public:
         }
 #endif
         return 80;
+    }
+
+    static int GetWindowRows() {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hOut != INVALID_HANDLE_VALUE && GetConsoleScreenBufferInfo(hOut, &csbi)) {
+            return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+        }
+#else
+        struct winsize ws;
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0) {
+            return ws.ws_row;
+        }
+#endif
+        return 24;
     }
 
     KeyEvent ReadKey() {
@@ -328,7 +415,7 @@ public:
                             if (seq[1] == 'F') { ev.code = KeyCode::End; return ev; }
                             if (seq[1] >= '1' && seq[1] <= '4') {
                                 char t = 0;
-                                read(STDIN_FILENO, &t, 1);
+                                if (read(STDIN_FILENO, &t, 1) <= 0) { ev.code = KeyCode::Escape; return ev; }
                                 if (t == '~') {
                                     if (seq[1] == '1') ev.code = KeyCode::Home;
                                     else if (seq[1] == '3') ev.code = KeyCode::Delete;
@@ -344,10 +431,17 @@ public:
             return ev;
         }
 
-        if (c >= 32 && c <= 126) {
-            ev.code = KeyCode::Printable;
-            ev.ch = c;
-            return ev;
+        {
+            unsigned char uc = static_cast<unsigned char>(c);
+            // Accept printable ASCII AND UTF-8 continuation/lead bytes so
+            // non-English input (accents, CJK, emoji in paths) works. Each
+            // byte is inserted into the std::string buffer; multi-byte
+            // sequences reassemble naturally.
+            if ((uc >= 32 && uc != 127) || uc >= 0x80) {
+                ev.code = KeyCode::Printable;
+                ev.ch = c;
+                return ev;
+            }
         }
 #endif
         return ev;
@@ -973,22 +1067,63 @@ public:
         return false;
     }
 
-    static ExecResult Execute(const std::string& command) {
+    using LineFilter = std::function<std::string(const std::string&)>;
+
+    static ExecResult Execute(const std::string& command, const LineFilter& lineFilter = nullptr) {
         ExecResult res;
+
+        // Line-buffered filter application: secrets are redacted BEFORE they
+        // ever reach the viewport (previously output was displayed raw and
+        // only the recorded copy was masked).
+        auto emit = [&lineFilter](std::string& pending, const char* data, size_t len,
+                                  std::string& rolling, std::mutex& lock, size_t maxCapture) {
+            pending.append(data, len);
+            size_t nl;
+            while ((nl = pending.find('\n')) != std::string::npos) {
+                std::string line = pending.substr(0, nl + 1);
+                pending.erase(0, nl + 1);
+                if (lineFilter) line = lineFilter(line);
+                std::cout << line << std::flush;
+                std::lock_guard<std::mutex> lk(lock);
+                rolling += line;
+                if (rolling.size() > maxCapture * 2) {
+                    rolling.erase(0, rolling.size() - maxCapture);
+                }
+            }
+        };
+        auto flushPending = [&lineFilter](std::string& pending, std::string& rolling,
+                                          std::mutex& lock, size_t maxCapture) {
+            if (pending.empty()) return;
+            std::string line = lineFilter ? lineFilter(pending) : pending;
+            std::cout << line << std::flush;
+            std::lock_guard<std::mutex> lk(lock);
+            rolling += line;
+            if (rolling.size() > maxCapture * 2) {
+                rolling.erase(0, rolling.size() - maxCapture);
+            }
+            pending.clear();
+        };
 
         // Passthrough for interactive full-screen TUI apps with ConPTY / openpty
         if (IsInteractiveTUI(command)) {
             int cols = PlatformTerminal::GetWindowColumns();
+            int rows = PlatformTerminal::GetWindowRows();
             NeuroShell::PTY::PseudoTerminalHost pty;
-            if (pty.Spawn(command, (short)cols, 30)) {
+            if (pty.Spawn(command, (short)cols, (short)rows)) {
                 std::thread outThread([&]() {
                     pty.StreamOutput([](const char* data, size_t len) {
                         std::cout.write(data, len);
                         std::cout.flush();
                     });
                 });
+                // Critical fix: pump local keystrokes into the child PTY.
+                // Previously input was never forwarded, so vim/htop/ssh froze.
+                std::thread inThread([&]() {
+                    pty.PumpStdinLoop();
+                });
                 res.exitCode = pty.WaitForExit();
                 if (outThread.joinable()) outThread.join();
+                if (inThread.joinable()) inThread.join();
                 return res;
             }
             res.exitCode = system(command.c_str());
@@ -1050,15 +1185,11 @@ public:
         std::thread reader([&]() {
             char buffer[4096];
             DWORD bytesRead = 0;
+            std::string pending;
             while (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-                buffer[bytesRead] = '\0';
-                std::cout << buffer << std::flush;
-                std::lock_guard<std::mutex> lock(outLock);
-                rollingOutput.append(buffer, bytesRead);
-                if (rollingOutput.size() > MAX_CAPTURE * 2) {
-                    rollingOutput.erase(0, rollingOutput.size() - MAX_CAPTURE);
-                }
+                emit(pending, buffer, bytesRead, rollingOutput, outLock, MAX_CAPTURE);
             }
+            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE);
         });
 
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -1110,22 +1241,23 @@ public:
         std::mutex outLock;
         const size_t MAX_CAPTURE = 65536;
 
+        // Register the child as the active foreground job so a Ctrl+C typed
+        // while it runs can be delivered to its process group (SIGINT relay).
+        g_foreground_pgid.store(pid, std::memory_order_relaxed);
+
         std::thread reader([&]() {
             char buffer[4096];
             ssize_t n = 0;
+            std::string pending;
             while ((n = read(pipefds[0], buffer, sizeof(buffer) - 1)) > 0) {
-                buffer[n] = '\0';
-                std::cout << buffer << std::flush;
-                std::lock_guard<std::mutex> lock(outLock);
-                rollingOutput.append(buffer, n);
-                if (rollingOutput.size() > MAX_CAPTURE * 2) {
-                    rollingOutput.erase(0, rollingOutput.size() - MAX_CAPTURE);
-                }
+                emit(pending, buffer, (size_t)n, rollingOutput, outLock, MAX_CAPTURE);
             }
+            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE);
         });
 
         int status = 0;
         waitpid(pid, &status, 0);
+        g_foreground_pgid.store(0, std::memory_order_relaxed);
         if (WIFEXITED(status)) res.exitCode = WEXITSTATUS(status);
         else if (WIFSIGNALED(status)) res.exitCode = 128 + WTERMSIG(status);
         else res.exitCode = 1;
@@ -1175,6 +1307,7 @@ private:
 
     static inline std::atomic<bool> g_update_available{false};
     static inline std::string g_remote_version = "";
+    bool shouldExit = false;
 
     void CheckForUpdatesAsync() {
         std::thread([]() {
@@ -1196,7 +1329,7 @@ private:
                                 size_t endVer = content.find("\"", verPos + 18);
                                 if (endVer != std::string::npos) {
                                     std::string cachedVer = content.substr(verPos + 18, endVer - verPos - 18);
-                                    if (!cachedVer.empty() && cachedVer != "5.7.0" && cachedVer > "5.7.0") {
+                                    if (!cachedVer.empty() && neuroshell::version::IsNewerRelease(cachedVer)) {
                                         g_remote_version = cachedVer;
                                         g_update_available.store(true);
                                     }
@@ -1232,7 +1365,7 @@ private:
                             fs::create_directories(cachePath.parent_path());
                             std::ofstream out(cachePath);
                             out << "{\"last_check\":" << now << ",\"latest_version\":\"" << tag << "\"}";
-                            if (tag != "5.7.0" && tag > "5.7.0") {
+                            if (neuroshell::version::IsNewerRelease(tag)) {
                                 g_remote_version = tag;
                                 g_update_available.store(true);
                             }
@@ -1245,7 +1378,7 @@ private:
 
 public:
     EnterpriseTerminalHost() {
-        PlatformTerminal::SetTitle("NeuroShell v5.7.0 — Enterprise Flagship AI Terminal");
+        PlatformTerminal::SetTitle(std::string("NeuroShell v") + NEUROSHELL_VERSION + " — Enterprise Flagship AI Terminal");
         fs::path cur = fs::current_path();
         tabs.push_back({1, cur.filename().string(), cur.string()});
         shmRing.initialize_as_host();
@@ -1271,7 +1404,7 @@ public:
             fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
             long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             std::ofstream out(cachePath);
-            out << "{\"last_check\":" << now << ",\"latest_version\":\"5.7.0\"}";
+            out << "{\"last_check\":" << now << ",\"latest_version\":\"" << NEUROSHELL_VERSION << "\"}";
 
             std::cout << "  " << C_BOLD << C_GREEN << "✨ Successfully updated NeuroShell to the latest release!" << C_RESET << "\n";
             std::cout << "  " << C_MUTED << "Please restart your terminal to activate the new version." << C_RESET << "\n\n";
@@ -1287,7 +1420,7 @@ public:
             fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
             long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             std::ofstream out(cachePath);
-            out << "{\"last_check\":" << now << ",\"latest_version\":\"5.7.0\"}";
+            out << "{\"last_check\":" << now << ",\"latest_version\":\"" << NEUROSHELL_VERSION << "\"}";
 
             std::cout << "  " << C_BOLD << C_GREEN << "✨ Successfully updated NeuroShell to the latest release!" << C_RESET << "\n";
             std::cout << "  " << C_MUTED << "Please restart your terminal to activate the new version." << C_RESET << "\n\n";
@@ -1334,9 +1467,32 @@ public:
 
         std::ofstream f(configPath);
         f << "# NeuroShell Configuration\n[llm]\nprovider = \"" << provider << "\"\nmodel = \"" << model << "\"\ntemperature = 0.2\n\n";
+
         if (!apiKey.empty()) {
-            f << "[secrets]\n" << provider << "_api_key = \"" << apiKey << "\"\n";
+            // Secure-by-default: store the API key in the OS credential vault
+            // (Keychain / DPAPI / Secret Service), never in a plaintext file.
+            std::string vaultKey = provider + "_api_key";
+            if (neuroshell::OSVault::StoreSecret(vaultKey, apiKey)) {
+                f << "[secrets]\n# API key stored securely in the OS credential vault\n"
+                  << provider << "_api_key_ref = \"os-vault:" << vaultKey << "\"\n";
+            } else {
+                // Vault unavailable (e.g. headless Linux without secret-tool):
+                // fall back to file storage but lock down permissions.
+                f << "[secrets]\n" << provider << "_api_key = \"" << apiKey << "\"\n";
+                f.flush();
+#if defined(NEUROSHELL_PLATFORM_POSIX)
+                chmod(configPath.string().c_str(), 0600);
+#endif
+                std::cout << "  " << C_YELLOW
+                          << "⚠️ OS credential vault unavailable — key stored in "
+                          << configPath.string() << " (permissions restricted to 0600)."
+                          << C_RESET << "\n";
+            }
         }
+
+#if defined(NEUROSHELL_PLATFORM_POSIX)
+        chmod(configPath.string().c_str(), 0600);
+#endif
     }
 
     void LoadHistory() {
@@ -1370,7 +1526,7 @@ public:
         std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ " << C_BOLD << C_WHITE << "NeuroShell" << C_RESET << "\n";
         std::cout << "  " << C_MUTED << "Type plain English or press [F1] for Command Palette • /help for commands" << C_RESET << "\n";
         if (g_update_available.load() && !g_remote_version.empty()) {
-            std::cout << "  " << C_BOLD << C_YELLOW << "✨ Update available: " << C_RESET << C_WHITE << "v5.7.0 → v" << g_remote_version << C_RESET << C_MUTED << " • Type /update to upgrade in 1-click" << C_RESET << "\n";
+            std::cout << "  " << C_BOLD << C_YELLOW << "✨ Update available: " << C_RESET << C_WHITE << "v" << NEUROSHELL_VERSION << " → v" << g_remote_version << C_RESET << C_MUTED << " • Type /update to upgrade in 1-click" << C_RESET << "\n";
         }
         std::cout << "\n";
     }
@@ -1709,7 +1865,7 @@ public:
             firstRender = false;
 
             std::cout << C_CYAN << "  ╭── " << C_BOLD << C_WHITE << title << C_RESET << C_CYAN << " " 
-                      << std::string(std::max(0, 52 - (int)title.length()), '─') << "╮\033[K\n";
+                      << RepeatGlyph("─", std::max(0, 52 - (int)title.length())) << "╮\033[K\n";
 
             for (int i = 0; i < count; ++i) {
                 std::string num = "[" + std::to_string(i + 1) + "]";
@@ -2131,30 +2287,24 @@ public:
             std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Fetching Public Repositories for '" << userOrOrg << "'..." << C_RESET << "\n\n";
         }
 
-        std::string ghCmd = "gh repo list";
-        if (!userOrOrg.empty()) ghCmd += " " + userOrOrg;
-        ghCmd += " --limit 30 --json nameWithOwner,isPrivate,isFork,updatedAt,description";
+        // Injection-proof: validate identifier, then argv-vector exec (no shell).
+        if (!userOrOrg.empty() && !neuroshell::safe_exec::IsValidGitHubUser(userOrOrg)) {
+            std::cout << "  " << C_RED << "❌ Invalid GitHub user/org name: '" << userOrOrg << "'" << C_RESET << "\n\n";
+            return;
+        }
+        std::vector<std::string> ghArgv = {"gh", "repo", "list"};
+        if (!userOrOrg.empty()) ghArgv.push_back(userOrOrg);
+        ghArgv.push_back("--limit");
+        ghArgv.push_back("30");
+        ghArgv.push_back("--json");
+        ghArgv.push_back("nameWithOwner,isPrivate,isFork,updatedAt,description");
 
-#if defined(_WIN32)
-        FILE* pipe = _popen(ghCmd.c_str(), "r");
-#else
-        FILE* pipe = popen(ghCmd.c_str(), "r");
-#endif
-        if (!pipe) {
+        auto ghRes = neuroshell::safe_exec::RunCapture(ghArgv);
+        if (!ghRes.spawned) {
             std::cout << "  " << C_RED << "❌ GitHub CLI (gh) not found. Install from https://cli.github.com/" << C_RESET << "\n\n";
             return;
         }
-
-        std::string jsonStr;
-        char buf[512];
-        while (fgets(buf, sizeof(buf), pipe)) {
-            jsonStr += buf;
-        }
-#if defined(_WIN32)
-        _pclose(pipe);
-#else
-        pclose(pipe);
-#endif
+        std::string jsonStr = ghRes.output;
 
         if (jsonStr.empty() || jsonStr.find("[") == std::string::npos || jsonStr == "[]") {
             std::cout << "  " << C_MUTED << "No repositories found or not authenticated. Run 'gh auth login' to connect." << C_RESET << "\n\n";
@@ -2219,7 +2369,7 @@ public:
 
         for (size_t i = 0; i < g_cached_repos.size(); ++i) {
             const auto& r = g_cached_repos[i];
-            char idxBuf[16];
+            char idxBuf[24];
             snprintf(idxBuf, sizeof(idxBuf), "%2zu", i + 1);
             std::string idxStr = idxBuf;
             while (idxStr.size() < 3) idxStr += " ";
@@ -2274,27 +2424,14 @@ public:
 
         // 2. Remote GitHub Repo README
         std::cout << "\n  " << C_BOLD << C_CYAN << "📖 Fetching Remote README for '" << target << "'..." << C_RESET << "\n\n";
-        std::string ghCmd = "gh repo view " + target;
-#if defined(_WIN32)
-        FILE* pipe = _popen(ghCmd.c_str(), "r");
-#else
-        FILE* pipe = popen(ghCmd.c_str(), "r");
-#endif
-        if (pipe) {
-            char buf[512];
-            std::string readmeContent;
-            while (fgets(buf, sizeof(buf), pipe)) {
-                readmeContent += buf;
-            }
-#if defined(_WIN32)
-            _pclose(pipe);
-#else
-            pclose(pipe);
-#endif
-            if (!readmeContent.empty()) {
-                std::cout << readmeContent << "\n";
-                return;
-            }
+        if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
+            std::cout << "  " << C_RED << "\u274c Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+            return;
+        }
+        auto viewRes = neuroshell::safe_exec::RunCapture({"gh", "repo", "view", target});
+        if (viewRes.spawned && !viewRes.output.empty()) {
+            std::cout << viewRes.output << "\n";
+            return;
         }
 
         std::cout << "  " << C_RED << "❌ Could not fetch README for '" << target << "'. Ensure 'gh' is logged in or repo exists." << C_RESET << "\n\n";
@@ -2303,53 +2440,114 @@ public:
     void HandleAuditCommand(const std::string& rawTarget) {
         std::string target = ResolveRepoTarget(rawTarget);
         if (target.empty() || target == ".") {
-            // Local Audit
+            // Local Audit — performs a REAL secret scan (the previous version
+            // hardcoded "0 Exposed Secrets / 98/100" without inspecting bytes).
             std::cout << "\n  " << C_BOLD << C_CYAN << "🛡️ Running Zero-Trust Security & Architecture Audit on Local Project..." << C_RESET << "\n\n";
             int filesScanned = 0;
             int secretAlerts = 0;
             std::vector<std::string> manifests;
+            std::vector<std::string> alertSamples;
+
+            static const std::vector<std::pair<std::string, std::regex>> secretSigs = {
+                {"AWS Access Key",       std::regex(R"(\bAKIA[0-9A-Z]{16}\b)")},
+                {"GitHub Token",         std::regex(R"(\b(ghp|gho|ghs|ghu)_[A-Za-z0-9]{36,}\b)")},
+                {"GitHub Fine-Grained",  std::regex(R"(\bgithub_pat_[A-Za-z0-9_]{60,}\b)")},
+                {"Groq API Key",         std::regex(R"(\bgsk_[A-Za-z0-9]{40,}\b)")},
+                {"OpenAI API Key",       std::regex(R"(\bsk-[A-Za-z0-9\-_]{32,}\b)")},
+                {"Private Key Block",    std::regex(R"(-----BEGIN [A-Z ]*PRIVATE KEY-----)")},
+                {"Slack Token",          std::regex(R"(\bxox[baprs]-[A-Za-z0-9\-]{10,}\b)")},
+            };
+            static const std::set<std::string> scanExts = {
+                ".py", ".js", ".ts", ".json", ".yml", ".yaml", ".toml", ".env",
+                ".sh", ".ps1", ".cfg", ".ini", ".txt", ".md", ".tf", ".properties"
+            };
+            constexpr uintmax_t MAX_SCAN_BYTES = 512 * 1024; // skip huge files
+            constexpr int MAX_FILES = 5000;                  // bound the walk
 
             try {
                 for (const auto& entry : fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::skip_permission_denied)) {
-                    if (entry.is_regular_file()) {
-                        filesScanned++;
-                        std::string fn = entry.path().filename().string();
-                        if (fn == "package.json" || fn == "requirements.txt" || fn == "pyproject.toml" || fn == "Cargo.toml" || fn == "go.mod") {
-                            manifests.push_back(fn);
+                    if (filesScanned >= MAX_FILES) break;
+                    if (!entry.is_regular_file()) continue;
+
+                    std::string fn = entry.path().filename().string();
+                    // Skip vendored/binary trees
+                    std::string full = entry.path().string();
+                    if (full.find(".git") != std::string::npos ||
+                        full.find("node_modules") != std::string::npos ||
+                        full.find("__pycache__") != std::string::npos) continue;
+
+                    filesScanned++;
+                    if (fn == "package.json" || fn == "requirements.txt" || fn == "pyproject.toml" || fn == "Cargo.toml" || fn == "go.mod") {
+                        manifests.push_back(fn);
+                    }
+
+                    std::string ext = entry.path().extension().string();
+                    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                    bool isEnvFile = fn == ".env" || fn.rfind(".env.", 0) == 0;
+                    if (!isEnvFile && scanExts.find(ext) == scanExts.end()) continue;
+
+                    std::error_code ec;
+                    uintmax_t sz = fs::file_size(entry.path(), ec);
+                    if (ec || sz > MAX_SCAN_BYTES) continue;
+
+                    std::ifstream in(entry.path(), std::ios::binary);
+                    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+                    for (const auto& [sigName, sigRe] : secretSigs) {
+                        if (std::regex_search(content, sigRe)) {
+                            secretAlerts++;
+                            if (alertSamples.size() < 5) {
+                                alertSamples.push_back(sigName + " → " + entry.path().lexically_relative(fs::current_path()).string());
+                            }
+                            break; // one alert per file
                         }
                     }
                 }
             } catch (...) {}
 
+            int score = 100;
+            if (secretAlerts > 0) score -= std::min(60, secretAlerts * 15);
+            if (manifests.empty()) score -= 5;
+            const char* scoreColor = (score >= 90) ? C_GREEN : (score >= 70 ? C_YELLOW : C_RED);
+
             std::cout << "  " << C_CYAN << "╭── 🛡️ Local Zero-Trust Security Audit ──────────────────────────────────────╮" << C_RESET << "\n";
             std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Path:              " << C_RESET << fs::current_path().string().substr(0, 50) << "\n";
             std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Files Scanned:     " << C_RESET << C_BOLD << filesScanned << C_RESET << " source files\n";
-            std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Secret Leaks:      " << C_RESET << C_GREEN << "✅ 0 Exposed Secrets" << C_RESET << "\n";
+            if (secretAlerts == 0) {
+                std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Secret Leaks:      " << C_RESET << C_GREEN << "✅ 0 Exposed Secrets" << C_RESET << "\n";
+            } else {
+                std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Secret Leaks:      " << C_RESET << C_RED << "❌ " << secretAlerts << " potential secret(s) found" << C_RESET << "\n";
+                for (const auto& s : alertSamples) {
+                    std::cout << "  " << C_CYAN << "│ " << C_RESET << C_YELLOW << "    ⚠ " << s << C_RESET << "\n";
+                }
+            }
             std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Safety Shield:     " << C_RESET << C_GREEN << "✅ 4-Layer Zero-Trust Engine Active" << C_RESET << "\n";
-            std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Security Score:    " << C_RESET << C_BOLD << C_GREEN << "98 / 100 (Enterprise Grade)" << C_RESET << "\n";
+            std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Security Score:    " << C_RESET << C_BOLD << scoreColor << score << " / 100" << C_RESET << "\n";
             std::cout << "  " << C_CYAN << "╰──────────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
             return;
         }
 
         // Remote Audit
         std::cout << "\n  " << C_BOLD << C_CYAN << "🛡️ Running Remote Zero-Trust Audit on '" << target << "'..." << C_RESET << "\n\n";
-        std::string treeCmd = "gh api repos/" + target + "/git/trees/HEAD?recursive=1 --jq .tree[].path";
-#if defined(_WIN32)
-        FILE* pipe = _popen(treeCmd.c_str(), "r");
-#else
-        FILE* pipe = popen(treeCmd.c_str(), "r");
-#endif
+        if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
+            std::cout << "  " << C_RED << "❌ Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+            return;
+        }
+        auto auditRes = neuroshell::safe_exec::RunCapture(
+            {"gh", "api", "repos/" + target + "/git/trees/HEAD?recursive=1", "--jq", ".tree[].path"});
+
         int fileCount = 0;
         bool hasCI = false;
         bool hasSecurity = false;
         bool hasLicense = false;
         std::vector<std::string> ecosystems;
 
-        if (pipe) {
-            char buf[512];
-            while (fgets(buf, sizeof(buf), pipe)) {
+        {
+            std::stringstream ss(auditRes.output);
+            std::string path;
+            while (std::getline(ss, path)) {
+                if (path.empty()) continue;
                 fileCount++;
-                std::string path = buf;
                 if (path.find(".github/workflows") != std::string::npos) hasCI = true;
                 if (path.find("SECURITY") != std::string::npos) hasSecurity = true;
                 if (path.find("LICENSE") != std::string::npos) hasLicense = true;
@@ -2358,11 +2556,6 @@ public:
                 if (path.find("Cargo.toml") != std::string::npos) ecosystems.push_back("Rust");
                 if (path.find("go.mod") != std::string::npos) ecosystems.push_back("Go");
             }
-#if defined(_WIN32)
-            _pclose(pipe);
-#else
-            pclose(pipe);
-#endif
         }
 
         int score = 80;
@@ -2387,26 +2580,22 @@ public:
         }
 
         std::cout << "\n  " << C_BOLD << C_CYAN << "🌲 Remote Directory Tree for '" << target << "':" << C_RESET << "\n\n";
-        std::string treeCmd = "gh api repos/" + target + "/git/trees/HEAD?recursive=1 --jq .tree[].path";
-#if defined(_WIN32)
-        FILE* pipe = _popen(treeCmd.c_str(), "r");
-#else
-        FILE* pipe = popen(treeCmd.c_str(), "r");
-#endif
-        if (pipe) {
-            char buf[512];
+        if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
+            std::cout << "  " << C_RED << "❌ Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+            return;
+        }
+        auto treeRes = neuroshell::safe_exec::RunCapture(
+            {"gh", "api", "repos/" + target + "/git/trees/HEAD?recursive=1", "--jq", ".tree[].path"});
+        if (treeRes.spawned) {
+            std::stringstream ss(treeRes.output);
+            std::string line;
             int count = 0;
-            while (fgets(buf, sizeof(buf), pipe) && count < 35) {
-                std::string line = buf;
+            while (std::getline(ss, line) && count < 35) {
                 while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+                if (line.empty()) continue;
                 std::cout << "  " << C_MUTED << "├── " << C_WHITE << line << C_RESET << "\n";
                 count++;
             }
-#if defined(_WIN32)
-            _pclose(pipe);
-#else
-            pclose(pipe);
-#endif
             std::cout << "\n";
         }
     }
@@ -2418,9 +2607,19 @@ public:
             return;
         }
 
-        std::string cloneCmd = "git clone https://github.com/" + target + ".git";
+        if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
+            std::cout << "\n  " << C_RED << "❌ Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+            return;
+        }
         std::cout << "\n  " << C_CYAN << "📥 Cloning " << C_BOLD << C_WHITE << target << C_RESET << "...\n";
-        ExecuteCommand(cloneCmd);
+        auto cloneRes = neuroshell::safe_exec::RunCapture(
+            {"git", "clone", "https://github.com/" + target + ".git"}, "", /*merge_stderr=*/true);
+        std::cout << cloneRes.output;
+        if (cloneRes.exit_code == 0) {
+            std::cout << "  " << C_GREEN << "✅ Clone completed." << C_RESET << "\n\n";
+        } else {
+            std::cout << "  " << C_RED << "❌ Clone failed (exit " << cloneRes.exit_code << ")." << C_RESET << "\n\n";
+        }
     }
 
     void HandleOpenRepoCommand(const std::string& rawTarget) {
@@ -2430,15 +2629,19 @@ public:
             return;
         }
 
+        if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
+            std::cout << "\n  " << C_RED << "❌ Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+            return;
+        }
         std::string url = "https://github.com/" + target;
 #if defined(_WIN32)
-        std::string openCmd = "start " + url;
+        // ShellExecute avoids cmd.exe parsing entirely.
+        ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 #elif defined(__APPLE__)
-        std::string openCmd = "open " + url;
+        neuroshell::safe_exec::RunStatus({"open", url});
 #else
-        std::string openCmd = "xdg-open " + url;
+        neuroshell::safe_exec::RunStatus({"xdg-open", url});
 #endif
-        system(openCmd.c_str());
         std::cout << "\n  " << C_GREEN << "🌐 Opened in browser: " << C_BOLD << C_WHITE << url << C_RESET << "\n\n";
     }
 
@@ -2637,9 +2840,13 @@ public:
 
         AppendHistory(input);
 
-        // 1. Exit
+        // 1. Exit — request a clean shutdown; Run() breaks its loop so all
+        // destructors fire (terminal mode restored, SHM unlinked, tasks stopped).
+        // The previous exit(0) skipped destructors and left POSIX terminals in
+        // raw mode with bracketed paste stuck on.
         if (input == "exit" || input == "quit" || input == "q") {
-            exit(0);
+            shouldExit = true;
+            return;
         }
 
         // 2. Clear Screen
@@ -3276,11 +3483,13 @@ public:
             }
         }
 
-        // 6. Cross-Platform Process Runner
-        PlatformProcessRunner::ExecResult execRes = PlatformProcessRunner::Execute(commandToRun);
+        // 6. Cross-Platform Process Runner — DLP masking is applied as a live
+        // line filter so secrets never reach the viewport unredacted
+        // (previously raw output was displayed and only the record was masked).
+        PlatformProcessRunner::ExecResult execRes = PlatformProcessRunner::Execute(
+            commandToRun,
+            [this](const std::string& line) { return dlpMasker.filter_stream(line); });
 
-        // Real-Time Viewport DLP Masking & Stream Recording
-        execRes.output = dlpMasker.filter_stream(execRes.output);
         streamRecorder.record_input(commandToRun);
         streamRecorder.record_output(execRes.output);
         shmRing.write_message("{\"event\":\"command_executed\",\"cmd\":\"" + commandToRun + "\"}");
@@ -3314,7 +3523,7 @@ public:
     void Run() {
         PrintBanner();
 
-        while (true) {
+        while (!shouldExit) {
             RenderTabBar();
 
             std::string cwd = fs::current_path().string();
@@ -3332,6 +3541,10 @@ public:
             ExecuteCommand(input);
             std::cout << "\n";
         }
+
+        // Deterministic teardown before destructors run.
+        taskSupervisor.StopAll();
+        std::cout << C_MUTED << "  Goodbye — session state saved.\n" << C_RESET;
     }
 };
 
@@ -3370,7 +3583,7 @@ LONG WINAPI NeuroShellWin32CrashFilter(EXCEPTION_POINTERS* ep) {
     return EXCEPTION_EXECUTE_HANDLER;
 }
 #else
-void NeuroShellPosixSignalHandler(int sig, siginfo_t* info, void* ucontext) {
+void NeuroShellPosixSignalHandler(int sig, siginfo_t* info, void* /*ucontext*/) {
     const char* home = getenv("HOME");
     char pathBuf[1024];
     if (home) snprintf(pathBuf, sizeof(pathBuf), "%s/.neuroshell/crash.log", home);
@@ -3381,12 +3594,14 @@ void NeuroShellPosixSignalHandler(int sig, siginfo_t* info, void* ucontext) {
         char buf[256];
         int bytes = snprintf(buf, sizeof(buf), "=== CRASH EVENT (POSIX) ===\nSignal: %d\nFault Address: %p\n\n",
                              sig, info ? info->si_addr : nullptr);
-        write(fd, buf, bytes);
+        ssize_t wr = write(fd, buf, bytes);
+        (void)wr; // async-signal-safe context: best-effort only
         close(fd);
     }
 
     const char msg[] = "\r\n\033[1;31m[!] NeuroShell Fatal Signal Intercepted. State restored.\033[0m\r\n\033[?25h";
-    write(STDERR_FILENO, msg, strlen(msg));
+    ssize_t wr2 = write(STDERR_FILENO, msg, strlen(msg));
+    (void)wr2;
     _exit(128 + sig);
 }
 #endif
@@ -3395,7 +3610,7 @@ int main(int argc, char* argv[]) {
     if (argc >= 2) {
         std::string arg1 = argv[1];
         if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
-            std::cout << "NeuroShell v5.7.0 (Enterprise Cross-Platform Edition)\n";
+            std::cout << "NeuroShell v" << NEUROSHELL_VERSION << " (Enterprise Cross-Platform Edition)\n";
             std::cout << "Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.\n";
             return 0;
         }
@@ -3405,7 +3620,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (arg1 == "--help" || arg1 == "-h" || arg1 == "help") {
-            std::cout << "⌬ NeuroShell v5.7.0 — Tier-1 Enterprise Flagship AI Terminal\n\n";
+            std::cout << "⌬ NeuroShell v" << NEUROSHELL_VERSION << " — Tier-1 Enterprise Flagship AI Terminal\n\n";
             std::cout << "Usage: neuroshell [options] [command]\n\n";
             std::cout << "Options:\n";
             std::cout << "  init zsh          Output Zsh semantic shell integration\n";

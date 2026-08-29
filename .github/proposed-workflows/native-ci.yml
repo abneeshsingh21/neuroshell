@@ -1,0 +1,39 @@
+# Proposed addition to .github/workflows/ci.yml
+#
+# The Arena GitHub App does not have `workflows` permission, so this job could
+# not be pushed directly into ci.yml. To enable native C++ CI coverage, copy
+# the `native:` job below into the `jobs:` section of .github/workflows/ci.yml.
+#
+# It builds the hardened C++20 host on Linux/macOS/Windows, runs the new
+# native unit test suite (cpp_engine/tests/native_tests.cpp) via CTest, and
+# performs an ASan/UBSan pass on Linux.
+
+jobs:
+  # ─── Native C++ Host build + unit tests ────────────────────────────────────
+  native:
+    name: Native C++ (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (hardened Release)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNEUROSHELL_BUILD_TESTS=ON
+
+      - name: Build host + tests
+        run: cmake --build build --config Release --parallel
+
+      - name: Run native unit tests
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Sanitizer pass (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+            -DNEUROSHELL_SANITIZERS=ON -DNEUROSHELL_LTO=OFF
+          cmake --build build-asan --parallel
+          ctest --test-dir build-asan --output-on-failure
+

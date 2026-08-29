@@ -712,9 +712,11 @@ class SmartOpenEngine:
         }
 
         if name_lower in WELL_KNOWN:
-            path = WELL_KNOWN[name_lower]
-            if path.exists():
-                return str(path)
+            # Well-known folders are deterministic per-user locations — return
+            # the canonical path even when it does not exist yet (fresh
+            # profiles, headless servers, CI). The OS opener will create or
+            # surface a clear error, which beats a low-confidence guess.
+            return str(WELL_KNOWN[name_lower])
 
         # Search current directory (case-insensitive)
         cwd = os.getcwd()
