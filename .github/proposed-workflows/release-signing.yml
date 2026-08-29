@@ -1,0 +1,70 @@
+# PROPOSED WORKFLOW — copy into .github/workflows/ manually.
+# (The automation account that maintains this repo lacks the `workflows`
+# permission, so workflow files are staged here instead.)
+#
+# Release signing job: builds release artifacts, generates + signs the
+# update manifest consumed by the native host's verified self-updater.
+#
+# Required repository secrets:
+#   UPDATE_SIGNING_KEY  — contents of update_signing.key (64 hex chars).
+#                         Generate offline: scripts/sign_release.py keygen
+#   (the matching public key is pinned into builds via
+#    -DNEUROSHELL_UPDATE_PUBKEY=<hex> below)
+#
+# Required repository variable:
+#   UPDATE_PUBLIC_KEY   — 64-hex Ed25519 public key (non-secret).
+
+name: Release (signed)
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-sign-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release binary (with pinned update key)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+                -DNEUROSHELL_UPDATE_PUBKEY=${{ vars.UPDATE_PUBLIC_KEY }}
+          cmake --build build -j"$(nproc)"
+          ctest --test-dir build --output-on-failure
+
+      - name: Install signing dependencies
+        run: pip install cryptography
+
+      - name: Generate + sign update manifest
+        env:
+          SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > /tmp/update_signing.key
+          python3 scripts/sign_release.py manifest \
+            --version "$VERSION" --expires-days 90 --min-version 5.0.0 \
+            --artifact "linux-x86_64:build/neuroshell:https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/neuroshell" \
+            --out manifest.json
+          python3 scripts/sign_release.py sign \
+            --key /tmp/update_signing.key \
+            --manifest manifest.json --out manifest.json.sig
+          # Sanity gate: verify with the PINNED public key, guaranteeing the
+          # shipped binaries can actually verify this manifest.
+          echo "${{ vars.UPDATE_PUBLIC_KEY }}" > /tmp/update.pub
+          python3 scripts/sign_release.py verify \
+            --pubkey /tmp/update.pub \
+            --manifest manifest.json --sig manifest.json.sig
+          rm -f /tmp/update_signing.key
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/neuroshell
+            manifest.json
+            manifest.json.sig

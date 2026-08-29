@@ -6,6 +6,62 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [5.9.0] — 2026-08-29
+
+### Security (Critical) — Cryptographically Signed Self-Updates
+
+The `/update` command no longer trusts the network. The previous updater
+executed `curl … | bash` (POSIX) or blind-replaced the executable (Windows),
+giving any on-path attacker remote code execution. It is replaced by a fully
+verified pipeline (design + runbook: `docs/UPDATE_SECURITY.md`):
+
+- **Ed25519-signed release manifests** — the client verifies a detached
+  signature over the *raw* manifest bytes with a build-time pinned public key
+  (`-DNEUROSHELL_UPDATE_PUBKEY=<hex>`). Unprovisioned builds **fail closed**:
+  the placeholder key disables self-update entirely.
+- **Anti-downgrade + freshness** — manifests must offer a strictly newer
+  version (numeric semver), satisfy `min_version`, and be within their
+  `created_at`/`expires_at` window, bounding replay of old signed releases.
+- **Artifact binding** — each artifact's SHA-256 and exact byte size are
+  pinned inside the signed manifest; downloads are hashed in a stream and
+  compared in constant time. URLs must be `https` on an exact-match GitHub
+  host allowlist (no userinfo/port/suffix tricks).
+- **Atomic install with rollback** — verified binaries are staged next to
+  the destination and swapped via atomic rename (`rename`/`MoveFileExW`),
+  keeping the previous binary as a rollback copy; a failed swap rolls back.
+- **Embedded verify-only crypto** (`cpp_engine/launcher/crypto/`) — SHA-256/
+  SHA-512 with round constants *derived* from square/cube roots of primes at
+  startup (no typo-able tables), and a TweetNaCl-construction Ed25519
+  verifier with the RFC 8032 canonical-S malleability check (S ≥ L refused).
+  No OpenSSL dependency; no signing capability in the shipped binary.
+- **Hardened JSON reader** (`json_mini.hpp`) — strict RFC 8259 parser for
+  untrusted input: 32-level depth cap, size caps, full `\uXXXX`/surrogate
+  handling, deterministic duplicate-key semantics, no exceptions.
+
+### Added
+- `scripts/sign_release.py` — offline release-signing CLI
+  (`keygen`/`manifest`/`sign`/`verify`), private keys created 0600.
+- `.github/proposed-workflows/release-signing.yml` — CI wiring for signed
+  releases (manifest generation, signing, pinned-key sanity gate).
+- `docs/UPDATE_SECURITY.md` — threat model, verification pipeline,
+  key-provisioning and rotation runbook.
+- `docs/ENGINEERING_ROADMAP.md` — 10-phase production-engineering roadmap.
+
+### Testing
+- Native suite grown 307 → 393 checks: SHA-2 vectors (NIST + Python
+  `hashlib` cross-vectors, streaming/block-boundary sweeps), Ed25519
+  (RFC 8032 vector 1, OpenSSL cross-vectors, 1-bit tamper of R/S/message,
+  wrong key, malleable S+L, invalid points), strict-JSON negative matrix
+  (depth bombs, lone surrogates, trailing garbage), and a full
+  update-manifest policy matrix (tamper/replay/downgrade/expiry/platform/
+  URL-allowlist/fail-closed).
+- Python suite grown 509 → 526: `tests/test_sign_release.py` covers the
+  signing tool end to end, including tamper and expired-manifest paths.
+- Cross-language proof: a manifest signed by the Python tool verifies in
+  the C++ client, and every tampered variant is refused.
+
+---
+
 ## [5.8.0] — 2026-08-29
 
 ### Security (Critical)

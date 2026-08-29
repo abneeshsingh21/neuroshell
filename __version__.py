@@ -5,5 +5,5 @@
 Single source of truth for the runtime version. Keep in sync with
 `pyproject.toml` — the release pipeline asserts they match.
 """
-__version__ = "5.8.0"
+__version__ = "5.9.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
