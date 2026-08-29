@@ -19,7 +19,7 @@ from core.shm_bridge import (
 def test_shm_bridge_constants():
     assert SHM_MAGIC == 0x4E455552
     assert SHM_RING_CAPACITY == 8 * 1024 * 1024
-    assert SHM_ABI_VERSION == 2
+    assert SHM_ABI_VERSION == 3
     assert SHM_HEADER_SIZE == 128
 
 
@@ -99,3 +99,67 @@ def test_shm_header_validation_rejects_bad_magic():
     bridge._buf = buf
     assert bridge._validate_header() is False
     buf.close()
+
+
+# ═══════════════════════════════════════════════════════════
+# ABI v3 (Phase 2): token-stream frames + cooperative cancel
+# ═══════════════════════════════════════════════════════════
+
+from core.shm_bridge import FRAME_END, FRAME_ERROR, FRAME_TOKEN  # noqa: E402
+
+
+def test_stream_frame_roundtrip(fake_ring):
+    assert fake_ring.write_frame(FRAME_TOKEN, 42, "Hello ") is True
+    assert fake_ring.write_frame(FRAME_TOKEN, 42, "world") is True
+    assert fake_ring.write_frame(FRAME_END, 42, '{"cancelled": false}') is True
+
+    assert fake_ring.read_frame() == (FRAME_TOKEN, 42, "Hello ")
+    assert fake_ring.read_frame() == (FRAME_TOKEN, 42, "world")
+    assert fake_ring.read_frame() == (FRAME_END, 42, '{"cancelled": false}')
+    assert fake_ring.read_frame() is None
+
+
+def test_stream_frame_utf8_and_large_ids(fake_ring):
+    sid = 0xFFFF_FFF0
+    assert fake_ring.write_frame(FRAME_TOKEN, sid, "⌬ café 日本語 😀") is True
+    assert fake_ring.read_frame() == (FRAME_TOKEN, sid, "⌬ café 日本語 😀")
+
+
+def test_stream_frame_error_type(fake_ring):
+    assert fake_ring.write_frame(FRAME_ERROR, 7, "provider exploded") is True
+    assert fake_ring.read_frame() == (FRAME_ERROR, 7, "provider exploded")
+
+
+def test_stream_frame_garbage_rejected(fake_ring):
+    # Too-short message is not a frame
+    assert fake_ring.write_message("abc") is True
+    assert fake_ring.read_frame() is None
+    # Unknown frame type is refused
+    fake_ring.write_frame(99, 1, "bogus")
+    assert fake_ring.read_frame() is None
+
+
+def test_cancel_flag_roundtrip(fake_ring):
+    assert fake_ring.cancel_requested() == 0
+    fake_ring.request_cancel(1234)
+    assert fake_ring.cancel_requested() == 1234
+    fake_ring.clear_cancel()
+    assert fake_ring.cancel_requested() == 0
+
+
+def test_cancel_offset_is_84(fake_ring):
+    """The cancel flag must live at header offset 84 (C++ ABI contract)."""
+    fake_ring.request_cancel(0xABCD1234)
+    (raw,) = struct.unpack_from("<I", fake_ring._buf, 84)
+    assert raw == 0xABCD1234
+    fake_ring.clear_cancel()
+
+
+def test_frame_binary_layout(fake_ring):
+    """Frame bytes must be [u8 type][u32 id LE][payload] — C++ reads them raw."""
+    fake_ring.write_frame(FRAME_TOKEN, 0x01020304, "AB")
+    raw = fake_ring._read_message_bytes()
+    assert raw is not None
+    assert raw[0] == FRAME_TOKEN
+    assert raw[1:5] == (0x01020304).to_bytes(4, "little")
+    assert raw[5:] == b"AB"

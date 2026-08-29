@@ -1,9 +1,5 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
-# Licensed under the Apache License, Version 2.0 (the "License").
-"""NeuroShell version information.
-
-Single source of truth for the runtime version. Keep in sync with
-`pyproject.toml` — the release pipeline asserts they match.
-"""
-__version__ = "5.9.0"
+# Proprietary and Confidential - see LICENSE.txt
+"""NeuroShell version information."""
+__version__ = "5.17.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))

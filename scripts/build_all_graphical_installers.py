@@ -11,19 +11,19 @@ Prepares and packages all graphical commercial installer formats for GitHub rele
 """
 
 import os
-import re
 import shutil
-import subprocess
-import tarfile
 import zipfile
+import tarfile
+import subprocess
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = ROOT_DIR / "dist"
 
 # Single source of truth: read version from __version__.py
-_v = re.search(r'__version__\s*=\s*"([^"]+)"',
-               (ROOT_DIR / "__version__.py").read_text(encoding="utf-8"))
+import re as _re
+_v = _re.search(r'__version__\s*=\s*"([^"]+)"',
+                (ROOT_DIR / "__version__.py").read_text(encoding="utf-8"))
 VERSION = _v.group(1) if _v else "0.0.0"
 
 DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,6 +72,7 @@ print(f"  ✓ Created: {zip_path}")
 # 3. Helper to build Universal POSIX bundles for macOS & Linux
 def create_unix_bundle(output_tar_path: Path, is_macos: bool = False):
     import io
+    import tarfile
 
     launcher_content = """#!/usr/bin/env bash
 # NeuroShell Universal Executable Launcher for macOS and Linux

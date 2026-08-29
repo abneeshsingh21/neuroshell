@@ -365,6 +365,34 @@ public:
         std::string resp = SendRawRPC(req, 15000);
         return ExtractStringField(resp, "response");
     }
+
+    // Phase 2 (v5.10): fire the token-streamed ai_pipe variant. The daemon
+    // publishes tokens on the SHM stream ring tagged with `streamId` while
+    // this RPC blocks server-side until the stream terminates; the returned
+    // JSON carries the full text as a fallback copy. Call this from a worker
+    // thread and consume the ring with TokenStreamReader concurrently.
+    struct AIPipeStreamResult {
+        bool rpc_ok = false;     // transport-level success
+        bool streamed = false;   // daemon actually used the ring
+        std::string response;    // full text (fallback / verification copy)
+    };
+
+    AIPipeStreamResult AIPipeStream(const std::string& directive, const std::string& prompt,
+                                    const std::string& inputText, const std::string& cwd,
+                                    uint32_t streamId) {
+        AIPipeStreamResult out;
+        std::string req = "{\"jsonrpc\":\"2.0\",\"method\":\"ai_pipe_stream\",\"params\":{\"directive\":\"" +
+                          EscapeJSON(directive) + "\",\"prompt\":\"" + EscapeJSON(prompt) +
+                          "\",\"input_text\":\"" + EscapeJSON(inputText) + "\",\"cwd\":\"" + EscapeJSON(cwd) +
+                          "\",\"stream_id\":" + std::to_string(streamId) + "},\"id\":6}";
+        std::string resp = SendRawRPC(req, 90000); // stream may run long; ring carries liveness
+        if (resp.empty()) return out;
+        out.rpc_ok = true;
+        out.streamed = resp.find("\"streamed\": true") != std::string::npos ||
+                       resp.find("\"streamed\":true") != std::string::npos;
+        out.response = ExtractStringField(resp, "response");
+        return out;
+    }
 };
 
 } // namespace NeuroShell::IPC

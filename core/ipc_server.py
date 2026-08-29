@@ -54,6 +54,11 @@ class NamedPipeServer:
         self.running = False
         self._listener_thread: threading.Thread | None = None
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="IPCWorker")
+        # Phase 2 (v5.10): daemon → host token-stream ring (lazy attach — the
+        # C++ host owns the ring; if it isn't running we degrade gracefully
+        # to the blocking ai_pipe response).
+        self._stream_ring = None
+        self._stream_ring_lock = threading.Lock()
         # NOTE (v5.8): the previous implementation wrapped EVERY dispatch in a
         # single global lock, serializing all clients — one 8-second LLM call
         # blocked even `ping` for everyone. Only genuinely stateful methods
@@ -336,6 +341,105 @@ class NamedPipeServer:
         """Direct request handler for testing and internal dispatch."""
         return self._execute_single_request(req)
 
+    # ── Phase 2 (v5.10): SHM token streaming ──────────────────
+
+    def _get_stream_ring(self):
+        """Lazily attach to the host-owned stream ring; None if unavailable."""
+        with self._stream_ring_lock:
+            if self._stream_ring is not None and self._stream_ring.is_connected:
+                return self._stream_ring
+            try:
+                from core.shm_bridge import SHMClientBridge
+
+                ring = SHMClientBridge(stream=True)
+                if ring.is_connected:
+                    self._stream_ring = ring
+                    return ring
+                ring.close()
+            except Exception:
+                pass
+            self._stream_ring = None
+            return None
+
+    def _run_token_stream(self, stream_id: int, full_prompt: str, directive: str) -> dict:
+        """Stream LLM tokens onto the SHM stream ring with cooperative cancel.
+
+        Contract (mirrors cpp_engine/launcher/stream_reader.hpp):
+          * every token is published as a TOKEN frame tagged with stream_id;
+          * exactly one terminal frame (END or ERROR) closes the stream;
+          * between tokens the ring's cancel_stream_id header is polled —
+            when it equals this stream's id, generation stops and the
+            terminal END frame carries {"cancelled": true};
+          * if the ring is unavailable the method still succeeds: it falls
+            back to blocking generation and returns the full text (the host
+            treats "streamed": false as plain ai_pipe output).
+        """
+        from core.shm_bridge import FRAME_END, FRAME_ERROR, FRAME_TOKEN
+
+        ring = self._get_stream_ring()
+        system_prompt = (
+            "You are NeuroShell AI Assistant. Provide precise, actionable developer analysis."
+        )
+
+        if ring is None:
+            # Graceful degradation: no ring, no streaming — behave like ai_pipe.
+            response = self.shell.llm.generate(full_prompt, system_prompt=system_prompt)
+            return {
+                "response": (response or "").strip() or "No response generated.",
+                "directive": directive,
+                "streamed": False,
+            }
+
+        cancelled = threading.Event()
+        chunks: list[str] = []
+
+        def on_token(token: str) -> None:
+            if cancelled.is_set():
+                return
+            if ring.cancel_requested() == stream_id:
+                cancelled.set()
+                # Raising aborts provider iteration mid-stream (the LLM
+                # client surfaces it as a failed generation, which we treat
+                # as a successful cancel below).
+                raise InterruptedError("stream cancelled by host")
+            chunks.append(token)
+            # Bounded retry on backpressure: the ring is 8 MB — if the host
+            # stops draining (crashed?), give up rather than spin forever.
+            for _ in range(50):
+                if ring.write_frame(FRAME_TOKEN, stream_id, token):
+                    return
+                time.sleep(0.01)
+            cancelled.set()
+            raise InterruptedError("stream ring stalled (host not draining)")
+
+        try:
+            result = self.shell.llm.generate_streaming(
+                full_prompt, system_prompt=system_prompt, callback=on_token
+            )
+            full_text = "".join(chunks) or (getattr(result, "text", "") or "")
+        except InterruptedError:
+            full_text = "".join(chunks)
+        except Exception as exc:
+            ring.write_frame(FRAME_ERROR, stream_id, f"AI analysis failed: {exc}")
+            return {
+                "response": f"AI analysis failed: {exc}",
+                "directive": directive,
+                "streamed": True,
+                "error": True,
+            }
+
+        was_cancelled = cancelled.is_set() or ring.cancel_requested() == stream_id
+        end_payload = json.dumps({"cancelled": was_cancelled, "tokens": len(chunks)})
+        ring.write_frame(FRAME_END, stream_id, end_payload)
+
+        return {
+            "response": full_text.strip() or "No response generated.",
+            "directive": directive,
+            "streamed": True,
+            "cancelled": was_cancelled,
+            "tokens": len(chunks),
+        }
+
     def _dispatch_method(self, method: str, params: dict) -> Any:
         """Route to NeuroShell sub-engines."""
         if method == "translate":
@@ -452,6 +556,27 @@ class NamedPipeServer:
                     "response": f"AI analysis failed: {str(exc)}",
                     "directive": directive,
                 }
+
+        elif method == "ai_pipe_stream":
+            # Phase 2 (v5.10): token-streamed variant of ai_pipe. Tokens are
+            # published on the SHM stream ring as they arrive from the LLM;
+            # the JSON-RPC response returns AFTER the stream ends and carries
+            # the full text as a fallback/verification copy.
+            directive = params.get("directive", "@ai")
+            prompt = params.get("prompt", "Analyze the following command output:")
+            input_text = params.get("input_text", "")
+            stream_id = params.get("stream_id", 0)
+            if not isinstance(stream_id, int) or not (0 < stream_id <= 0xFFFFFFFF):
+                raise ValueError("stream_id must be a positive uint32")
+
+            full_prompt = f"{prompt}\n\n```\n{input_text[-4000:]}\n```"
+            if directive == "@fix":
+                full_prompt = (
+                    "Analyze the following compiler / execution error and provide "
+                    f"ONLY the corrected command or patch instructions:\n\n```\n{input_text[-4000:]}\n```"
+                )
+
+            return self._run_token_stream(stream_id, full_prompt, directive)
 
         elif method == "ping":
             return "pong"

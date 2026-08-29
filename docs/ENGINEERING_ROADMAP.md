@@ -106,7 +106,7 @@ Release pipeline                          Client (/update)
 
 ---
 
-## Phase 2 — Streaming LLM Tokens over SHM (perceived-latency rewrite)
+## Phase 2 — Streaming LLM Tokens over SHM  ✅ **SHIPPED in v5.10.0**
 
 **Problem.** `ai_pipe`/translate block up to 15 s, then dump the full answer.
 **Design.** Second SHM ring (daemon→host, ABI v3 adds a `channel` byte);
@@ -117,27 +117,27 @@ coalesces deltas.
 **Acceptance.** First token visible < 300 ms after provider first-byte; cancel
 tears down the provider request; interop test streams 10k tokens both ways.
 
-## Phase 3 — SQLite + FTS5 History Engine
+## Phase 3 — SQLite + FTS5 History Engine  ✅ **SHIPPED in v5.11.0**
 
 Replace `history.txt` with `~/.neuroshell/history.db` (WAL): schema
 `(id, cmd, cwd, exit_code, duration_ms, ts, session)` + FTS5 index; ranking =
 `0.6·frecency + 0.3·cwd-affinity + 0.1·prefix-match` feeding ghost text and
 Ctrl+R; transparent one-time migration; 100k-row search < 5 ms.
 
-## Phase 4 — Blast-Radius Preview (dry-run engine)
+## Phase 4 — Blast-Radius Preview (dry-run engine) — ✅ SHIPPED in v5.12.0
 
 Extend the AST extractor: for destructive verbs (`rm`, `del`, `rmdir`, `git
 clean`, `docker system prune`, `kubectl delete`, …) resolve globs/paths and
 render `→ 1,204 files · 340 MB · outside git: 3` in the confirmation card,
 with a hard cap walk (50k inodes) and timeout (500 ms) so preview never hangs.
 
-## Phase 5 — Universal Undo (CoW snapshots)
+## Phase 5 — Universal Undo (CoW snapshots) — ✅ SHIPPED in v5.13.0
 
 Pre-exec snapshot of write-targets via reflink (`FICLONE`/APFS `clonefile`,
 copy fallback ≤ 512 MB) into `~/.neuroshell/undo/<txn>`; `undo` restores the
 last transaction; GC by age+size budget. Works outside git repos.
 
-## Phase 6 — MCP Server Mode (strategic)
+## Phase 6 — MCP Server Mode (strategic) — ✅ SHIPPED in v5.14.0
 
 Expose the daemon as an MCP tool provider (`neuroshell.execute`,
 `neuroshell.translate`, `neuroshell.explain`) so Claude Desktop / Cursor /
@@ -145,18 +145,18 @@ agent frameworks execute **through** the 4-layer safety shield, policy RBAC,
 DLP and audit chain instead of raw shell. Reuses the JSON-RPC dispatcher; adds
 stdio transport + tool schemas + per-client policy scopes.
 
-## Phase 7 — Remote Execution with Local Safety
+## Phase 7 — Remote Execution with Local Safety — ✅ SHIPPED in v5.15.0
 
 `nsh user@host` — commands run over SSH (ControlMaster), but translation,
 safety checks and DLP masking execute locally before bytes leave the machine.
 
-## Phase 8 — Kernel-Level Sandboxing for AI-Generated Commands
+## Phase 8 — Kernel-Level Sandboxing for AI-Generated Commands — ✅ SHIPPED in v5.16.0
 
 Landlock + seccomp-bpf (Linux) / AppContainer (Windows) profile limiting
 AI-proposed commands to the project directory + read-only system paths unless
 the user escalates. Policy engine gains `sandbox: strict|project|off`.
 
-## Phase 9 — WASM Plugin Runtime
+## Phase 9 — WASM Plugin Runtime — ✅ SHIPPED in v5.17.0
 
 Wasmtime-embedded plugin host with capability-scoped WASI (no ambient fs/net);
 plugins declare permissions in a manifest surfaced at install time.

@@ -80,6 +80,11 @@
 #include "version.hpp"
 #include "safe_exec.hpp"
 #include "update_installer.hpp"
+#include "stream_reader.hpp"
+#include "history_engine.hpp"
+#include "blast_radius.hpp"
+#include "undo_engine.hpp"
+#include "sandbox_engine.hpp"
 
 namespace fs = std::filesystem;
 
@@ -1070,7 +1075,12 @@ public:
 
     using LineFilter = std::function<std::string(const std::string&)>;
 
-    static ExecResult Execute(const std::string& command, const LineFilter& lineFilter = nullptr) {
+    // Phase 8 (v5.16): optional kernel confinement. When `sandbox` is
+    // non-null and enabled, the POSIX child applies no_new_privs +
+    // Landlock + seccomp between fork and exec; a failed application
+    // honors fail_closed by refusing to exec (exit 90+step).
+    static ExecResult Execute(const std::string& command, const LineFilter& lineFilter = nullptr,
+                              const neuroshell::PreparedSandbox* sandbox = nullptr) {
         ExecResult res;
 
         // Line-buffered filter application: secrets are redacted BEFORE they
@@ -1231,6 +1241,14 @@ public:
             dup2(pipefds[1], STDERR_FILENO);
             close(pipefds[1]);
 
+            // Phase 8: kernel confinement (Landlock + seccomp + NNP).
+            // Applied AFTER the pipes are wired, BEFORE exec. Fail-closed:
+            // if the sandbox cannot be established, refuse to run.
+            if (sandbox && sandbox->enabled) {
+                int sbrc = sandbox->ApplyInChild();
+                if (sbrc != neuroshell::SBX_OK) _exit(90 + sbrc);
+            }
+
             const char* shell = getenv("SHELL");
             if (!shell) shell = "/bin/sh";
             execl(shell, shell, "-c", command.c_str(), (char*)NULL);
@@ -1293,6 +1311,9 @@ private:
     NeuroShell::IPC::NeuroIPCClient ipcClient;
     neuroshell::DLPMasker dlpMasker;
     neuroshell::SHMRingBuffer shmRing;
+    // Phase 2 (v5.10): daemon → host token-stream ring (ABI v3)
+    neuroshell::SHMRingBuffer shmStreamRing{neuroshell::SHM_STREAM_WIN_NAME,
+                                            neuroshell::SHM_STREAM_POSIX_NAME};
     neuroshell::StreamRecorder streamRecorder;
     neuroshell::SplitPaneManager splitPanes;
     neuroshell::NativePhraseDictionary nativeDictionary;
@@ -1302,6 +1323,21 @@ private:
 
     std::vector<HistoryEntry> history;
     int historyIndex = 0;
+    // Phase 3 (v5.11): SQLite+FTS5 ranked history (shared with the Python
+    // daemon's ~/.neuroshell/history.db). Falls back to history.txt when no
+    // system SQLite library can be loaded.
+    neuroshell::HistoryEngine historyDb;
+    // Phase 5 (v5.13): Universal Undo — CoW snapshots of write-targets.
+    neuroshell::UndoEngine undoEngine{PlatformFS::GetHomeDir() / ".neuroshell" / "undo"};
+    // Phase 8 (v5.16): kernel sandbox mode. Default `project` = confine
+    // AI-translated commands to the project directory via Landlock+seccomp;
+    // user-typed commands run unconfined. Env override: NEUROSHELL_SANDBOX.
+    neuroshell::SandboxMode sandboxMode = [] {
+        neuroshell::SandboxMode m = neuroshell::SandboxMode::Project;
+        const char* env = std::getenv("NEUROSHELL_SANDBOX");
+        if (env && *env) neuroshell::ParseSandboxMode(env, m);
+        return m;
+    }();
 
     std::vector<Tab> tabs;
     int activeTabIdx = 0;
@@ -1383,6 +1419,7 @@ public:
         fs::path cur = fs::current_path();
         tabs.push_back({1, cur.filename().string(), cur.string()});
         shmRing.initialize_as_host();
+        shmStreamRing.initialize_as_host(); // token-stream ring (daemon → host)
         LoadConfig();
         LoadHistory();
         NeuroShell::Daemon::DaemonManager::EnsureDaemonRunningAsync(ipcClient);
@@ -1415,6 +1452,312 @@ public:
             std::cout << "  " << C_RED << "❌ Update not installed: " << res.message << C_RESET << "\n";
             std::cout << "  " << C_MUTED << "You can update manually from https://github.com/abneeshsingh21/neuroshell/releases" << C_RESET << "\n\n";
         }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Phase 2 (v5.10): SHM token streaming for AI pipes
+    // ═══════════════════════════════════════════════════════
+    // Non-blocking Esc probe used while a token stream renders. Consumes
+    // nothing else: any non-Esc byte is discarded (the UI is output-only
+    // during a stream).
+    static bool PollEscapePressed() {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        while (_kbhit()) {
+            int ch = _getch();
+            if (ch == 27) return true;
+            if (ch == 0 || ch == 0xE0) { if (_kbhit()) _getch(); } // swallow scan code
+        }
+        return false;
+#else
+        struct pollfd pfd = { STDIN_FILENO, POLLIN, 0 };
+        while (poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLIN)) {
+            char c = 0;
+            if (read(STDIN_FILENO, &c, 1) <= 0) break;
+            if (c == 27) {
+                // Bare Esc vs. escape sequence (arrow keys etc.): if more
+                // bytes follow immediately, it's a sequence — drain & ignore.
+                struct pollfd pfd2 = { STDIN_FILENO, POLLIN, 0 };
+                if (poll(&pfd2, 1, 20) <= 0) return true;
+                char drain[8];
+                while (poll(&pfd2, 1, 0) > 0) {
+                    if (read(STDIN_FILENO, drain, sizeof(drain)) <= 0) break;
+                }
+            }
+        }
+        return false;
+#endif
+    }
+
+    // Streamed @ai/@fix/@explain pipe: tokens render as they arrive over the
+    // SHM stream ring (sub-frame latency), DLP-masked per completed line,
+    // Esc cancels mid-generation. Falls back to the blocking ai_pipe RPC
+    // when the daemon predates ABI v3 or the ring is unavailable.
+    void RunStreamedAIPipe(const std::string& directive, const std::string& prompt,
+                           const std::string& inputText) {
+        const std::string cwd = fs::current_path().string();
+
+        if (!shmStreamRing.is_connected()) {
+            std::string aiResponse = ipcClient.AIPipe(directive, prompt, inputText, cwd);
+            std::cout << "  " << C_WHITE << dlpMasker.filter_stream(aiResponse) << C_RESET << "\n\n";
+            return;
+        }
+
+        // Fresh stream: drop any stale frames + stale cancel flag.
+        shmStreamRing.drain();
+        shmStreamRing.clear_cancel();
+        const uint32_t streamId = neuroshell::TokenStreamReader::NextStreamId();
+
+        // Fire the RPC on a worker; the daemon blocks in it until the stream
+        // terminates, while this thread consumes tokens from the ring.
+        NeuroShell::IPC::NeuroIPCClient::AIPipeStreamResult rpc;
+        std::thread rpcThread([&]() {
+            rpc = ipcClient.AIPipeStream(directive, prompt, inputText, cwd, streamId);
+        });
+
+        size_t rendered_lines = 0;
+        neuroshell::TokenStreamReader reader(
+            shmStreamRing,
+            [&](const std::string& line) {
+                std::cout << "  " << C_WHITE << dlpMasker.filter_stream(line) << C_RESET << "\n"
+                          << std::flush;
+                ++rendered_lines;
+            },
+            []() { return PollEscapePressed(); });
+
+        neuroshell::StreamResult sres = reader.Consume(streamId);
+        rpcThread.join();
+        shmStreamRing.clear_cancel();
+
+        if (sres.cancelled) {
+            std::cout << "\n  " << C_YELLOW << "◼ Generation cancelled." << C_RESET << "\n\n";
+            return;
+        }
+        if (sres.completed && sres.tokens > 0) {
+            std::cout << "\n";
+            return;
+        }
+        if (sres.error) {
+            std::cout << "  " << C_RED << "❌ " << dlpMasker.filter_stream(sres.error_message)
+                      << C_RESET << "\n\n";
+            return;
+        }
+
+        // No tokens arrived (old daemon without ai_pipe_stream, or timeout):
+        // fall back to the RPC's full-text copy, then to the legacy method.
+        std::string fallback = rpc.rpc_ok ? rpc.response
+                                          : ipcClient.AIPipe(directive, prompt, inputText, cwd);
+        std::cout << "  " << C_WHITE << dlpMasker.filter_stream(fallback) << C_RESET << "\n\n";
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Phase 4 (v5.12): Blast-Radius Preview
+    // ═══════════════════════════════════════════════════════
+    static std::string HumanBytes(uint64_t b) {
+        char buf[32];
+        if (b >= (1ull << 30)) std::snprintf(buf, sizeof(buf), "%.1f GiB", (double)b / (1ull << 30));
+        else if (b >= (1ull << 20)) std::snprintf(buf, sizeof(buf), "%.1f MiB", (double)b / (1ull << 20));
+        else if (b >= (1ull << 10)) std::snprintf(buf, sizeof(buf), "%.1f KiB", (double)b / (1ull << 10));
+        else std::snprintf(buf, sizeof(buf), "%llu B", (unsigned long long)b);
+        return buf;
+    }
+
+    // Returns true when the command may run (safe, or user confirmed).
+    // Set NEUROSHELL_NO_BLAST_GUARD=1 to disable (CI / scripted use).
+    bool BlastRadiusGate(const std::string& commandToRun) {
+        static const bool disabled = [] {
+            const char* v = std::getenv("NEUROSHELL_NO_BLAST_GUARD");
+            return v && *v && std::string(v) != "0";
+        }();
+        if (disabled) return true;
+
+        neuroshell::BlastRadiusAnalyzer analyzer;
+        neuroshell::BlastReport report =
+            analyzer.Analyze(commandToRun, tabs[activeTabIdx].cwd);
+        if (!report.NeedsConfirmation()) return true;
+
+        const char* sevColor =
+            report.severity == neuroshell::BlastSeverity::Critical ? C_RED :
+            report.severity == neuroshell::BlastSeverity::High ? C_RED : C_YELLOW;
+
+        std::cout << "\n  " << C_BOLD << sevColor << "⚠ Blast-Radius Preview — "
+                  << neuroshell::BlastSeverityName(report.severity) << " impact" << C_RESET << "\n";
+
+        for (const auto& op : report.operations) {
+            if (op.severity < neuroshell::BlastSeverity::Medium) continue;
+            std::cout << "  " << C_MUTED << "├─ " << C_RESET << C_WHITE << op.verb << C_RESET;
+            if (!op.note.empty()) std::cout << C_MUTED << "  (" << op.note << ")" << C_RESET;
+            std::cout << "\n";
+            int shown = 0;
+            for (const auto& t : op.targets) {
+                if (!t.exists) continue;
+                std::cout << "  " << C_MUTED << "│    " << C_RESET << t.path;
+                if (t.is_dir) {
+                    std::cout << C_MUTED << "  → " << (t.scan_capped ? "≥" : "") << t.files
+                              << " files, " << (t.scan_capped ? "≥" : "") << HumanBytes(t.bytes)
+                              << C_RESET;
+                } else if (t.bytes > 0) {
+                    std::cout << C_MUTED << "  → " << HumanBytes(t.bytes) << C_RESET;
+                }
+                std::cout << "\n";
+                if (++shown >= 8) {
+                    std::cout << "  " << C_MUTED << "│    … and more" << C_RESET << "\n";
+                    break;
+                }
+            }
+        }
+        if (report.total_files > 0) {
+            std::cout << "  " << C_MUTED << "╰─ total: " << (report.scan_capped ? "≥" : "")
+                      << report.total_files << " files, " << (report.scan_capped ? "≥" : "")
+                      << HumanBytes(report.total_bytes) << C_RESET << "\n";
+        }
+
+        // CRITICAL requires typing "yes"; MEDIUM/HIGH accept a single 'y'.
+        if (report.severity == neuroshell::BlastSeverity::Critical) {
+            std::cout << "\n  " << C_BOLD << C_RED
+                      << "This can destroy your system. Type 'yes' to proceed: " << C_RESET;
+            std::string typed;
+            while (true) {
+                KeyEvent ev = terminal.ReadKey();
+                if (ev.code == KeyCode::Enter) break;
+                if (ev.code == KeyCode::Escape || ev.code == KeyCode::Ctrl_C) { std::cout << "\n"; return false; }
+                if (ev.code == KeyCode::Backspace) {
+                    if (!typed.empty()) { typed.pop_back(); std::cout << "\b \b" << std::flush; }
+                } else if (ev.code == KeyCode::Printable) {
+                    typed.push_back(ev.ch);
+                    std::cout << ev.ch << std::flush;
+                }
+            }
+            std::cout << "\n";
+            if (typed != "yes") return false;
+            SnapshotForUndo(report, commandToRun);
+            return true;
+        }
+
+        std::cout << "\n  " << C_BOLD << C_YELLOW << "Proceed? [y/N]: " << C_RESET;
+        KeyEvent key = terminal.ReadKey();
+        bool ok = (key.code == KeyCode::Printable && (key.ch == 'y' || key.ch == 'Y'));
+        std::cout << (ok ? "y" : "n") << "\n";
+        if (!ok) return false;
+        SnapshotForUndo(report, commandToRun);
+        return true;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Phase 5 (v5.13): Universal Undo — CoW snapshots
+    // ═══════════════════════════════════════════════════════
+    // After the user confirms a destructive command, snapshot its
+    // write-targets so `undo` can bring them back. Best-effort by design:
+    // a skipped snapshot (too large, non-CoW fs over budget) never blocks
+    // execution — the user already confirmed the command.
+    void SnapshotForUndo(const neuroshell::BlastReport& report, const std::string& cmd) {
+        static const bool disabled = [] {
+            const char* v = std::getenv("NEUROSHELL_NO_UNDO");
+            return v && *v && std::string(v) != "0";
+        }();
+        if (disabled) return;
+
+        neuroshell::SnapshotResult snap =
+            undoEngine.SnapshotBeforeExecute(report, cmd, tabs[activeTabIdx].cwd);
+        if (snap.status == neuroshell::SnapshotStatus::Saved) {
+            std::cout << "  " << C_MUTED << "⎌ Undo point saved (" << snap.files
+                      << (snap.files == 1 ? " file, " : " files, ") << HumanBytes(snap.bytes)
+                      << (snap.copied_bytes == 0 && snap.bytes > 0 ? ", reflinked" : "")
+                      << ") — type 'undo' to revert." << C_RESET << "\n";
+        } else if (snap.status == neuroshell::SnapshotStatus::SkippedTooLarge) {
+            std::cout << "  " << C_MUTED << "⎌ No undo point: " << snap.reason << "." << C_RESET << "\n";
+        }
+    }
+
+    void HandleUndoCommand(const std::string& input) {
+        std::string arg = input.size() > 4 ? input.substr(5) : "";
+        // trim
+        while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t')) arg.pop_back();
+
+        if (arg == "list") {
+            auto txns = undoEngine.ListTransactions();
+            if (txns.empty()) {
+                std::cout << "\n  " << C_MUTED << "No undo points recorded." << C_RESET << "\n\n";
+                return;
+            }
+            std::cout << "\n  " << C_BOLD << C_CYAN << "⎌ Undo Points (newest first)" << C_RESET << "\n";
+            int shown = 0;
+            for (const auto& t : txns) {
+                std::cout << "  " << C_MUTED << (shown == 0 ? "→ " : "  ") << C_RESET
+                          << C_WHITE << t.command << C_RESET
+                          << C_MUTED << "  (" << t.files << (t.files == 1 ? " file, " : " files, ")
+                          << HumanBytes(t.bytes) << ")" << C_RESET << "\n";
+                if (++shown >= 10) break;
+            }
+            std::cout << "  " << C_MUTED << "'undo' restores the top entry." << C_RESET << "\n\n";
+            return;
+        }
+
+        auto txns = undoEngine.ListTransactions();
+        if (txns.empty()) {
+            std::cout << "\n  " << C_MUTED << "Nothing to undo — no snapshots recorded." << C_RESET << "\n\n";
+            return;
+        }
+        std::cout << "\n  " << C_BOLD << C_YELLOW << "⎌ Undo: " << C_RESET << C_WHITE
+                  << txns[0].command << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Restores " << txns[0].files
+                  << (txns[0].files == 1 ? " file (" : " files (") << HumanBytes(txns[0].bytes)
+                  << "), overwriting current state of those paths." << C_RESET << "\n";
+        std::cout << "  " << C_BOLD << C_YELLOW << "Proceed? [y/N]: " << C_RESET;
+        KeyEvent key = terminal.ReadKey();
+        bool ok = (key.code == KeyCode::Printable && (key.ch == 'y' || key.ch == 'Y'));
+        std::cout << (ok ? "y" : "n") << "\n";
+        if (!ok) { std::cout << "\n"; return; }
+
+        neuroshell::RestoreResult r = undoEngine.Undo();
+        if (r.ok) {
+            std::cout << "  " << C_GREEN << "✔ Restored " << r.files_restored
+                      << (r.files_restored == 1 ? " file." : " files.") << C_RESET << "\n\n";
+        } else {
+            std::cout << "  " << C_RED << "✘ Undo failed: " << r.error << C_RESET << "\n\n";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Phase 8 (v5.16): /sandbox command
+    // ═══════════════════════════════════════════════════════
+    void HandleSandboxCommand(const std::string& input) {
+        std::string arg;
+        size_t sp = input.find(' ');
+        if (sp != std::string::npos) arg = input.substr(sp + 1);
+        while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t')) arg.pop_back();
+
+        if (!arg.empty()) {
+            neuroshell::SandboxMode m;
+            if (neuroshell::ParseSandboxMode(arg, m)) {
+                sandboxMode = m;
+                std::cout << "\n  " << C_GREEN << "✔ Kernel sandbox mode → "
+                          << C_BOLD << C_WHITE << neuroshell::SandboxModeName(m)
+                          << C_RESET << "\n\n";
+            } else {
+                std::cout << "\n  " << C_RED << "Unknown mode '" << arg
+                          << "'. Use: /sandbox off|project|strict" << C_RESET << "\n\n";
+            }
+            return;
+        }
+
+        neuroshell::SandboxSupport sup = neuroshell::ProbeSandboxSupport();
+        std::cout << "\n  " << C_BOLD << C_CYAN << "⛨ Kernel Sandbox Status" << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Mode:      " << C_RESET << C_WHITE
+                  << neuroshell::SandboxModeName(sandboxMode) << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Landlock:  " << C_RESET
+                  << (sup.landlock
+                          ? (std::string(C_GREEN) + "available (ABI " +
+                             std::to_string(sup.landlock_abi) + ")" + C_RESET)
+                          : (std::string(C_YELLOW) + "unavailable" + C_RESET))
+                  << "\n";
+        std::cout << "  " << C_MUTED << "seccomp:   " << C_RESET
+                  << (sup.seccomp ? (std::string(C_GREEN) + "available" + C_RESET)
+                                  : (std::string(C_YELLOW) + "unavailable" + C_RESET))
+                  << "\n";
+        std::cout << "  " << C_MUTED
+                  << "project = confine AI-translated commands · strict = confine all\n"
+                  << "  '!cmd' runs one command unconfined · /sandbox off|project|strict"
+                  << C_RESET << "\n\n";
     }
 
     fs::path GetConfigPath() {
@@ -1482,7 +1825,25 @@ public:
 #endif
     }
 
+    // Phase 3 (v5.11): history now lives in the SQLite+FTS5 store shared
+    // with the Python daemon. The flat file remains as (a) the source for a
+    // one-time migration and (b) the fallback when SQLite is unavailable.
     void LoadHistory() {
+        fs::path dbPath = PlatformFS::GetHomeDir() / ".neuroshell" / "history.db";
+        if (historyDb.Open(dbPath)) {
+            historyDb.MigrateLegacyFile(GetHistoryPath());
+            // Warm the in-memory Up-arrow ring with recent unique commands
+            // (oldest → newest so index arithmetic stays natural).
+            std::vector<std::string> recent = historyDb.RecentUnique(500);
+            for (auto it = recent.rbegin(); it != recent.rend(); ++it) {
+                history.push_back({*it, "", 0});
+                predictor.Learn(*it);
+            }
+            historyIndex = (int)history.size();
+            return;
+        }
+
+        // Fallback: legacy flat file
         fs::path histPath = GetHistoryPath();
         if (!fs::exists(histPath)) return;
 
@@ -1503,6 +1864,12 @@ public:
         historyIndex = (int)history.size();
         predictor.Learn(cmd);
 
+        if (historyDb.IsOpen()) {
+            historyDb.Append(cmd, tabs[activeTabIdx].cwd);
+            return;
+        }
+
+        // Fallback: legacy flat file
         fs::path histPath = GetHistoryPath();
         fs::create_directories(histPath.parent_path());
         std::ofstream f(histPath, std::ios::app);
@@ -1726,38 +2093,82 @@ public:
     // Reverse History Search Modal (Ctrl + R)
     // ═══════════════════════════════════════════════════════
 
+    // Phase 3 (v5.11): Ctrl+R is now RANKED recall, not just most-recent
+    // substring match. Results are scored 0.6·frecency + 0.3·cwd-affinity +
+    // 0.1·prefix from the SQLite store; ↑/↓ navigates the top matches.
+    // Falls back to the legacy in-memory scan when SQLite is unavailable.
     std::string ReverseSearchModal() {
         std::string query = "";
+        int selectedIdx = 0;
+        int lastRendered = 0;
+        const std::string cwd = tabs[activeTabIdx].cwd;
         std::cout << "\n";
 
-        while (true) {
+        auto collect = [&](const std::string& q) -> std::vector<std::string> {
+            if (historyDb.IsOpen()) {
+                std::vector<neuroshell::RankedCommand> ranked = historyDb.Search(q, cwd, 5);
+                std::vector<std::string> cmds;
+                cmds.reserve(ranked.size());
+                for (auto& r : ranked) cmds.push_back(r.command);
+                if (!cmds.empty() || !q.empty()) return cmds;
+            }
+            // Fallback: newest-first substring scan of the session ring
             std::vector<std::string> matches;
             for (int i = (int)history.size() - 1; i >= 0; --i) {
-                if (query.empty() || history[i].command.find(query) != std::string::npos) {
+                if (q.empty() || history[i].command.find(q) != std::string::npos) {
                     if (std::find(matches.begin(), matches.end(), history[i].command) == matches.end()) {
                         matches.push_back(history[i].command);
                         if (matches.size() >= 5) break;
                     }
                 }
             }
+            return matches;
+        };
 
-            std::cout << "\r\033[2K" << C_CYAN << "  (reverse-i-search)`" << C_BOLD << C_WHITE << query << C_RESET << C_CYAN << "': " << C_RESET;
-            if (!matches.empty()) {
-                std::cout << C_GREEN << matches[0] << C_RESET;
+        while (true) {
+            std::vector<std::string> matches = collect(query);
+            int count = (int)matches.size();
+            if (selectedIdx >= count) selectedIdx = std::max(0, count - 1);
+
+            // Repaint: move up over the previous result block, redraw.
+            if (lastRendered > 0) std::cout << "\033[" << lastRendered << "A";
+            std::cout << "\r\033[2K" << C_CYAN << "  (ranked-search)`" << C_BOLD << C_WHITE
+                      << query << C_RESET << C_CYAN << "': " << C_RESET << C_MUTED
+                      << (historyDb.IsOpen() ? "frecency+cwd ranked" : "recent-first")
+                      << C_RESET << "\n";
+            for (int i = 0; i < count; ++i) {
+                std::string label = matches[i];
+                if (label.length() > 70) label = label.substr(0, 67) + "...";
+                std::cout << "\r\033[2K";
+                if (i == selectedIdx) {
+                    std::cout << "  " << C_BOLD << C_GREEN << " ❯ " << label << C_RESET << "\n";
+                } else {
+                    std::cout << "  " << C_MUTED << "   " << label << C_RESET << "\n";
+                }
             }
+            for (int i = count; i < lastRendered - 1 && i < 5; ++i) {
+                std::cout << "\r\033[2K\n"; // clear leftover lines from longer lists
+            }
+            lastRendered = 1 + std::max(count, std::min(lastRendered - 1, 5));
             std::cout.flush();
 
             KeyEvent ev = terminal.ReadKey();
             if (ev.code == KeyCode::Enter) {
                 std::cout << "\n";
-                return matches.empty() ? query : matches[0];
+                if (count > 0 && selectedIdx >= 0 && selectedIdx < count) return matches[selectedIdx];
+                return query;
             } else if (ev.code == KeyCode::Escape || ev.code == KeyCode::Ctrl_C) {
                 std::cout << "\n";
                 return "";
+            } else if (ev.code == KeyCode::Up) {
+                if (count > 0) selectedIdx = (selectedIdx - 1 + count) % count;
+            } else if (ev.code == KeyCode::Down || ev.code == KeyCode::Ctrl_R) {
+                if (count > 0) selectedIdx = (selectedIdx + 1) % count;
             } else if (ev.code == KeyCode::Backspace) {
-                if (!query.empty()) query.pop_back();
+                if (!query.empty()) { query.pop_back(); selectedIdx = 0; }
             } else if (ev.code == KeyCode::Printable) {
                 query.push_back(ev.ch);
+                selectedIdx = 0;
             }
         }
     }
@@ -2778,6 +3189,10 @@ public:
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "z <directory>" << C_RESET << "         Fuzzy jump to any directory\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << ".. / ... / ...." << C_RESET << "       Jump 1, 2, or 3 folder levels up\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "cd -" << C_RESET << "                 Return to previous directory\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "undo" << C_RESET << "                 Restore files from last destructive command\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "undo list" << C_RESET << "            Show available undo snapshots\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "/sandbox" << C_RESET << "             Kernel sandbox status / off|project|strict\n"
+                      << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "!<cmd>" << C_RESET << "               Run one command outside the kernel sandbox\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "ports" << C_RESET << "                Show active listening TCP ports\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "wifi" << C_RESET << "                 Show saved Wi-Fi networks & passwords\n"
                       << C_CYAN << "│ " << C_RESET << "   • " << C_YELLOW << "specs" << C_RESET << "                Show CPU, RAM, and hardware telemetry\n"
@@ -2840,6 +3255,20 @@ public:
         if (input == "cls" || input == "clear" || input == "/clear") {
             PlatformTerminal::ClearScreen();
             PrintBanner();
+            return;
+        }
+
+        // 2a. Universal Undo (Phase 5, v5.13) — restore the last snapshot
+        // taken before a confirmed destructive command.
+        if (input == "undo" || input == "/undo" || input == "undo list" || input == "/undo list") {
+            HandleUndoCommand(input[0] == '/' ? input.substr(1) : input);
+            return;
+        }
+
+        // 2b'. Kernel sandbox control (Phase 8, v5.16).
+        if (input == "/sandbox" || input == "sandbox" ||
+            input.rfind("/sandbox ", 0) == 0 || input.rfind("sandbox ", 0) == 0) {
+            HandleSandboxCommand(input);
             return;
         }
 
@@ -3360,9 +3789,9 @@ public:
                     std::cout << "  " << C_MAGENTA << "⚡ Executing upstream pipeline: " << C_WHITE << upstream << C_RESET << "\n";
                     PlatformProcessRunner::ExecResult upRes = PlatformProcessRunner::Execute(upstream);
                     
-                    std::cout << "\n  " << C_CYAN << "⌬ NeuroAI (" << directive << " Reasoning):" << C_RESET << "\n";
-                    std::string aiResponse = ipcClient.AIPipe(directive, prompt, upRes.output, fs::current_path().string());
-                    std::cout << "  " << C_WHITE << aiResponse << C_RESET << "\n\n";
+                    std::cout << "\n  " << C_CYAN << "⌬ NeuroAI (" << directive << " Reasoning):" << C_RESET
+                              << C_MUTED << "  [Esc to cancel]" << C_RESET << "\n";
+                    RunStreamedAIPipe(directive, prompt, upRes.output);
                     return;
                 }
             }
@@ -3441,17 +3870,32 @@ public:
             return;
         }
 
+        // 4.9. Sandbox escalation (Phase 8, v5.16): `!command` runs one
+        // command unconfined — explicit user intent, mirroring sudo
+        // ergonomics. The bang is stripped before translation/analysis.
+        bool sandboxEscalated = false;
+        std::string effectiveInput = input;
+        if (effectiveInput.size() > 1 && effectiveInput[0] == '!' &&
+            effectiveInput[1] != '!' && effectiveInput[1] != '=') {
+            sandboxEscalated = true;
+            effectiveInput = effectiveInput.substr(1);
+            effectiveInput.erase(0, effectiveInput.find_first_not_of(" \t"));
+            if (effectiveInput.empty()) return;
+        }
+
         // 5. Natural Language Command Translation
-        std::string transformed = TranslateNaturalLanguage(input);
-        std::string commandToRun = input;
+        std::string transformed = TranslateNaturalLanguage(effectiveInput);
+        std::string commandToRun = effectiveInput;
+        bool wasAiTranslated = false;
 
         if (!transformed.empty()) {
-            std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << input << "'..." << C_RESET << "\n";
+            std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << effectiveInput << "'..." << C_RESET << "\n";
             std::cout << "  " << C_GREEN << "✔ Transformed → " << C_BOLD << C_WHITE << transformed << C_RESET << "\n\n";
             commandToRun = transformed;
+            wasAiTranslated = true;
         } else {
             // Check if input looks like an unmapped natural language query
-            std::string lowerTrim = input;
+            std::string lowerTrim = effectiveInput;
             std::transform(lowerTrim.begin(), lowerTrim.end(), lowerTrim.begin(), ::tolower);
             const std::vector<std::string> nlPrefixes = {
                 "show ", "how to ", "what is ", "where is ", "how do i ", "tell me ", "give me ", "can you "
@@ -3470,12 +3914,57 @@ public:
             }
         }
 
+        // 5.5. Blast-Radius Preview (Phase 4, v5.12): before anything
+        // destructive runs, show exactly what it would touch and require
+        // explicit confirmation for MEDIUM+ severity. Non-destructive
+        // commands pass through with zero friction.
+        if (!BlastRadiusGate(commandToRun)) {
+            std::cout << "  " << C_YELLOW << "◼ Command aborted — nothing was executed." << C_RESET << "\n\n";
+            return;
+        }
+
+        // 5.8. Kernel sandbox decision (Phase 8, v5.16). In `project`
+        // mode only AI-translated commands are confined (the untrusted
+        // input path); `strict` confines everything; `!cmd` escalates.
+        neuroshell::PreparedSandbox preparedSbx;
+        const neuroshell::PreparedSandbox* sbxPtr = nullptr;
+        if (neuroshell::ShouldSandbox(sandboxMode, wasAiTranslated, sandboxEscalated)) {
+            neuroshell::SandboxSpec spec;
+            spec.enabled = true;
+            spec.project_dir = tabs[activeTabIdx].cwd;
+            spec.rw_paths.push_back("/tmp");
+            spec.rw_paths.push_back((PlatformFS::GetHomeDir() / ".neuroshell").string());
+            preparedSbx = neuroshell::PreparedSandbox::Prepare(spec);
+            if (preparedSbx.landlock_available) {
+                sbxPtr = &preparedSbx;
+                std::cout << "  " << C_MUTED << "⛨ kernel sandbox: writes confined to "
+                          << tabs[activeTabIdx].cwd << " (Landlock ABI "
+                          << preparedSbx.landlock_abi << ") — prefix '!' to escalate"
+                          << C_RESET << "\n";
+            } else {
+                std::cout << "  " << C_YELLOW << "⛨ kernel sandbox unavailable on this "
+                          << "system — running unconfined (blast-radius heuristics "
+                          << "still active)." << C_RESET << "\n";
+            }
+        }
+
         // 6. Cross-Platform Process Runner — DLP masking is applied as a live
         // line filter so secrets never reach the viewport unredacted
         // (previously raw output was displayed and only the record was masked).
         PlatformProcessRunner::ExecResult execRes = PlatformProcessRunner::Execute(
             commandToRun,
-            [this](const std::string& line) { return dlpMasker.filter_stream(line); });
+            [this](const std::string& line) { return dlpMasker.filter_stream(line); },
+            sbxPtr);
+
+        // Sandbox application failure surfaces as exit 90+step (fail-closed).
+        if (sbxPtr && execRes.exitCode >= 90 + neuroshell::SBX_ERR_NNP &&
+            execRes.exitCode <= 90 + neuroshell::SBX_ERR_UNSUPPORTED) {
+            std::cout << "  " << C_RED << "✘ Kernel sandbox could not be applied ("
+                      << neuroshell::SandboxStepName(execRes.exitCode - 90)
+                      << ") — command was NOT executed. Use '!" << commandToRun
+                      << "' to run unconfined." << C_RESET << "\n\n";
+            return;
+        }
 
         streamRecorder.record_input(commandToRun);
         streamRecorder.record_output(execRes.output);
