@@ -6,6 +6,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [5.10.0 → 5.16.0] — Engineering roadmap Phases 2–8
+
+### Added
+- Streaming LLM tokens over SHM with cancellation and backpressure (Phase 2).
+- SQLite/WAL + FTS5 command history and transparent migration (Phase 3).
+- Bounded blast-radius previews for destructive commands (Phase 4).
+- Universal undo with CoW/reflink snapshots and copy fallback (Phase 5).
+- MCP server mode exposing the safety-shielded execution tools (Phase 6).
+- Remote SSH execution with local translation, safety checks, and DLP masking (Phase 7).
+- Landlock/seccomp-bpf and AppContainer sandbox profiles for AI commands (Phase 8).
+
+This roadmap release train also carries forward the v5.8 production hardening
+and v5.9 cryptographically signed, fail-closed self-update work.
+
+---
+
 ## [5.9.0] — 2026-08-29
 
 ### Security (Critical) — Cryptographically Signed Self-Updates
