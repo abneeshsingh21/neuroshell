@@ -1,0 +1,21 @@
+# winget manifest — installer (portable archive)
+# Submission: https://github.com/microsoft/winget-pkgs (manifests/e/pl-lang/NeuroShell/)
+#
+# InstallerSha256 carries the REPLACE_AT_RELEASE sentinel in-repo; the release
+# pipeline (scripts/check_packaging_consistency.py render) substitutes the real
+# digest from checksums.txt when the tag is built. A submission without a real
+# 64-hex digest is rejected by the gate.
+PackageIdentifier: epl-lang.NeuroShell
+PackageVersion: 5.18.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: NeuroShell.exe
+    PortableCommandAlias: neuroshell
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/abneeshsingh21/neuroshell/releases/download/v5.18.0/NeuroShell-windows-x64.zip
+    InstallerSha256: REPLACE_AT_RELEASE
+    UpgradeBehavior: uninstallPrevious
+ManifestType: installer
+ManifestVersion: 1.6.0

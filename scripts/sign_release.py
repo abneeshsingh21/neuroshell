@@ -57,6 +57,16 @@ except ImportError:  # pragma: no cover
           file=sys.stderr)
     sys.exit(2)
 
+# Phase 10: sibling tooling (works both as a script and as an imported module).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from verify_provenance import main as verify_provenance_main
+except ImportError:  # pragma: no cover
+    try:
+        from scripts.verify_provenance import main as verify_provenance_main
+    except ImportError:
+        verify_provenance_main = None  # only needed for attest/verify-attestation
+
 SCHEMA_VERSION = 1
 VALID_PLATFORMS = {
     "linux-x86_64", "linux-arm64",
@@ -232,6 +242,50 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_attest(args: argparse.Namespace) -> int:
+    """Phase 10: generate + sign a SLSA v1 provenance statement in one step."""
+    import provenance
+
+    rc = provenance.main([
+        "generate",
+        *sum([["--subject", s] for s in args.subject], []),
+        "--builder-id", args.builder_id,
+        "--source-uri", args.source_uri,
+        "--commit", args.commit,
+        "--build-type", args.build_type,
+        "--out", args.out,
+    ])
+    if rc != 0:
+        return rc
+    sig_out = args.sig_out or (args.out + ".sig")
+    rc = provenance.main(["sign", "--key", args.key,
+                          "--statement", args.out, "--out", sig_out])
+    if rc != 0:
+        return rc
+    # Sanity gate mirroring the manifest flow: verify what we just produced.
+    pub = provenance.sign_statement(Path(args.key), Path(args.out))[1]
+    rc = verify_provenance_main([
+        "verify", "--pubkey", pub, "--statement", args.out, "--sig", sig_out,
+        "--expect-builder", args.builder_id,
+    ])
+    if rc != 0:
+        print("error: freshly signed provenance failed self-verification "
+              "(this is a bug — refusing to ship it)", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_verify_attestation(args: argparse.Namespace) -> int:
+    """Phase 10: consumer-side verification gate."""
+    argv = ["verify", "--pubkey", args.pubkey,
+            "--statement", args.statement, "--sig", args.sig]
+    for builder in args.expect_builder:
+        argv += ["--expect-builder", builder]
+    for artifact in args.artifact:
+        argv += ["--artifact", artifact]
+    return verify_provenance_main(argv)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="sign_release.py",
                                  description=__doc__.split("\n", 1)[0])
@@ -262,6 +316,37 @@ def main(argv: list[str] | None = None) -> int:
     vf.add_argument("--manifest", required=True)
     vf.add_argument("--sig", required=True)
     vf.set_defaults(func=cmd_verify)
+
+    # ── Phase 10: SLSA provenance, wired into the same signing flow ──────────
+    at = sub.add_parser(
+        "attest",
+        help="generate + sign a SLSA v1 provenance statement for release "
+             "artifacts (same Ed25519 key as manifests)")
+    at.add_argument("--subject", action="append", required=True, metavar="NAME:PATH")
+    at.add_argument("--builder-id", required=True)
+    at.add_argument("--source-uri",
+                    default="git+https://github.com/abneeshsingh21/neuroshell")
+    at.add_argument("--commit", default="")
+    at.add_argument("--build-type",
+                    default="https://github.com/abneeshsingh21/neuroshell/buildtypes/cmake-native-v1")
+    at.add_argument("--invocation-id", default=None)
+    at.add_argument("--started-on", default=None)
+    at.add_argument("--finished-on", default=None)
+    at.add_argument("--key", required=True)
+    at.add_argument("--out", default="provenance.intoto.json")
+    at.add_argument("--sig-out", default=None)
+    at.set_defaults(func=cmd_attest)
+
+    va = sub.add_parser(
+        "verify-attestation",
+        help="verify a signed provenance statement (signature, shape, builder, "
+             "optional local artifact digests)")
+    va.add_argument("--pubkey", required=True)
+    va.add_argument("--statement", required=True)
+    va.add_argument("--sig", required=True)
+    va.add_argument("--expect-builder", action="append", default=[], metavar="ID")
+    va.add_argument("--artifact", action="append", default=[], metavar="NAME:PATH")
+    va.set_defaults(func=cmd_verify_attestation)
 
     args = ap.parse_args(argv)
     try:

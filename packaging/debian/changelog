@@ -1,0 +1,10 @@
+neuroshell (5.18.0-1) stable; urgency=medium
+
+  * Phase 10 — Distribution & Supply Chain: CycloneDX SBOM, SLSA v1
+    provenance, sha256-pinned package-manager manifests, verified-install
+    documentation (docs/SUPPLY_CHAIN.md).
+  * Carries the v5.17.0 roadmap release: SHM token streaming, SQLite+FTS5
+    history, blast-radius preview, universal undo, MCP server, remote
+    execution, kernel sandboxing, WASM plugin runtime.
+
+ -- Abneesh Singh <abneesh@neuroshell.dev>  Sun, 30 Aug 2026 10:00:00 +0000

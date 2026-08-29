@@ -1,0 +1,29 @@
+# winget manifest — default locale (metadata)
+# Submission: https://github.com/microsoft/winget-pkgs (manifests/e/pl-lang/NeuroShell/)
+PackageIdentifier: epl-lang.NeuroShell
+PackageVersion: 5.18.0
+PackageLocale: en-US
+Publisher: Abneesh Singh (epl-lang)
+PublisherUrl: https://github.com/abneeshsingh21/neuroshell
+PublisherSupportUrl: https://github.com/abneeshsingh21/neuroshell/issues
+PackageName: NeuroShell
+PackageUrl: https://github.com/abneeshsingh21/neuroshell
+License: Apache-2.0
+LicenseUrl: https://github.com/abneeshsingh21/neuroshell/blob/main/LICENSE
+ShortDescription: AI-powered intelligent terminal — plain English to shell, zero-trust safety, native C++20 host
+Description: |-
+  NeuroShell unites a high-performance native C++20 terminal host with an
+  intelligent Python AI daemon: natural-language command translation, 4-layer
+  zero-trust safety validation, blast-radius previews, universal undo,
+  kernel-level sandboxing, an MCP server mode, and verified signed self-updates.
+Moniker: neuroshell
+Tags:
+  - terminal
+  - shell
+  - ai
+  - cli
+  - copilot
+  - developer-tools
+ReleaseNotesUrl: https://github.com/abneeshsingh21/neuroshell/blob/main/CHANGELOG.md
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

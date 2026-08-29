@@ -1,0 +1,18 @@
+{
+  "version": "5.18.0",
+  "description": "NeuroShell — AI-powered intelligent terminal: plain English to shell, zero-trust safety, native C++20 host",
+  "homepage": "https://github.com/abneeshsingh21/neuroshell",
+  "license": "Apache-2.0",
+  "notes": "Verify this build before running it: see https://github.com/abneeshsingh21/neuroshell/blob/main/docs/SUPPLY_CHAIN.md (checksums, Ed25519 manifest signature, SLSA provenance).",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/abneeshsingh21/neuroshell/releases/download/v5.18.0/NeuroShell-windows-x64.zip",
+      "hash": "REPLACE_AT_RELEASE"
+    }
+  },
+  "bin": "NeuroShell.exe",
+  "checkver": {
+    "github": "https://github.com/abneeshsingh21/neuroshell"
+  },
+  "persist": false
+}

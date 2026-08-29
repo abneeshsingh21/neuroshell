@@ -1,0 +1,8 @@
+# winget manifest — PackageVersion pointer
+# Submission: https://github.com/microsoft/winget-pkgs (manifests/e/pl-lang/NeuroShell/)
+# Schema: https://aka.ms/winget-manifest.schema.json (manifestVersion 1.6.0)
+PackageIdentifier: epl-lang.NeuroShell
+PackageVersion: 5.18.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

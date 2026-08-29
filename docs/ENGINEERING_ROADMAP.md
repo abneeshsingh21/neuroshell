@@ -161,11 +161,19 @@ the user escalates. Policy engine gains `sandbox: strict|project|off`.
 Wasmtime-embedded plugin host with capability-scoped WASI (no ambient fs/net);
 plugins declare permissions in a manifest surfaced at install time.
 
-## Phase 10 — Distribution & Supply Chain
+## Phase 10 — Distribution & Supply Chain — ✅ **SHIPPED in v5.18.0**
 
 SBOM (CycloneDX) per release, SLSA provenance attestation, Authenticode +
 notarization, winget/scoop/AUR/apt packaging; retire `curl | bash` from README
 front-page (kept only as documented fallback).
+
+Shipped in v5.18.0: `scripts/generate_sbom.py`, `scripts/provenance.py` +
+`scripts/verify_provenance.py` (wired into `sign_release.py attest`),
+`packaging/` (winget/scoop/AUR/deb) with the
+`scripts/check_packaging_consistency.py` gate, the proposed
+`.github/proposed-workflows/release.yml` pipeline, README verified-install
+rewrite, and `docs/SUPPLY_CHAIN.md`. Authenticode/notarization for the
+Windows .msi remains open (tracked below for v5.19+).
 
 ### Continuous (all phases)
 - Fuzzing: libFuzzer harnesses for DLP regex input, manifest/JSON parsing,

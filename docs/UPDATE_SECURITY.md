@@ -154,3 +154,10 @@ A CI wiring example lives in `.github/proposed-workflows/release-signing.yml`
   (`curl --proto =https --tlsv1.2 --max-filesize …` / PowerShell
   `Invoke-WebRequest` with a typed `[uri]`), against URLs that already
   passed the allowlist policy.
+
+## 12. See also — full supply chain
+
+Phase 10 (v5.18) extended this design to the *whole* release: CycloneDX SBOM,
+SLSA v1 provenance, sha256-pinned package-manager manifests, and the
+verified-install user walkthrough live in
+[`docs/SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md).

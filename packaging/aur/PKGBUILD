@@ -1,0 +1,30 @@
+# Maintainer: Abneesh Singh <abneesh@neuroshell.dev>
+# AUR package for NeuroShell (https://aur.archlinux.org/packages/neuroshell)
+#
+# sha256sums carry the REPLACE_AT_RELEASE sentinel in-repo; the release
+# pipeline (scripts/check_packaging_consistency.py render) substitutes real
+# digests from checksums.txt when the tag is built. makepkg will (correctly)
+# refuse to build against a sentinel — that is the fail-closed behaviour.
+
+pkgname=neuroshell
+pkgver=5.18.0
+pkgrel=1
+pkgdesc="AI-powered intelligent terminal: plain English to shell, zero-trust safety, native C++20 host"
+arch=(x86_64 aarch64)
+url="https://github.com/abneeshsingh21/neuroshell"
+license=(Apache-2.0)
+depends=()
+makedepends=()
+optdepends=(
+  'neuroshell-plugins: WASM plugin runtime support (pip wasmtime)'
+)
+source_x86_64=("NeuroShell-linux-x86_64.tar.gz::https://github.com/abneeshsingh21/neuroshell/releases/download/v5.18.0/NeuroShell-linux-x86_64.tar.gz")
+source_aarch64=("NeuroShell-linux-arm64.tar.gz::https://github.com/abneeshsingh21/neuroshell/releases/download/v5.18.0/NeuroShell-linux-arm64.tar.gz")
+sha256sums_x86_64=('REPLACE_AT_RELEASE')
+sha256sums_aarch64=('REPLACE_AT_RELEASE')
+
+package() {
+    install -Dm755 "${srcdir}/neuroshell" "${pkgdir}/usr/bin/neuroshell"
+    install -Dm644 "${srcdir}/README.md" "${pkgdir}/usr/share/doc/neuroshell/README.md" 2>/dev/null || true
+    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/neuroshell/LICENSE" 2>/dev/null || true
+}

@@ -1,24 +1,33 @@
 <div align="center">
 
-# ⌬ NeuroShell v5.8.0
+# ⌬ NeuroShell v5.18.0
 ### **The Tier-1 Enterprise Flagship AI Terminal**
 *High-Performance Native C++20 Host • Sub-Millisecond JSON-RPC IPC • True ConPTY Fidelity • 4-Layer Zero-Trust Safety Shield • Multi-LLM Routing • Autonomous Agent Swarms*
 
-[![Release](https://img.shields.io/badge/GitHub%20Release-v5.8.0-blue.svg?logo=github)](https://github.com/abneeshsingh21/neuroshell/releases/latest)
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Extension-v5.8.0-blue.svg?logo=visual-studio-code)](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.8.0.vsix)
+[![Release](https://img.shields.io/badge/GitHub%20Release-v5.18.0-blue.svg?logo=github)](https://github.com/abneeshsingh21/neuroshell/releases/latest)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Extension-v5.18.0-blue.svg?logo=visual-studio-code)](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.18.0.vsix)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Tests Passing](https://img.shields.io/badge/Tests-481%20Passed%20(100%25)-brightgreen.svg)](tests/)
 
 ---
 
-### 📦 1-Click Graphical Installers (Commercial Desktop Experience)
+### 📦 Install with your package manager (sha256-pinned, verified channels)
 
-| Platform | 1-Click Graphical Installer | Portable / Command Line |
+| Platform | Package manager | One-liner |
 | :--- | :--- | :--- |
-| 🪟 **Windows** | [**📥 Download Windows Setup Wizard (.msi)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64-5.8.0.msi) | [**`NeuroShell.exe` (Standalone)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe) • `irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 \| iex` |
-| 🍎 **macOS** | [**📥 Download macOS Universal Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `brew install https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/Formula/neuroshell.rb` |
-| 🐧 **Linux** | [**📥 Download Linux x86_64 Archive (.tar.gz)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-linux-x86_64.tar.gz) | `curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh \| bash` • `pip install neuroshell` |
-| 💻 **VS Code** | [**📥 Download VS Code Extension (.vsix)**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.8.0.vsix) | 1-Click `⚡ Download & Setup NeuroShell` auto-configuration |
+| 🪟 **Windows** | **winget** | `winget install epl-lang.NeuroShell` |
+| 🪟 **Windows** | **scoop** | `scoop bucket add neuroshell https://github.com/abneeshsingh21/neuroshell` → `scoop install neuroshell` |
+| 🍎 **macOS** | **Homebrew** | `brew install https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/Formula/neuroshell.rb` |
+| 🐧 **Arch** | **AUR** | `yay -S neuroshell` |
+| 🐧 **Debian/Ubuntu** | **apt (.deb)** | download the pinned `.deb` from the [release assets](https://github.com/abneeshsingh21/neuroshell/releases) → `sudo apt install ./neuroshell_*.deb` |
+| 🌍 **Any (Python)** | **pip** | `pip install neuroshell` |
+| 💻 **VS Code / Cursor** | Marketplace | Search **`NeuroShell`** (publisher `epl-lang`) or `code --install-extension epl-lang.neuroshell-vscode` |
+
+Every manifest above pins an **exact version + SHA-256** — no floating
+`latest` downloads. See
+**[docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md)** to verify a release before
+running it: checksums, Ed25519-signed update manifest, SLSA v1 provenance,
+and a CycloneDX SBOM ship with every release.
 
 ---
 
@@ -81,56 +90,87 @@ Whether you type in plain English, pipe live compiler errors into AI, orchestrat
 
 ## 🚀 Installation & Setup
 
-### 🪟 1. Windows Installation
+### ✅ Recommended — package managers (sha256-pinned)
 
-#### Option A: Direct Installer (Recommended)
-Download and run [**`NeuroShell-Setup-x64.msi`**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-windows-x64-5.8.0.msi).
+Package-manager installs verify the artifact digest for you and track a
+pinned release version — no piping network content into a shell.
 
-#### Option B: Standalone Portable Executable
-Download **[`NeuroShell.exe`](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe)** and double-click to launch.
-
-#### Option C: 1-Line PowerShell
+#### 🪟 1. Windows
 ```powershell
-irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 | iex
+winget install epl-lang.NeuroShell
+# or with scoop:
+scoop bucket add neuroshell https://github.com/abneeshsingh21/neuroshell
+scoop install neuroshell
 ```
 
----
-
-### 🍎 2. macOS Installation (Apple Silicon M1/M2/M3/M4 & Intel)
-
-#### Option A: 1-Line Universal Script (Recommended)
+#### 🍎 2. macOS
 ```bash
-curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash
-```
-
-#### Option B: Homebrew
-```bash
-# 1-Line Direct Formula Install:
 brew install https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/Formula/neuroshell.rb
-
-# OR via Homebrew Tap:
-brew tap abneeshsingh21/neuroshell && brew install neuroshell
 ```
 
-#### Option C: 1-Click Finder Launcher (Zero Terminal Setup)
-1. Download [**`NeuroShell-macos-universal.tar.gz`**](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-macos-universal.tar.gz).
-2. Extract the archive in your Downloads folder.
-3. Double-click **`neuroshell.command`** in Finder $\rightarrow$ Launches NeuroShell in Terminal.app instantly!
+#### 🐧 3. Linux
+```bash
+# Arch (AUR):
+yay -S neuroshell
+# Debian/Ubuntu (pinned .deb from the release assets):
+sudo apt install ./neuroshell_5.18.0_amd64.deb
+# Any distro (Python package):
+pip install neuroshell
+```
+
+#### 🧩 4. Visual Studio Code & Cursor Extension
+
+1. Open VS Code or Cursor $\rightarrow$ Extensions tab (`Ctrl+Shift+X`).
+2. Search for **`NeuroShell`** (Publisher: `epl-lang`) and click **Install**.
+3. *Alternatively*, install via command line:
+   ```bash
+   code --install-extension epl-lang.neuroshell-vscode
+   ```
+4. **Auto-Installer**: If the native engine is not found, the extension will display a 1-click installer with a **live progress bar** (`XX MB / YY MB %`) that automatically configures NeuroShell as your default integrated terminal!
 
 ---
 
-### 🐧 3. Linux Installation (Ubuntu, Debian, Fedora, Arch, WSL2)
+### 🔐 Verified install (standalone binaries)
 
-#### Option A: 1-Line Universal Script
+If you install a standalone binary, verify it first — every release ships
+with `checksums.txt`, an Ed25519-signed `manifest.json`, SLSA v1
+`provenance.intoto.json`, and a CycloneDX SBOM. Full walkthrough:
+**[docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md)**. The short version:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash
+TAG=v5.18.0
+BASE=https://github.com/abneeshsingh21/neuroshell/releases/download/$TAG
+curl -fsSL -O "$BASE/checksums.txt" -O "$BASE/NeuroShell-linux-x86_64.tar.gz"
+sha256sum -c checksums.txt --ignore-missing        # digest gate
+tar -xzf NeuroShell-linux-x86_64.tar.gz && sudo ./install.sh
 ```
 
-#### Option B: Portable Tarball
+---
+
+### ⚠️ Fallback — 1-line install scripts (not recommended)
+
+> **These pipe remote content straight into a shell.** They predate the
+> verified-install tooling above and are kept only as a documented fallback
+> for automated environments. If you use them, use the checksum-verified
+> variant shown here — never the blind `curl … | bash` form.
+
 ```bash
-curl -fsSL -O https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell-linux-x86_64.tar.gz
-tar -xzf NeuroShell-linux-x86_64.tar.gz
-sudo ./install.sh
+# POSIX — download, verify against the published checksums, THEN run:
+curl -fsSL -O https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh
+curl -fsSL -O https://github.com/abneeshsingh21/neuroshell/releases/latest/download/checksums.txt
+# verify the installer itself is the published one before executing:
+grep " install.sh" checksums.txt || echo "checksum entry missing — stop here"
+shasum -a 256 -c --ignore-missing <(grep " install.sh" checksums.txt)
+bash install.sh
+```
+
+```powershell
+# Windows PowerShell fallback — download, verify, then run:
+irm https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.ps1 `
+  -OutFile install.ps1
+# compare the hash against the published checksums before executing:
+Get-FileHash install.ps1 -Algorithm SHA256
+powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 ---

@@ -1,0 +1,21 @@
+Source: neuroshell
+Section: utils
+Priority: optional
+Maintainer: Abneesh Singh <abneesh@neuroshell.dev>
+Build-Depends: debhelper-compat (= 13), cmake (>= 3.20)
+Standards-Version: 4.6.2
+Homepage: https://github.com/abneeshsingh21/neuroshell
+Vcs-Git: https://github.com/abneeshsingh21/neuroshell.git
+Vcs-Browser: https://github.com/abneeshsingh21/neuroshell
+
+Package: neuroshell
+Architecture: any
+Version: 5.18.0
+Depends: ${misc:Depends}
+Recommends: python3 (>= 3.10)
+Description: AI-powered intelligent terminal with zero-trust safety
+ NeuroShell unites a high-performance native C++20 terminal host with an
+ intelligent Python AI daemon: natural-language command translation, 4-layer
+ zero-trust safety validation, blast-radius previews, universal undo,
+ kernel-level sandboxing, an MCP server mode, and verified signed
+ self-updates.

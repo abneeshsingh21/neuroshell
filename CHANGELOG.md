@@ -6,6 +6,78 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [5.18.0] — 2026-08-30
+
+### Added — Phase 10: Distribution & Supply Chain
+
+Every release now ships *evidence*, not just binaries: an SBOM, SLSA
+provenance, signed update manifest, checksums, and sha256-pinned
+package-manager manifests.
+
+- **CycloneDX 1.5 SBOM** (`scripts/generate_sbom.py`) — deterministic
+  (UUIDv5 serial/bom-refs, sorted components, no wall-clock timestamps),
+  offline and stdlib-only (`tomllib` → `toml` → built-in mini-parser
+  fallback), and *self-validating*: the document is checked against the
+  CycloneDX shape (required fields, purl syntax, hash algos/lengths, unique
+  bom-refs, license forms, dependency-graph refs) before it is written, and
+  `--check` re-validates any file. Covers Python deps from `pyproject.toml`
+  **including every extras group** (`llm`, `plugins`, …each tagged), the
+  dlopen'd natives invisible to Python metadata (SQLite3, Wasmtime), and the
+  C++ launcher with the built binary's SHA-256; SPDX licenses and PURLs
+  included.
+- **SLSA v1 provenance** (`scripts/provenance.py` +
+  `scripts/verify_provenance.py`, wired into `sign_release.py` as
+  `attest` / `verify-attestation`) — in-toto Statement v1 / SLSA provenance
+  v1 with builder identity, `gitCommit`-pinned source, build parameters, and
+  per-artifact subject digests; signed with the **same offline Ed25519 key**
+  as the v5.9 update manifests, in both detached and DSSE-envelope forms
+  (PAE per the DSSE spec). The verifier gates: signature over raw bytes,
+  statement shape, **builder allowlist** (downgraded/unknown builder fails),
+  and **local artifact digest re-computation** (tampered or rebuilt binary
+  fails). `attest` self-verifies before emitting — unshippable evidence is
+  refused at generation time.
+- **Release workflow** (`.github/proposed-workflows/release.yml`, same
+  proposed convention as `release-signing.yml`) — on tag push: per-platform
+  builds → `checksums.txt` → SBOM → signed manifest → signed provenance (+
+  DSSE) → rendered package-manager pins → **all verification gates run
+  locally before anything is published** → release published via first-party
+  `gh` (no third-party release action at all). Every action pinned by full
+  commit SHA, top-level `contents: read`, write permission granted to the
+  single publishing job only, no `pull_request_target`, signing key written
+  `umask 077` and shredded after use.
+- **Package-manager manifests** (`packaging/`) — winget (multi-file,
+  manifestVersion 1.6.0, portable-in-zip nested installer), scoop bucket
+  JSON, AUR PKGBUILD (x86_64 + aarch64), and a Debian refresh: templates in
+  `packaging/debian/` consumed by a rewritten `scripts/build_deb.sh` whose
+  version now comes from `__version__.py` (it had been frozen at 5.4.0),
+  with reproducible `gzip -n` changelog, `md5sums`, and an emitted
+  `.deb.sha256`. Every manifest pins an exact version + SHA-256; `releases/
+  latest` URLs are rejected by policy.
+- **Consistency gate** (`scripts/check_packaging_consistency.py`) — asserts
+  one version across `__version__.py`, `pyproject.toml`, `version.hpp`
+  (string **and** MAJOR/MINOR/PATCH macros), the Homebrew formula, winget,
+  scoop, AUR, Debian control/changelog, and the top CHANGELOG entry (the
+  Homebrew formula had drifted to 5.8.0 — caught by this gate on first run).
+  Digest pins must be real sha256 or the explicit `REPLACE_AT_RELEASE`
+  sentinel, which `render` resolves from `checksums.txt` at release time and
+  whose survival into a tagged build fails the release. Runs in CI via
+  pytest.
+- **`curl | bash` retired from the README front page** — primary installs
+  are now package managers (winget/scoop/brew/AUR/apt/pip); a "verified
+  install" section shows checksum + signature + provenance verification; the
+  1-line scripts survive only as a clearly-labeled fallback with
+  checksum-verification steps instead of blind piping.
+- **`docs/SUPPLY_CHAIN.md`** — threat model (what SBOM / provenance /
+  signing each defend against, and explicit non-goals), end-user verification
+  walkthrough, and the release-engineer runbook (key ceremony, tag flow,
+  package-manager submissions, rotation). Linked from README and
+  `docs/UPDATE_SECURITY.md`.
+
+### Tests
+- 64 new tests (SBOM determinism/coverage/purls/self-validation/tamper,
+  provenance four-gate matrix + DSSE + wiring, packaging gate drift matrix +
+  render): 758 total.
+
 ## [5.17.0] — 2026-08-30
 
 ### Added — Phase 9: WASM Plugin Runtime (capability-scoped WASI sandbox)

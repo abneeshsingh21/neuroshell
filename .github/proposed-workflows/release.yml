@@ -1,0 +1,252 @@
+# PROPOSED WORKFLOW — copy into .github/workflows/ manually.
+# (The automation account that maintains this repo lacks the `workflows`
+# permission, so workflow files are staged here instead — same convention as
+# proposed-workflows/native-ci.yml and release-signing.yml.)
+#
+# Phase 10 — Distribution & Supply Chain release pipeline.
+#
+# On tag push (v*): builds the native launcher per platform, then produces the
+# complete, verifiable supply-chain bundle for the release:
+#
+#   * artifacts            — per-platform launcher archives
+#   * checksums.txt        — sha256 of every asset
+#   * sbom.cdx.json(.sig)  — CycloneDX 1.5 SBOM (scripts/generate_sbom.py),
+#                            Ed25519-signed
+#   * manifest.json(.sig)  — v5.9 verified-self-update manifest
+#   * provenance.intoto.json(.sig) — SLSA v1 provenance for every artifact
+#                            (scripts/provenance.py), Ed25519-signed
+#   * dist/packaging/      — package-manager manifests with real digest pins
+#
+# Supply-chain rules obeyed by this file:
+#   * every third-party/first-party action pinned by FULL COMMIT SHA
+#     (verify before enabling: `git ls-remote <url> <tag>`),
+#   * top-level permissions: contents:read only; the single job that talks to
+#     GitHub gets exactly the permission it needs, nothing broader,
+#   * no `pull_request_target`, no `secrets` echoed, signing key written with
+#     umask 077 and shredded after use,
+#   * gates run BEFORE upload: manifest verify, provenance verify (signature +
+#     builder + local digests), SBOM --check, packaging consistency — a
+#     release whose own evidence does not verify is never published.
+#
+# Required repository secrets / variables:
+#   secrets.UPDATE_SIGNING_KEY  — 64-hex Ed25519 private key (offline-generated
+#                                  via scripts/sign_release.py keygen)
+#   vars.UPDATE_PUBLIC_KEY      — matching 64-hex public key (non-secret)
+
+name: Release (supply chain)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v5.18.0)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  BUILDER_ID: https://github.com/abneeshsingh21/neuroshell/.github/workflows/release.yml@refs/heads/main
+  BUILD_TYPE: https://github.com/abneeshsingh21/neuroshell/buildtypes/cmake-native-v1
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x86_64
+            archive: NeuroShell-linux-x86_64.tar.gz
+            cmake_args: ""
+          - os: ubuntu-22.04-arm
+            platform: linux-arm64
+            archive: NeuroShell-linux-arm64.tar.gz
+            cmake_args: ""
+          - os: macos-14
+            platform: macos-arm64
+            archive: NeuroShell-macos-universal.tar.gz
+            cmake_args: "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+          - os: windows-2022
+            platform: windows-x86_64
+            archive: NeuroShell-windows-x64.zip
+            cmake_args: ""
+    permissions:
+      contents: read
+    steps:
+      # actions/checkout v4.2.2 — verify: git ls-remote https://github.com/actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Build native launcher (pinned update key)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }} `
+                -DNEUROSHELL_UPDATE_PUBKEY=${{ vars.UPDATE_PUBLIC_KEY }}
+          cmake --build build --config Release
+          ctest --test-dir build --output-on-failure --build-config Release
+        shell: pwsh
+
+      - name: Stage artifact
+        run: |
+          $bin = if ("${{ matrix.platform }}" -like "windows*") { "build/Release/neuroshell.exe" } else { "build/neuroshell" }
+          $stage = "stage/${{ matrix.archive }}"
+          New-Item -ItemType Directory -Force stage | Out-Null
+          if ("${{ matrix.platform }}" -like "windows*") {
+            Compress-Archive -Path $bin -DestinationPath $stage
+          } else {
+            tar -czf $stage -C build neuroshell
+          }
+          "staged $stage"
+        shell: pwsh
+
+      # actions/upload-artifact v4.3.3 — verify: git ls-remote https://github.com/actions/upload-artifact v4.3.3
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: artifact-${{ matrix.platform }}
+          path: stage/
+          if-no-files-found: error
+          retention-days: 7
+
+  attest-and-release:
+    name: SBOM, provenance, signing, gates, publish
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write # create the release + upload assets (this job only)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name || inputs.tag }}
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # actions/setup-python v5.1.0
+      - uses: actions/setup-python@a26af69be991b213581c1b91b5eafdd6e7603292
+        with:
+          python-version: "3.12"
+
+      # actions/download-artifact v4.1.8 — verify: git ls-remote https://github.com/actions/download-artifact v4.1.8
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: Checksums for every artifact
+        run: |
+          cd dist-artifacts
+          sha256sum * > ../checksums.txt
+          cat ../checksums.txt
+
+      - name: CycloneDX SBOM (deterministic) + signature
+        env:
+          SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > /tmp/update_signing.key
+          python3 scripts/generate_sbom.py \
+            --sqlite-version "$(python3 -c 'import sqlite3;print(sqlite3.sqlite_version)')" \
+            --artifact NeuroShell-linux-x86_64.tar.gz:dist-artifacts/NeuroShell-linux-x86_64.tar.gz \
+            --artifact NeuroShell-linux-arm64.tar.gz:dist-artifacts/NeuroShell-linux-arm64.tar.gz \
+            --artifact NeuroShell-macos-universal.tar.gz:dist-artifacts/NeuroShell-macos-universal.tar.gz \
+            --artifact NeuroShell-windows-x64.zip:dist-artifacts/NeuroShell-windows-x64.zip \
+            --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --out sbom.cdx.json
+          # detached Ed25519 over the raw SBOM bytes (generic attestation path)
+          python3 scripts/provenance.py sign \
+            --key /tmp/update_signing.key --statement sbom.cdx.json --out sbom.cdx.json.sig
+
+      - name: Update manifest (v5.9 verified self-update) + signature
+        env:
+          SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          umask 077
+          VERSION="${TAG#v}"
+          python3 scripts/sign_release.py manifest \
+            --version "$VERSION" --expires-days 90 --min-version 5.0.0 \
+            --artifact "linux-x86_64:dist-artifacts/NeuroShell-linux-x86_64.tar.gz:https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/NeuroShell-linux-x86_64.tar.gz" \
+            --artifact "linux-arm64:dist-artifacts/NeuroShell-linux-arm64.tar.gz:https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/NeuroShell-linux-arm64.tar.gz" \
+            --artifact "macos-arm64:dist-artifacts/NeuroShell-macos-universal.tar.gz:https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/NeuroShell-macos-universal.tar.gz" \
+            --artifact "windows-x86_64:dist-artifacts/NeuroShell-windows-x64.zip:https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/NeuroShell-windows-x64.zip" \
+            --out manifest.json
+          python3 scripts/sign_release.py sign \
+            --key /tmp/update_signing.key --manifest manifest.json --out manifest.json.sig
+
+      - name: SLSA v1 provenance (all artifacts, one signed statement)
+        env:
+          SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          umask 077
+          SUBJECTS=()
+          for f in dist-artifacts/*; do SUBJECTS+=("--subject" "$(basename "$f"):$f"); done
+          python3 scripts/provenance.py generate \
+            "${SUBJECTS[@]}" \
+            --builder-id "$BUILDER_ID" \
+            --source-uri "git+https://github.com/${GITHUB_REPOSITORY}" \
+            --commit "$GITHUB_SHA" \
+            --build-type "$BUILD_TYPE" \
+            --invocation-id "github-actions-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}" \
+            --started-on "$(date -u -d '@${{ github.event.head_commit.timestamp }}' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --finished-on "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --param "tag=${TAG}" \
+            --internal-param "cmakeBuildType=Release" \
+            --internal-param "updatePubkeyPinned=true" \
+            --internal-param "ctest=passed" \
+            --out provenance.intoto.json
+          python3 scripts/provenance.py sign \
+            --key /tmp/update_signing.key \
+            --statement provenance.intoto.json \
+            --out provenance.intoto.json.sig \
+            --dsse provenance.dsse.json
+
+      - name: Render package-manager manifests with real digests
+        run: |
+          python3 scripts/check_packaging_consistency.py check
+          python3 scripts/check_packaging_consistency.py render \
+            --sha256-file checksums.txt --tag "$TAG" --out-dir dist/packaging
+
+      - name: Gate — verify everything we are about to publish
+        env:
+          SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -e
+          PUB="${{ vars.UPDATE_PUBLIC_KEY }}"
+          # 1. SBOM is self-valid CycloneDX
+          python3 scripts/generate_sbom.py --check sbom.cdx.json
+          # 2. update manifest verifies against the PINNED client key
+          echo "$PUB" > /tmp/update.pub
+          python3 scripts/sign_release.py verify \
+            --pubkey /tmp/update.pub --manifest manifest.json --sig manifest.json.sig
+          # 3. provenance: signature + builder identity + every local digest
+          ARGS=()
+          for f in dist-artifacts/*; do ARGS+=(--artifact "$(basename "$f"):$f"); done
+          python3 scripts/verify_provenance.py verify \
+            --pubkey "$PUB" \
+            --statement provenance.intoto.json --sig provenance.intoto.json.sig \
+            --expect-builder "$BUILDER_ID" --expect-buildtype "$BUILD_TYPE" \
+            "${ARGS[@]}"
+          # 4. rendered manifests contain no sentinel digests
+          ! grep -r "REPLACE_AT_RELEASE" dist/packaging/
+          echo "ALL SUPPLY-CHAIN GATES PASSED"
+          shred -u /tmp/update_signing.key 2>/dev/null || rm -f /tmp/update_signing.key
+
+      - name: Publish release (first-party gh — no third-party action)
+        run: |
+          gh release create "$TAG" --verify-tag \
+            --title "NeuroShell $TAG" \
+            --notes "See CHANGELOG.md and docs/SUPPLY_CHAIN.md for verification instructions." \
+            dist-artifacts/* checksums.txt \
+            sbom.cdx.json sbom.cdx.json.sig \
+            manifest.json manifest.json.sig \
+            provenance.intoto.json provenance.intoto.json.sig provenance.dsse.json
+          cd dist/packaging && gh release upload "$TAG" $(find . -type f)
+
+      - name: Shred signing material
+        if: always()
+        run: shred -u /tmp/update_signing.key 2>/dev/null || rm -f /tmp/update_signing.key
