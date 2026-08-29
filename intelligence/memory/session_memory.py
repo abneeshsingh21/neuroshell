@@ -9,13 +9,13 @@ Automatically compresses or discards oldest turns to maintain token limits.
 
 import json
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 
 class SessionMemory:
     def __init__(self, max_turns: int = 15):
         self.max_turns = max_turns
-        self.turns: List[Dict[str, Any]] = []
+        self.turns: list[dict[str, Any]] = []
         self.last_activity = time.time()
 
     def add_turn(self, role: str, content: str, metadata: dict = None):
@@ -37,7 +37,7 @@ class SessionMemory:
             self.turns = self.turns[-self.max_turns:]
             self._save_discarded_for_dreaming(discarded)
 
-    def _save_discarded_for_dreaming(self, discarded_turns: List[Dict]):
+    def _save_discarded_for_dreaming(self, discarded_turns: list[dict]):
         """Append discarded turns to a log file for AutoDream to process."""
         import os
         from pathlib import Path
@@ -50,7 +50,7 @@ class SessionMemory:
         except Exception:
             pass
 
-    def get_context(self) -> List[Dict[str, Any]]:
+    def get_context(self) -> list[dict[str, Any]]:
         self.last_activity = time.time()
         return self.turns
 

@@ -1,7 +1,7 @@
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 # Proprietary and Confidential - see LICENSE.txt
 from collections.abc import AsyncGenerator
-from typing import Any, Dict
+from typing import Any
 
 from intelligence.tasks.task_manager import TaskManager
 from intelligence.tools.base_tool import BaseTool
@@ -24,7 +24,7 @@ class TaskSystemTool(BaseTool):
         return "Dispatch and manage background autonomous worker swarms."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -47,7 +47,7 @@ class TaskSystemTool(BaseTool):
     def can_use_tool(self, **kwargs) -> bool:
         return True
 
-    async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+    async def call(self, **kwargs) -> AsyncGenerator[dict[str, Any], None]:
         action = kwargs.get("action")
 
         yield {"type": "progress", "message": f"Task System -> {action}..."}

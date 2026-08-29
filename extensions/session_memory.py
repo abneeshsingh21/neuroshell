@@ -29,7 +29,8 @@ class MemoryEntry:
 
     @property
     def entry_hash(self) -> str:
-        return hashlib.md5(f"{self.input_text}:{self.command}".encode()).hexdigest()[:12]
+        # SHA-256 (truncated) — used as a dedup key; avoids weak-hash flags
+        return hashlib.sha256(f"{self.input_text}:{self.command}".encode()).hexdigest()[:12]
 
 
 import os
@@ -40,7 +41,7 @@ import threading
 class SessionMemory:
     """
     Production-grade session memory with cross-session persistence.
-    
+
     Features:
     - SQLite-free (JSON file) for zero-dependency portability
     - Frequency-based suggestion ranking
@@ -173,7 +174,7 @@ class SessionMemory:
         return {
             "total_entries": total,
             "success_rate": f"{successes/max(total,1)*100:.1f}%",
-            "unique_commands": len(set(e.command for e in self._entries.values())),
+            "unique_commands": len({e.command for e in self._entries.values()}),
             "db_size_kb": round(self._db_path.stat().st_size / 1024, 1) if self._db_path.exists() else 0,
         }
 

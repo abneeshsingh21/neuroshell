@@ -43,13 +43,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy application code
 COPY . .
 
-# Create data directories
-RUN mkdir -p /app/data /app/data/models /app/data/history
+# Create non-root runtime user and data directories
+RUN groupadd --system neuroshell && \
+    useradd --system --gid neuroshell --home-dir /app --shell /usr/sbin/nologin neuroshell && \
+    mkdir -p /app/data /app/data/models /app/data/history && \
+    chown -R neuroshell:neuroshell /app
 
 # Environment
 ENV NEUROSHELL_DATA_DIR=/app/data
+ENV HOME=/app
 ENV PYTHONUNBUFFERED=1
 ENV TERM=xterm-256color
+
+# Drop privileges — never run an AI shell as root
+USER neuroshell
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \

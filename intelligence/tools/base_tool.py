@@ -2,7 +2,7 @@
 # Proprietary and Confidential - see LICENSE.txt
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import Any, Dict
+from typing import Any
 
 
 class BaseTool(ABC):
@@ -26,7 +26,7 @@ class BaseTool(ABC):
 
     @property
     @abstractmethod
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         """
         JSON Schema of the tool's input parameters.
         Returns a dict matching the OpenAI / Anthropic tool schema format.
@@ -42,10 +42,10 @@ class BaseTool(ABC):
         return True
 
     @abstractmethod
-    async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+    async def call(self, **kwargs) -> AsyncGenerator[dict[str, Any], None]:
         """
         Execute the tool asynchronously and yield status updates.
-        
+
         Yields dictionaries with keys like:
         - `type`: 'progress' | 'result' | 'error'
         - `message`: User-facing progress message (e.g. "Cloning repo...")

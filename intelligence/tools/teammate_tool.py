@@ -5,7 +5,7 @@ import os
 import subprocess
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from intelligence.tools.base_tool import BaseTool
 
@@ -23,7 +23,7 @@ class TeammateTool(BaseTool):
         return "Spawn a dedicated sub-agent to explore or execute tasks safely. Can be run in an isolated git worktree sandbox."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -44,7 +44,7 @@ class TeammateTool(BaseTool):
         # coordinator permissions propagate to this tool.
         return True
 
-    async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+    async def call(self, **kwargs) -> AsyncGenerator[dict[str, Any], None]:
         goal = kwargs.get("goal")
         use_sandbox = kwargs.get("use_sandbox", True)
 
@@ -57,7 +57,7 @@ class TeammateTool(BaseTool):
         loop = asyncio.get_running_loop()
 
         def _execute_teammate():
-            original_cwd = os.getcwd()
+            os.getcwd()
             worktree_path = None
 
             try:
@@ -76,11 +76,10 @@ class TeammateTool(BaseTool):
                             ["git", "worktree", "add", "-d", worktree_path],
                             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                         )
-                        target_dir = worktree_path
                     except subprocess.CalledProcessError:
                         return {"status": "error", "message": "Failed to create git worktree sandbox."}
                 else:
-                    target_dir = original_cwd
+                    pass
 
                 # 2. Spawn Sub-Agent
                 # Note: In a full architecture, this would instantiate your Agent Planner

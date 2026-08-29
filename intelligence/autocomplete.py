@@ -423,7 +423,7 @@ class Autocomplete:
 
         # If no subcommand and prefix is not a flag, suggest subcommands
         if not prefix.startswith("-") and not sub_cmd:
-            for subcmd in cmd_flags.keys():
+            for subcmd in cmd_flags:
                 if subcmd and self._fuzzy_match(subcmd, prefix):
                     completions.append(Completion(
                         text=subcmd, description=f"{base_cmd} subcommand",

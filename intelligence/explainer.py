@@ -162,7 +162,7 @@ class Explainer:
                 r = subprocess.run([base_cmd, "--help"], capture_output=True, text=True, timeout=3)
                 out = r.stdout or r.stderr
                 if out:
-                    lines = [l for l in out.split("\n") if l.strip()][:10]
+                    lines = [ln for ln in out.split("\n") if ln.strip()][:10]
                     return "\n".join(lines)
             except Exception:
                 pass

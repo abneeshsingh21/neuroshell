@@ -394,9 +394,9 @@ class LLMClient:
         future = _SHARED_TIMEOUT_POOL.submit(func)
         try:
             return future.result(timeout=timeout)
-        except FuturesTimeout:
+        except FuturesTimeout as e:
             _llm_log.warning("LLM call timed out after %ds", timeout)
-            raise TimeoutError(f"LLM call exceeded hard timeout of {timeout}s")
+            raise TimeoutError(f"LLM call exceeded hard timeout of {timeout}s") from e
 
     @property
     def groq_model(self) -> str:
@@ -709,18 +709,24 @@ class LLMClient:
         if provider == "groq" and self._groq_available:
             try:
                 result = self._groq_generate(prompt, system_prompt, temperature)
-                if result.success: return result
-            except Exception: pass
+                if result.success:
+                    return result
+            except Exception:
+                pass
         elif provider in ("openai", "openrouter", "gemini") and self._openai_available:
             try:
                 result = self._openai_generate(prompt, system_prompt, temperature)
-                if result.success: return result
-            except Exception: pass
+                if result.success:
+                    return result
+            except Exception:
+                pass
         elif provider == "anthropic" and self._anthropic_available:
             try:
                 result = self._anthropic_generate(prompt, system_prompt, temperature)
-                if result.success: return result
-            except Exception: pass
+                if result.success:
+                    return result
+            except Exception:
+                pass
 
         if not HAS_OLLAMA:
             return self._fallback_response(f"Provider {provider} failed or unavailable, and Ollama is not installed.")
@@ -747,7 +753,7 @@ class LLMClient:
                 messages = self._build_messages(prompt, system_prompt)
 
                 response = self._with_hard_timeout(
-                    lambda: ollama.chat(  # type: ignore[union-attr]
+                    lambda messages=messages: ollama.chat(  # type: ignore[union-attr]
                         model=self.config.model,
                         messages=messages,
                         options={
@@ -816,24 +822,30 @@ class LLMClient:
         if provider == "groq" and self._groq_available:
             try:
                 result = self._groq_generate_streaming(prompt, system_prompt, temperature, callback)
-                if result.success: return result
-            except Exception: pass
+                if result.success:
+                    return result
+            except Exception:
+                pass
         elif provider in ("openai", "openrouter", "gemini") and self._openai_available:
             try:
                 # Fallback to non-streaming for now, but simulate streaming output for UI
                 result = self._openai_generate(prompt, system_prompt, temperature)
                 if result.success and callback:
                     callback(result.text)
-                if result.success: return result
-            except Exception: pass
+                if result.success:
+                    return result
+            except Exception:
+                pass
         elif provider == "anthropic" and self._anthropic_available:
             try:
                 # Fallback to non-streaming for now, but simulate streaming output for UI
                 result = self._anthropic_generate(prompt, system_prompt, temperature)
                 if result.success and callback:
                     callback(result.text)
-                if result.success: return result
-            except Exception: pass
+                if result.success:
+                    return result
+            except Exception:
+                pass
 
         if not HAS_OLLAMA:
             return self._fallback_response(f"Provider {provider} failed or unavailable, and Ollama is not installed.")

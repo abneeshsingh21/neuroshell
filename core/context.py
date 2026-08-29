@@ -339,7 +339,7 @@ class ContextManager:
             if result.returncode != 0:
                 return GitContext()
 
-            git_dir = Path(cwd)
+            Path(cwd)
             ctx = GitContext(is_repo=True)
 
             # Branch
@@ -549,7 +549,7 @@ class ContextManager:
             if (p / "requirements.txt").exists():
                 try:
                     lines = (p / "requirements.txt").read_text().strip().split("\n")
-                    ctx.dependencies_count = len([l for l in lines if l.strip() and not l.startswith("#")])
+                    ctx.dependencies_count = len([ln for ln in lines if ln.strip() and not ln.startswith("#")])
                 except Exception:
                     pass
             ctx.entry_point = self._find_entry_point(p, ["main.py", "app.py", "__main__.py"])

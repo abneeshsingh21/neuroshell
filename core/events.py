@@ -2,7 +2,7 @@
 # Proprietary and Confidential - see LICENSE.txt
 """
 NeuroShell Event Bus
-A lightweight, thread-safe Pub/Sub system for streaming 
+A lightweight, thread-safe Pub/Sub system for streaming
 backend telemetry (Swarm, Sandbox) directly to the UI.
 """
 

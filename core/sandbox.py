@@ -2,7 +2,7 @@
 # Proprietary and Confidential - see LICENSE.txt
 """
 NeuroShell Git Worktree Sandbox
-Provides isolated execution environments for dangerous commands, allowing safe 
+Provides isolated execution environments for dangerous commands, allowing safe
 rollback without affecting the primary working directory.
 """
 
@@ -52,7 +52,7 @@ class GitSandbox:
             return str(self.sandbox_dir)
         except subprocess.CalledProcessError as e:
             _log.error(f"Sandbox creation failed: {e.stderr}")
-            raise RuntimeError(f"Sandbox creation failed: {e.stderr}")
+            raise RuntimeError(f"Sandbox creation failed: {e.stderr}") from e
 
     def execute(self, command: str) -> subprocess.CompletedProcess:
         """Execute a shell command inside the isolated sandbox."""

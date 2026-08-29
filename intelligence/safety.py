@@ -508,9 +508,7 @@ class SafetyChecker:
             return True
         if command.count(";") > 2:
             return True
-        if re.search(r"\beval\b", command):
-            return True
-        return False
+        return bool(re.search(r"\beval\b", command))
 
     def _llm_safety_check(self, command: str) -> SafetyResult:
         """Use LLM for ambiguous safety analysis."""

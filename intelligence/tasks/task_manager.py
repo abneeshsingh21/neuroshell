@@ -8,7 +8,7 @@ Handles queuing, dispatching, and monitoring long-running sub-agents.
 import asyncio
 import time
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 
 class TaskStatus:
@@ -19,7 +19,7 @@ class TaskStatus:
 
 class TaskManager:
     def __init__(self):
-        self._tasks: Dict[str, Dict[str, Any]] = {}
+        self._tasks: dict[str, dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 
     async def create_task(self, goal: str, context: dict = None) -> str:
@@ -42,7 +42,7 @@ class TaskManager:
         asyncio.create_task(self._execute_worker(task_id))
         return task_id
 
-    async def get_task(self, task_id: str) -> Dict[str, Any]:
+    async def get_task(self, task_id: str) -> dict[str, Any]:
         async with self._lock:
             return self._tasks.get(task_id, {})
 

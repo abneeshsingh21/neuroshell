@@ -355,9 +355,7 @@ class PluginSystem:
         capabilities = set(plugin.meta.capabilities)
         if "hooks" not in capabilities:
             return False
-        if plugin.meta.hooks and hook_name not in set(plugin.meta.hooks):
-            return False
-        return True
+        return not (plugin.meta.hooks and hook_name not in set(plugin.meta.hooks))
 
     def _belongs_to(self, callback: Callable, plugin_name: str) -> bool:
         """Check if a callback belongs to a plugin module."""

@@ -2,7 +2,6 @@
 # Proprietary and Confidential - see LICENSE.txt
 import os
 from pathlib import Path
-from typing import List
 
 
 class PolicyLimits:
@@ -19,7 +18,7 @@ class PolicyLimits:
             self.workspace_root = Path(os.getcwd()).resolve()
 
         # System absolute paths that are inherently safe for reading (but not writing)
-        self.whitelisted_read_paths: List[Path] = []
+        self.whitelisted_read_paths: list[Path] = []
 
         # Define cross-platform standard desktop/downloads paths as semi-safe
         # (AI can read from them if explicitly requested, but sandbox warns)

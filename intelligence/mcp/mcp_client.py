@@ -6,7 +6,7 @@ Orchestrates connections to standard MCP servers allowing NeuroShell AI
 to retrieve dynamic resources, prompts, and tool abstractions securely.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import httpx
 
@@ -18,28 +18,28 @@ class MCPClient:
         if api_key:
             self.headers["Authorization"] = f"Bearer {api_key}"
 
-    async def list_resources(self) -> List[Dict[str, Any]]:
+    async def list_resources(self) -> list[dict[str, Any]]:
         """Fetch available context resources exposed by the MCP server."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{self.endpoint_url}/mcp/resources", headers=self.headers)
             resp.raise_for_status()
             return resp.json().get("resources", [])
 
-    async def read_resource(self, uri: str) -> Dict[str, Any]:
+    async def read_resource(self, uri: str) -> dict[str, Any]:
         """Fetch the exact text content of an MCP resource."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{self.endpoint_url}/mcp/resources/read", params={"uri": uri}, headers=self.headers)
             resp.raise_for_status()
             return resp.json()
 
-    async def list_tools(self) -> List[Dict[str, Any]]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         """Fetch custom tools exposed by the MCP environment."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{self.endpoint_url}/mcp/tools", headers=self.headers)
             resp.raise_for_status()
             return resp.json().get("tools", [])
 
-    async def execute_tool(self, name: str, params: dict) -> Dict[str, Any]:
+    async def execute_tool(self, name: str, params: dict) -> dict[str, Any]:
         """Request the MCP server to execute one of its local tools."""
         async with httpx.AsyncClient() as client:
             payload = {"name": name, "parameters": params}

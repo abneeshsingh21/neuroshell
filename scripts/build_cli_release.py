@@ -17,7 +17,7 @@ from pathlib import Path
 
 def build_command(project_root: Path, dist_dir: Path, work_dir: Path, system_name: str | None = None) -> list[str]:
     system_name = (system_name or platform.system()).lower()
-    sep = ";" if system_name.startswith("win") else ":"
+    ";" if system_name.startswith("win") else ":"
 
     # Build the PyInstaller command for the CLI
     binary_name = "NeuroShell-CLI" if system_name.startswith("win") else "neuroshell"

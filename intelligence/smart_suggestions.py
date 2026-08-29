@@ -260,11 +260,11 @@ class SmartSuggester:
                 capture_output=True, text=True, timeout=3,
                 cwd=ctx.cwd,
             )
-            lines = [l for l in status.stdout.strip().splitlines() if l.strip()]
+            lines = [ln for ln in status.stdout.strip().splitlines() if ln.strip()]
             ctx.git_dirty = len(lines) > 0
-            ctx.git_untracked = sum(1 for l in lines if l.startswith("??"))
-            ctx.git_staged = sum(1 for l in lines if l[0] in "MADR")
-            ctx.git_conflicts = sum(1 for l in lines if l.startswith("UU"))
+            ctx.git_untracked = sum(1 for ln in lines if ln.startswith("??"))
+            ctx.git_staged = sum(1 for ln in lines if ln[0] in "MADR")
+            ctx.git_conflicts = sum(1 for ln in lines if ln.startswith("UU"))
 
         except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
             pass

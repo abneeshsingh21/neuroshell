@@ -110,10 +110,10 @@ def get_health_summary(config) -> str:
     lines.append(f"  🛡️  Safety: {safety}")
 
     # Check NLP
-    try:
-        import sklearn
+    import importlib.util
+    if importlib.util.find_spec("sklearn") is not None:
         lines.append("  🧠 NLP: available")
-    except ImportError:
+    else:
         lines.append("  ⚠️  NLP: sklearn not installed (basic mode)")
 
     return "\n".join(lines)
@@ -138,7 +138,7 @@ def get_tips() -> str:
 def render_startup_banner(config, show_health: bool = True) -> str:
     """
     Render the full startup banner with system info and health.
-    
+
     Returns a formatted string ready for display.
     """
     parts = []

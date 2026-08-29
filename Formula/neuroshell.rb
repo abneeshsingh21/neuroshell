@@ -7,7 +7,7 @@
 class Neuroshell < Formula
   desc "Tier-1 Autonomous AI Terminal with ConPTY/PTY fidelity and sub-0.05ms execution"
   homepage "https://github.com/abneeshsingh21/neuroshell"
-  version "5.7.0"
+  version "5.7.1"
   license "Apache-2.0"
 
   on_macos do

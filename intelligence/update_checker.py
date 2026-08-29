@@ -38,7 +38,7 @@ def check_for_update(
 ) -> dict | None:
     """
     Check GitHub for a newer release.
-    
+
     Returns dict with keys: available, latest, current, url
     or None on failure.
     """

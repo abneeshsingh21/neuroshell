@@ -891,9 +891,9 @@ class ShellExecutor:
             tokens = stripped.split()
             if len(tokens) == 1:
                 # Bare interpreter — add version/help flag
-                if first_token in ("python", "python3") or first_token == "node":
+                if first_token in ("python", "python3") or first_token == "node":  # noqa: S105 — command name, not a password
                     return f"{stripped} --version"
-                elif first_token == "nslookup":
+                elif first_token == "nslookup":  # noqa: S105 — command name, not a password
                     return command  # nslookup with no args is fine with timeout
 
         return command

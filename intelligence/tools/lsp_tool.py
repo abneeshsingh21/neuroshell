@@ -2,7 +2,7 @@
 # Proprietary and Confidential - see LICENSE.txt
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import Any, Dict
+from typing import Any
 
 from intelligence.lsp.lsp_client import LSPClient
 from intelligence.tools.base_tool import BaseTool
@@ -25,7 +25,7 @@ class LSPTool(BaseTool):
         return "Query precise code definitions and AST references using a language server."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -46,7 +46,7 @@ class LSPTool(BaseTool):
     def can_use_tool(self, **kwargs) -> bool:
         return True
 
-    async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+    async def call(self, **kwargs) -> AsyncGenerator[dict[str, Any], None]:
         action = kwargs.get("action")
         uri = kwargs.get("file_uri")
         line = kwargs.get("line")

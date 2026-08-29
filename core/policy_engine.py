@@ -7,12 +7,12 @@ and SOC2 compliance rules across enterprise deployments.
 """
 
 from __future__ import annotations
-import os
+
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class UserRole(str, Enum):
@@ -34,17 +34,17 @@ class PolicyDecision:
 class PolicyEngine:
     """Zero-Trust Policy Evaluator for Enterprise Command Guardrails."""
 
-    def __init__(self, role: UserRole = UserRole.DEVELOPER, policy_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, role: UserRole = UserRole.DEVELOPER, policy_config: dict[str, Any] | None = None):
         self.role = role
         self.policy_config = policy_config or self._default_policy()
 
     @classmethod
-    def from_config_file(cls, path: str | Path) -> "PolicyEngine":
+    def from_config_file(cls, path: str | Path) -> PolicyEngine:
         """Load policy from TOML or JSON file."""
         p = Path(path)
         if not p.exists():
             return cls()
-        
+
         try:
             import toml
             data = toml.load(str(p))
@@ -54,7 +54,7 @@ class PolicyEngine:
         except Exception:
             return cls()
 
-    def _default_policy(self) -> Dict[str, Any]:
+    def _default_policy(self) -> dict[str, Any]:
         return {
             "enterprise": {
                 "organization": "Default Organization",
@@ -100,11 +100,11 @@ class PolicyEngine:
             }
         }
 
-    def evaluate(self, command: str, user_role: Optional[UserRole] = None) -> PolicyDecision:
+    def evaluate(self, command: str, user_role: UserRole | None = None) -> PolicyDecision:
         """Evaluate command against corporate guardrails."""
         role = user_role or self.role
         role_rules = self.policy_config.get("guardrails", {}).get(role.value, {})
-        
+
         blocked = role_rules.get("blocked_patterns", [])
         for pat in blocked:
             if re.search(pat, command, re.IGNORECASE):

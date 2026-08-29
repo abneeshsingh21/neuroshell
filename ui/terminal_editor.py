@@ -12,7 +12,7 @@ from __future__ import annotations
 class TerminalLineEditor:
     """
     Production-grade interactive line editor for the NeuroShell REPL.
-    
+
     Features:
     - Real-time inline Ghost Text prediction (accepted with Right-Arrow or Tab)
     - Command history navigation (Up/Down arrows)

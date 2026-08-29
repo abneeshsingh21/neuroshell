@@ -98,7 +98,7 @@ PROVIDERS = [
 
 def cli_first_run_wizard(force: bool = False):
     """Console-based first-run wizard for terminal/VS Code users.
-    
+
     Triggers when:
     - config.toml doesn't exist (true first run)
     - --setup flag is passed (force reconfigure)

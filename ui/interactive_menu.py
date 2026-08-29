@@ -80,7 +80,7 @@ def _read_key() -> str:
                 code = msvcrt.getwch()
             except Exception:
                 return ""
-            if code == "H":
+            if code == "H":  # noqa: SIM116 — escape-sequence decoding reads clearer as a chain
                 return Key.UP
             elif code == "P":
                 return Key.DOWN
@@ -117,7 +117,7 @@ def _read_key() -> str:
                 next_ch = sys.stdin.read(1)
                 if next_ch == "[":
                     code = sys.stdin.read(1)
-                    if code == "A":
+                    if code == "A":  # noqa: SIM116 — escape-sequence decoding reads clearer as a chain
                         return Key.UP
                     elif code == "B":
                         return Key.DOWN
@@ -154,14 +154,14 @@ def select_menu(
 ) -> int | None:
     """
     Interactive arrow-key selection menu rendered in-place.
-    
+
     Args:
         title: Header text for the menu
         options: List of string titles, or dicts with 'name', 'desc', 'badge'
         default_index: Initially highlighted option
         description: Subtitle explanation
         badge_map: Dict mapping index to badge string (e.g. {0: "(Active)"})
-        
+
     Returns:
         Selected option index (0-based), or None if cancelled.
     """

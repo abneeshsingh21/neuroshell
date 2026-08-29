@@ -8,8 +8,6 @@ Connects to C++20 SHMRingBuffer for sub-50μs zero-copy IPC streaming.
 import os
 import struct
 import sys
-import time
-from typing import Optional
 
 SHM_RING_CAPACITY = 8 * 1024 * 1024  # 8 MB
 SHM_MAGIC = 0x4E455552  # "NEUR"
@@ -90,7 +88,7 @@ class SHMClientBridge:
         except Exception:
             return False
 
-    def read_message(self) -> Optional[str]:
+    def read_message(self) -> str | None:
         if not self._is_connected or not self._buf:
             return None
 

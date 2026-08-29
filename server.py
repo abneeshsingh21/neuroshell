@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import sys
 
 import uvicorn
@@ -46,6 +47,34 @@ app.add_middleware(
 )
 
 SERVER_API_KEY = os.environ.get("NEUROSHELL_SERVER_KEY", "")
+if not SERVER_API_KEY:
+    logging.warning(
+        "NEUROSHELL_SERVER_KEY is not set — the terminal/telemetry WebSocket "
+        "endpoints will accept unauthenticated connections. Set the environment "
+        "variable to require an API key."
+    )
+
+
+def _token_is_valid(provided: str | None) -> bool:
+    """Constant-time API-key comparison (avoids timing side channels).
+
+    Returns True when no server key is configured (open/local mode).
+    """
+    if not SERVER_API_KEY:
+        return True
+    if not provided:
+        return False
+    return secrets.compare_digest(str(provided), SERVER_API_KEY)
+
+
+async def _authorize_websocket(websocket: WebSocket) -> bool:
+    """Shared auth gate for all WebSocket endpoints."""
+    token = websocket.query_params.get("token") or websocket.headers.get("X-API-Key")
+    if not _token_is_valid(token):
+        await websocket.close(code=1008)
+        logging.warning("Rejected unauthenticated WebSocket connection to %s", websocket.url.path)
+        return False
+    return True
 
 # Core Telemetry state
 _last_telemetry = {
@@ -141,6 +170,8 @@ manager = ConnectionManager()
 
 @app.websocket("/ws/telemetry")
 async def telemetry_endpoint(websocket: WebSocket):
+    if not await _authorize_websocket(websocket):
+        return
     await websocket.accept()
     output_queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -175,12 +206,18 @@ async def telemetry_endpoint(websocket: WebSocket):
         neuro_events.unsubscribe("gc_update", _on_gc)
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass
 
 @app.websocket("/ws/sysmon")
 async def sysmon_endpoint(websocket: WebSocket):
+    if not await _authorize_websocket(websocket):
+        return
     await websocket.accept()
+    if psutil is None:
+        await websocket.send_json({"error": "psutil not installed — system monitor unavailable"})
+        await websocket.close(code=1011)
+        return
     try:
         while True:
             # Gather top processes
@@ -217,7 +254,7 @@ async def sysmon_endpoint(websocket: WebSocket):
     finally:
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass
 
 @app.get("/api/dashboard")
@@ -239,11 +276,8 @@ _PIPELINE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ws_pipeli
 
 @app.websocket("/ws/terminal")
 async def websocket_endpoint(websocket: WebSocket):
-    # Verify authentication token if configured
-    token = websocket.query_params.get("token") or websocket.headers.get("X-API-Key")
-    if SERVER_API_KEY and token != SERVER_API_KEY:
-        await websocket.close(code=1008)
-        logging.warning("Rejected unauthenticated WebSocket connection to /ws/terminal")
+    # Verify authentication token if configured (constant-time comparison)
+    if not await _authorize_websocket(websocket):
         return
 
     await manager.connect(websocket)
@@ -284,7 +318,8 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Await user input JSON
             data = await websocket.receive_text()
-            logging.info(f"Terminal Command Received: {data}")
+            # Debug-level only: raw frames may contain sensitive user input
+            logging.debug("Terminal frame received (%d bytes)", len(data))
             try:
                 frame = json.loads(data)
                 logging.debug("Terminal websocket frame received: %s", frame)
@@ -319,10 +354,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         # 2. 4-Layer Safety Shield Verification
                         safety_res = safety.check(command_to_run)
-                        if safety_res.risk == RiskLevel.BLOCKED:
+                        if safety_res.risk_level == RiskLevel.BLOCKED:
                             sync_stream_callback(f"\x1b[1;31m[4-Layer Safety Shield: BLOCKED] {safety_res.reason}\x1b[0m\n")
                             return
-                        elif safety_res.risk == RiskLevel.DANGER:
+                        elif safety_res.risk_level == RiskLevel.DANGER:
                             sync_stream_callback(f"\x1b[1;33m[4-Layer Safety Shield: DANGER WARNING] {safety_res.reason}\x1b[0m\n")
 
                         # 3. Telemetry

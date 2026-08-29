@@ -29,7 +29,7 @@ class ParsedCommand:
 class FastParser:
     """
     Fast command parser — pure Python reference implementation.
-    
+
     In production, this would be a pybind11 wrapper around a C++ parser
     for sub-microsecond parsing. The Python version handles all functionality
     for development and testing.
@@ -169,7 +169,7 @@ class FastParser:
 class FuzzyMatcher:
     """
     Levenshtein distance + prefix fuzzy matching.
-    
+
     In production, this would use a C++ implementation for
     sub-millisecond matching across thousands of candidates.
     """
@@ -184,7 +184,7 @@ class FuzzyMatcher:
     def match(self, query: str, max_distance: int = 3, limit: int = 5) -> list[tuple[str, int]]:
         """
         Find closest matches to query.
-        
+
         Returns: [(candidate, distance), ...] sorted by distance.
         """
         if not query or not self._candidates:
@@ -255,7 +255,7 @@ class FuzzyMatcher:
 class MarkovEngine:
     """
     Fast Markov chain engine for command prediction.
-    
+
     In production, backed by C++ hash maps for O(1) lookup
     across tens of thousands of transitions.
     """

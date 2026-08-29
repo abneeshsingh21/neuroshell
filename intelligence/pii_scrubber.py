@@ -46,10 +46,7 @@ def scrub(text: str) -> str:
 
 def contains_secrets(text: str) -> bool:
     """Check if text contains any detectable secrets."""
-    for pattern, _ in _PII_PATTERNS:
-        if pattern.search(text):
-            return True
-    return False
+    return any(pattern.search(text) for pattern, _ in _PII_PATTERNS)
 
 
 def _scrub_value(value):

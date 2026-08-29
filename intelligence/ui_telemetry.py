@@ -68,7 +68,7 @@ def print_wifi():
                         if "Key Content" in pline:
                             key = pline.split(":")[1].strip()
                             print(f"\033[1;32m{p}\033[0m : \033[1;37m{key}\033[0m")
-                except:
+                except Exception:
                     pass
         else:
             print("\033[1;31mWi-Fi extraction only supported on Windows.\033[0m")

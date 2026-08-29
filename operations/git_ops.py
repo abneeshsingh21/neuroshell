@@ -452,7 +452,7 @@ class GitOps:
 import asyncio
 import sys
 from collections.abc import AsyncGenerator
-from typing import Any, Dict
+from typing import Any
 
 # Add NeuroShell root to path to resolve intelligence module if run independently
 _root = str(Path(__file__).parent.parent)
@@ -462,7 +462,8 @@ if _root not in sys.path:
 try:
     from intelligence.tools.base_tool import BaseTool
 except ImportError:
-    class BaseTool: pass  # Graceful fallback if intelligence module is unresolvable
+    class BaseTool:
+        pass  # Graceful fallback if intelligence module is unresolvable
 
 class GitTool(BaseTool):
     """
@@ -481,7 +482,7 @@ class GitTool(BaseTool):
         return "Execute Git operations like clone, status, log, commit, push, and pull. Supports GitHub searching."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -501,11 +502,10 @@ class GitTool(BaseTool):
         # Clone, status, search, and log are safe.
         # Push, pull, and commit mutate state and might need permission.
         action = kwargs.get("action")
-        if action in ["push", "commit"]:
-            return False  # Requires explicit approval
-        return True
+        # Push and commit mutate state — they require explicit approval
+        return action not in ("push", "commit")
 
-    async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+    async def call(self, **kwargs) -> AsyncGenerator[dict[str, Any], None]:
         action = kwargs.get("action")
         url = kwargs.get("url")
         destination = kwargs.get("destination")

@@ -9,7 +9,7 @@ using json-rpc over stdin/stdout.
 import json
 import subprocess
 import threading
-from typing import Any, Dict
+from typing import Any
 
 
 class LSPClient:
@@ -64,7 +64,7 @@ class LSPClient:
             except Exception:
                 pass
 
-    def send_request(self, method: str, params: dict, timeout=5) -> Dict[str, Any]:
+    def send_request(self, method: str, params: dict, timeout=5) -> dict[str, Any]:
         """Send JSON-RPC request and block for response."""
         if not self.process:
             return {"error": "LSP Server not running"}

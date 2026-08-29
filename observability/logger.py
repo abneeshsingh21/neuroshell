@@ -24,7 +24,7 @@ _CORRELATION_VAR: contextvars.ContextVar[str | None] = contextvars.ContextVar("n
 
 class SafeRotatingFileHandler(RotatingFileHandler):
     """RotatingFileHandler resilient against Windows file locking errors (WinError 32)."""
-    def doRollover(self):
+    def doRollover(self):  # noqa: N802 — stdlib logging API method name
         try:
             super().doRollover()
         except (PermissionError, OSError):

@@ -293,7 +293,7 @@ def test_process_nl():
         engine.fuzzy_corrector.correct = orig_fuzzy
 
     elapsed = time.time() - start
-    output = "\n".join(cap.lines)
+    "\n".join(cap.lines)
     print(f"    Output lines: {len(cap.lines)}")
     print(f"    Latency: {elapsed:.1f}s")
     if cap.lines:
@@ -315,7 +315,7 @@ def test_desktop_imports():
         "desktop_app",
         os.path.join(os.path.dirname(__file__), "desktop_app.py")
     )
-    mod = importlib.util.module_from_spec(spec)
+    importlib.util.module_from_spec(spec)
     # Don't execute (would open GUI), just verify syntax
     return spec is not None
 

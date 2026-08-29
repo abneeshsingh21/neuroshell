@@ -6,6 +6,7 @@ Tier 1+2: Natural language workflows, security scanning, compliance logging.
 """
 
 from __future__ import annotations
+
 import json
 import logging
 import os
@@ -15,7 +16,6 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("neuroshell.enterprise")
 
@@ -262,13 +262,14 @@ class AuditTrail:
         return True, "OK"
 
     def log(self, command: str, risk_score: int, action: str, cwd: str = ".",
-            duration_ms: float = 0, exit_code: int = 0, hmac_key: Optional[bytes] = None) -> AuditEntry:
+            duration_ms: float = 0, exit_code: int = 0, hmac_key: bytes | None = None) -> AuditEntry:
         """Log command execution with tamper-evident cryptographic hash chaining."""
-        import hashlib, hmac
+        import hashlib
+        import hmac
         ts = datetime.now().isoformat()
         prev = self._last_hash
         payload = f"{prev}:{ts}:{self._user}:{self._current_role}:{command}:{risk_score}:{action}:{cwd}:{exit_code}"
-        
+
         if hmac_key:
             curr_hash = hmac.new(hmac_key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
         else:
@@ -293,11 +294,12 @@ class AuditTrail:
             logger.warning("Audit log write failed: %s", e)
         return entry
 
-    def verify_chain(self, hmac_key: Optional[bytes] = None) -> tuple[bool, int, str]:
+    def verify_chain(self, hmac_key: bytes | None = None) -> tuple[bool, int, str]:
         """Verify cryptographic integrity of all chained audit records.
         Returns: (is_valid, total_verified_count, message)
         """
-        import hashlib, hmac
+        import hashlib
+        import hmac
         log_files = sorted(self.log_dir.glob("audit_*.jsonl"))
         if not log_files:
             return True, 0, "No audit logs to verify."
@@ -312,12 +314,12 @@ class AuditTrail:
                         continue
                     item = json.loads(line)
                     curr_prev = item.get("prev_hash", "")
-                    
+
                     if curr_prev != expected_prev and total_count > 0:
                         return False, total_count, f"Hash chain broken at {item.get('timestamp')}: expected {expected_prev[:8]}.. got {curr_prev[:8]}.."
 
                     payload = f"{curr_prev}:{item.get('timestamp')}:{item.get('user')}:{item.get('role')}:{item.get('command')}:{item.get('risk_score')}:{item.get('action')}:{item.get('cwd')}:{item.get('exit_code', 0)}"
-                    
+
                     if hmac_key:
                         recomputed = hmac.new(hmac_key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
                     else:
@@ -357,7 +359,7 @@ class AuditTrail:
             f"- Total commands: {total}",
             f"- Blocked commands: {blocked}",
             f"- Critical risk commands: {critical}",
-            f"- Unique users: {len(set(e.get('user', '') for e in entries))}",
+            f"- Unique users: {len({e.get('user', '') for e in entries})}",
             "",
             "## Recent Critical Actions",
         ]

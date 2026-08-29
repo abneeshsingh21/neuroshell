@@ -62,7 +62,7 @@ def check_provider(provider: str, timeout: float = 2.0) -> bool:
 class OfflineFallbackManager:
     """
     Monitors connectivity and manages automatic provider switching.
-    
+
     Usage:
         mgr = OfflineFallbackManager(config)
         provider, reason = mgr.get_active_provider()

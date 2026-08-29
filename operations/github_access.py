@@ -149,11 +149,11 @@ class GitHubAccessManager:
         """Perform a quick Zero-Trust security scan of any local or remote repository."""
         resolved = self._resolve_repo(repo) or repo
         tree = self.repo_tree(resolved)
-        
+
         has_ci = any(".github/workflows" in f for f in tree)
         has_security_md = any("SECURITY" in f.upper() for f in tree)
         has_license = any("LICENSE" in f.upper() for f in tree)
-        
+
         deps = []
         if any("requirements.txt" in f or "pyproject.toml" in f for f in tree):
             deps.append("Python")
@@ -165,9 +165,12 @@ class GitHubAccessManager:
             deps.append("Go")
 
         score = 80
-        if has_ci: score += 10
-        if has_security_md: score += 5
-        if has_license: score += 5
+        if has_ci:
+            score += 10
+        if has_security_md:
+            score += 5
+        if has_license:
+            score += 5
 
         return {
             "repository": resolved,

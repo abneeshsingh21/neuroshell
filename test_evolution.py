@@ -30,7 +30,7 @@ def run_tests():
     print("Testing AutoDream...")
     try:
         from intelligence.memory.auto_dream import AutoDreamDaemon
-        dream = AutoDreamDaemon(mem, llm_mock)
+        AutoDreamDaemon(mem, llm_mock)
         print("AutoDream initialized cleanly!")
     except Exception as e:
         print(f"AutoDream failed: {e}")
@@ -38,7 +38,7 @@ def run_tests():
     print("Testing Coordinator...")
     try:
         from intelligence.coordinator import Coordinator
-        coord = Coordinator(llm_mock, MagicMock())
+        Coordinator(llm_mock, MagicMock())
         print("Coordinator initialized cleanly!")
     except Exception as e:
         print(f"Coordinator failed: {e}")

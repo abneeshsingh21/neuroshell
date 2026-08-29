@@ -495,7 +495,7 @@ class HistoryStore:
         """Find a cached fix with confidence scoring."""
         conn = self._get_conn()
         row = conn.execute("""
-            SELECT *, 
+            SELECT *,
                    CAST(success_count AS REAL) / (success_count + failure_count) as computed_confidence
             FROM error_fixes
             WHERE error_pattern = ? AND success_count > failure_count
@@ -513,13 +513,16 @@ class HistoryStore:
         conditions = " AND ".join("error_message LIKE ?" for _ in words)
         params = [f"%{w}%" for w in words] + [limit]
 
-        rows = conn.execute(f"""
-            SELECT *,
-                   CAST(success_count AS REAL) / (success_count + failure_count) as computed_confidence
-            FROM error_fixes
-            WHERE {conditions} AND success_count > failure_count
-            ORDER BY success_count DESC LIMIT ?
-        """, tuple(params)).fetchall()
+        # S608 false positive: `conditions` is built exclusively from `?`
+        # placeholders; user data only flows through bound parameters.
+        query = (
+            "SELECT *, "  # noqa: S608
+            "CAST(success_count AS REAL) / (success_count + failure_count) as computed_confidence "
+            "FROM error_fixes "
+            f"WHERE {conditions} AND success_count > failure_count "
+            "ORDER BY success_count DESC LIMIT ?"
+        )
+        rows = conn.execute(query, tuple(params)).fetchall()
 
         return [dict(r) for r in rows]
 
@@ -828,7 +831,8 @@ class HistoryStore:
         stats = {}
         for table in tables:
             try:
-                row = conn.execute(f"SELECT COUNT(*) as c FROM {table}").fetchone()
+                # S608 false positive: `table` iterates a hard-coded list above
+                row = conn.execute(f"SELECT COUNT(*) as c FROM {table}").fetchone()  # noqa: S608
                 stats[table] = row["c"]
             except sqlite3.OperationalError:
                 stats[table] = 0
@@ -861,9 +865,10 @@ class HistoryStore:
             context_hash=row["context_hash"],
             was_ai_translated=bool(row["was_ai_translated"]),
             original_nl=row["original_nl"],
-            tags=row["tags"] if "tags" in row.keys() else "",
-            resources_json=row["resources_json"] if "resources_json" in row.keys() else "",
-            pid=row["pid"] if "pid" in row.keys() else 0,
+            # sqlite3.Row supports .keys() but NOT .get() — do not "simplify"
+            tags=row["tags"] if "tags" in row.keys() else "",  # noqa: SIM118
+            resources_json=row["resources_json"] if "resources_json" in row.keys() else "",  # noqa: SIM118
+            pid=row["pid"] if "pid" in row.keys() else 0,  # noqa: SIM118
         )
 
     def get_stats(self) -> dict:

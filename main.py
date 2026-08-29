@@ -14,6 +14,7 @@ import os
 import shlex
 import signal
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -55,7 +56,6 @@ class NeuroShell:
     """
 
     def __init__(self):
-        import threading
 
         # ── Fast path: config + session state (<0.5s) ──
         self.config = load_config()
@@ -131,8 +131,10 @@ class NeuroShell:
                 def print_result(self, cmd, res, **kw):
                     code = getattr(res, 'exit_code', getattr(res, 'returncode', 0))
                     print(f"\n[Exit code: {code}]")
-                    if getattr(res, 'stdout', None): print(res.stdout)
-                    if getattr(res, 'stderr', None): print(f"Error: {res.stderr}")
+                    if getattr(res, 'stdout', None):
+                        print(res.stdout)
+                    if getattr(res, 'stderr', None):
+                        print(f"Error: {res.stderr}")
             self.ui = _DefaultConsoleUI()
 
             # ── Observability ────────────────────────────
@@ -494,14 +496,16 @@ class NeuroShell:
         self.shutdown()
         sys.exit(0)
 
-    def shutdown(self):
-        """Clean shutdown of background services and session state."""
+    def _stop_background_services(self):
+        """Stop background services (IPC server, AutoDream daemon)."""
         try:
             if hasattr(self, "ipc_server") and self.ipc_server:
                 self.ipc_server.stop()
+        except Exception:
+            pass
+        try:
             if hasattr(self, "auto_dream") and self.auto_dream:
                 self.auto_dream.stop()
-            self.history.end_session(self.session_id)
         except Exception:
             pass
 
@@ -1084,7 +1088,6 @@ class NeuroShell:
         if lower.startswith("history import"):
             filepath = user_input[15:].strip()
             if filepath:
-                from pathlib import Path
                 count = self.history.import_json(Path(filepath))
                 self.ui.print_info(f"  ✅ Imported {count} commands from {filepath}")
             else:
@@ -1206,7 +1209,12 @@ class NeuroShell:
                 else:
                     self.ui.print_error("  Could not understand. Try again.")
             else:
-                self.ui.print_info(f"  🎤 Voice unavailable. Install: {VoiceCommandEngine.install_hint() if hasattr(self, 'ext_voice') else 'pip install SpeechRecognition pyaudio'}")
+                try:
+                    from extensions.platform_features import VoiceCommandEngine
+                    hint = VoiceCommandEngine.install_hint()
+                except Exception:
+                    hint = "pip install SpeechRecognition pyaudio"
+                self.ui.print_info(f"  🎤 Voice unavailable. Install: {hint}")
             self.tracer.end_trace(cid)
             return
 
@@ -1363,6 +1371,7 @@ class NeuroShell:
         if lower == "api start" or lower == "start api":
             if hasattr(self, 'ext_api'):
                 if self.ext_api.start():
+                    from extensions.platform_features import NeuroShellAPI
                     self.ui.print_info(f"  🌐 API running on http://127.0.0.1:{self.ext_api.port}")
                     self.ui.print_info(f"  Usage: {NeuroShellAPI.usage_hint()}")
                 else:
@@ -1630,7 +1639,6 @@ class NeuroShell:
         try:
             if not hasattr(self, "github_access") or self.github_access is None:
                 from operations.github_access import GitHubAccessManager
-                from pathlib import Path
                 self.github_access = GitHubAccessManager(Path.cwd())
 
             repos = self.github_access.repo_list(user_or_org=user_or_org, limit=30)
@@ -1663,7 +1671,6 @@ class NeuroShell:
     def _handle_read_command(self, raw_target: str):
         from rich.console import Console
         from rich.markdown import Markdown
-        from pathlib import Path
         console = Console()
 
         target = self._resolve_repo_target(raw_target)
@@ -1705,7 +1712,6 @@ class NeuroShell:
     def _handle_audit_command(self, raw_target: str):
         from rich.console import Console
         from rich.panel import Panel
-        from pathlib import Path
         console = Console()
 
         target = self._resolve_repo_target(raw_target) or "."
@@ -1730,7 +1736,7 @@ class NeuroShell:
             ci_status = "[green]✅ Active (GitHub Actions)[/green]" if res.get("has_ci") else "[yellow]⚠️ None[/yellow]"
             sec_status = "[green]✅ Found (SECURITY.md)[/green]" if res.get("has_security_policy") else "[yellow]⚠️ None[/yellow]"
             lic_status = "[green]✅ Verified License[/green]" if res.get("has_license") else "[red]❌ Missing License[/red]"
-            
+
             console.print(Panel(
                 f"[bold white]Repository:[/bold white] {res.get('repository')}\n"
                 f"[bold white]Files Indexed:[/bold white] {res.get('file_count')} remote files\n"
@@ -1747,7 +1753,6 @@ class NeuroShell:
 
     def _handle_tree_command(self, raw_target: str):
         from rich.console import Console
-        from pathlib import Path
         console = Console()
 
         target = self._resolve_repo_target(raw_target)
@@ -1811,7 +1816,6 @@ class NeuroShell:
         if not targets:
             return
 
-        from pathlib import Path
         self.ui.print_info(f"  ⚡ Materializing Scaffolding ({len(targets)} targets):")
         for t in targets:
             t_norm = os.path.normpath(t)
@@ -2089,8 +2093,10 @@ class NeuroShell:
         else:
             code = getattr(result, 'exit_code', getattr(result, 'returncode', 0))
             print(f"\n[Exit code: {code}]")
-            if result.stdout: print(result.stdout)
-            if result.stderr: print(f"Error: {result.stderr}")
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print(f"Error: {result.stderr}")
 
         # Store in history
         if hasattr(self, 'history') and self.history:
@@ -2247,7 +2253,6 @@ class NeuroShell:
             _orig_generate = self.translator.llm.generate_json
             def _streaming_generate(prompt, system_prompt=""):
                 # Show streaming dots during LLM call
-                import threading
                 stop_event = threading.Event()
                 def _animate():
                     while not stop_event.is_set():
@@ -2390,7 +2395,7 @@ class NeuroShell:
             import sys
             sys.stdout.write("\n📖 ")
             sys.stdout.flush()
-            streaming_result = self.llm.generate_streaming(
+            self.llm.generate_streaming(
                 prompt=f"Explain this shell command in detail: {command}",
                 system_prompt="You are a shell expert. Explain commands concisely with flag meanings.",
                 callback=lambda token: (sys.stdout.write(token), sys.stdout.flush()),
@@ -2625,7 +2630,6 @@ class NeuroShell:
 
     def _handle_history_export(self, user_input: str):
         """Handle history export commands."""
-        from pathlib import Path
         parts = user_input.lower().replace("history export", "").strip().split()
         fmt = "json"
         filename = None
@@ -2729,7 +2733,7 @@ class NeuroShell:
             return True
 
         if cmd in ("clip", "clipboard"):
-            self._handle_slash_clip(args)
+            self._handle_slash_clip(args, arg_str)
             return True
 
         if cmd in ("profile", "workspace"):
@@ -3072,15 +3076,22 @@ class NeuroShell:
         else:
             self.ui.print_info("  Usage: /record [start <desc>|stop|list|replay <file.json.gz>]")
 
-    def _handle_slash_clip(self, args: list[str]):
-        """Clipboard copy/paste commands."""
+    def _handle_slash_clip(self, args: list[str], arg_str: str = ""):
+        """Clipboard copy/paste commands.
+
+        `arg_str` carries the raw (unparsed) argument text so that
+        `/clip copy <text>` preserves quotes and whitespace verbatim —
+        shlex tokenization would silently strip quoting on POSIX systems.
+        """
         if not hasattr(self, "ext_clipboard") or not self.ext_clipboard:
             self.ui.print_error("  Clipboard manager unavailable.")
             return
 
         sub = args[0].lower() if args else "paste"
         if sub == "copy" and len(args) >= 2:
-            txt = " ".join(args[1:])
+            # Preserve the raw payload exactly as typed (quotes included)
+            raw = arg_str.split(None, 1)
+            txt = raw[1] if len(raw) > 1 else " ".join(args[1:])
             if self.ext_clipboard.copy(txt):
                 self.ui.print_info(f"  📋 Copied {len(txt)} chars to clipboard")
             else:
@@ -3331,7 +3342,7 @@ class NeuroShell:
             self.ui.print_info("  ✅ You are on the latest production build.")
         elif sub == "channel" and len(args) >= 2:
             ch = self.update_manager.select_channel(args[1])
-            self.ui.print_info(f"  ✅ Update channel set to: {ch}")
+            self.ui.print_info(f"  ✅ Update channel set to: {ch}")  # noqa: S608 — UI text, not SQL
         else:
             self.ui.print_info("  Usage: /update [check|channel <stable|beta|canary>]")
 
@@ -3398,7 +3409,18 @@ class NeuroShell:
     # ═══════════════════════════════════════════════════════
 
     def shutdown(self):
-        """Graceful shutdown with session summary."""
+        """Graceful shutdown: stop background services, then print session summary.
+
+        Idempotent — safe to call from signal handlers, atexit, and the REPL
+        exit path without duplicating side effects.
+        """
+        if getattr(self, "_shutdown_complete", False):
+            return
+        self._shutdown_complete = True
+
+        # Stop background services first (IPC server, AutoDream daemon)
+        self._stop_background_services()
+
         try:
             if hasattr(self, "logger") and self.logger:
                 self.logger.info("shutdown", session_id=getattr(self, "session_id", "unknown"))

@@ -7,7 +7,6 @@ Inspired by Anthropic's Claude-Code Role-Based Architecture.
 
 import logging
 from dataclasses import dataclass
-from typing import List
 
 from core.events import neuro_events
 
@@ -17,7 +16,7 @@ _log = logging.getLogger("neuroshell.swarm")
 class SwarmResult:
     final_command: str
     explanation: str
-    agents_used: List[str]
+    agents_used: list[str]
     is_safe: bool = True
 
 class BaseAgent:
@@ -41,7 +40,7 @@ class PlanAgent(BaseAgent):
     def __init__(self, llm_client):
         super().__init__(
             name="PlanAgent",
-            system_prompt="""You are the Architect. You cannot write actual modifications. 
+            system_prompt="""You are the Architect. You cannot write actual modifications.
 Your ONLY job is to read the user's objective and break it down into explicit bullet points for the Executor.
 Never output code. Keep it extremely brief and high-level.""",
             llm_client=llm_client,
@@ -52,8 +51,8 @@ class VerificationAgent(BaseAgent):
     def __init__(self, llm_client):
         super().__init__(
             name="VerificationAgent",
-            system_prompt="""You are an adversarial QA engineer. You will receive a proposed shell command or python script. 
-Your goal is to find bugs, security vulnerabilities (like rm -rf), or syntax errors. 
+            system_prompt="""You are an adversarial QA engineer. You will receive a proposed shell command or python script.
+Your goal is to find bugs, security vulnerabilities (like rm -rf), or syntax errors.
 If it is safe, output the single word 'SAFE'. If it is dangerous or broken, output 'UNSAFE' followed by why.""",
             llm_client=llm_client,
         )

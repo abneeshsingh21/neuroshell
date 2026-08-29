@@ -205,8 +205,8 @@ class NeuroShellAPI:
                     self.end_headers()
                     self.wfile.write(_json.dumps(data).encode())
 
-                def log_message(self, format, *args):
-                    logger.debug("API: %s", format % args)
+                def log_message(self, fmt, *args):  # noqa: N802 — http.server API name
+                    logger.debug("API: %s", fmt % args)
 
             server = HTTPServer((self.host, self.port), Handler)
             self._server_thread = threading.Thread(target=server.serve_forever, daemon=True)

@@ -38,9 +38,9 @@ class AudioCapture:
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             self.process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kwargs)
             threading.Thread(target=self._read_loop, daemon=True).start()
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             self.is_recording = False
-            raise RuntimeError("SoX (rec) not installed. Please install SoX to enable voice input.")
+            raise RuntimeError("SoX (rec) not installed. Please install SoX to enable voice input.") from e
 
     def _read_loop(self):
         try:

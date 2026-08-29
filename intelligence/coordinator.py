@@ -9,7 +9,7 @@ the Coordinator evaluates the query and spawns specialized Tools or Agents.
 """
 
 from collections.abc import AsyncGenerator
-from typing import Any, Dict
+from typing import Any
 
 
 class Coordinator:
@@ -38,7 +38,7 @@ class Coordinator:
     def register_tool(self, tool):
         self._tools_registry[tool.name] = tool
 
-    async def route_request(self, user_input: str) -> AsyncGenerator[Dict[str, Any], None]:
+    async def route_request(self, user_input: str) -> AsyncGenerator[dict[str, Any], None]:
         """
         Evaluate the prompt and route to a tool or agent stream.
         """

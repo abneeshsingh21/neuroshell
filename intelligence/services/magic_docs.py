@@ -52,7 +52,7 @@ class MagicDocs:
 
             prompt = f"""You are MagicDocs, a background documentation maintaining agent.
 Review the following active conversation transcript and determine if any permanent architectural decisions, API routes, or new project patterns were established.
-If so, rewrite the Project Context document to incorporate these new facts. 
+If so, rewrite the Project Context document to incorporate these new facts.
 Only output the raw markdown of the entirely rewritten document. Do not wrap in markdown code blocks.
 
 === CURRENT PROJECT CONTEXT ===

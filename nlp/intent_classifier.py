@@ -27,7 +27,6 @@ except ImportError:
     HAS_JOBLIB = False
 
 try:
-    from sklearn.calibration import CalibratedClassifierCV
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.pipeline import Pipeline
     from sklearn.svm import LinearSVC
@@ -373,7 +372,7 @@ class IntentClassifier:
         max_s = max(scaled)
         exp_scores = [math.exp(s - max_s) for s in scaled]
         total = sum(exp_scores)
-        return {cls: round(e / total, 3) for cls, e in zip(classes, exp_scores)}
+        return {cls: round(e / total, 3) for cls, e in zip(classes, exp_scores, strict=False)}
 
     def _train_from_examples(self) -> bool:
         texts, labels = [], []

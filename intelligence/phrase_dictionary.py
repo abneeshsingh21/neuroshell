@@ -34,9 +34,12 @@ def _resolve_platform_cmd(entry: tuple) -> tuple[str, str]:
         else:
             # Smart macOS dynamic fallback
             cmd = entry[2]
-            if cmd == "free -m": cmd = "vm_stat"
-            elif "xclip" in cmd: cmd = cmd.replace("xclip -sel clip -o", "pbpaste").replace("| xclip -sel clip", "| pbcopy")
-            elif "ip a" in cmd: cmd = "ifconfig"
+            if cmd == "free -m":
+                cmd = "vm_stat"
+            elif "xclip" in cmd:
+                cmd = cmd.replace("xclip -sel clip -o", "pbpaste").replace("| xclip -sel clip", "| pbcopy")
+            elif "ip a" in cmd:
+                cmd = "ifconfig"
     else:  # Linux / FreeBSD
         cmd = entry[2]
     return eng, cmd
@@ -126,7 +129,7 @@ class PhraseDictionary:
         best_score = 0.0
         best_idx = -1
         for i, pvec in enumerate(self._vectors):
-            score = sum(a * b for a, b in zip(qvec, pvec))
+            score = sum(a * b for a, b in zip(qvec, pvec, strict=False))
             if score > best_score:
                 best_score = score
                 best_idx = i
@@ -165,7 +168,7 @@ class PhraseDictionary:
 
         scored = []
         for i, pvec in enumerate(self._vectors):
-            score = sum(a * b for a, b in zip(qvec, pvec))
+            score = sum(a * b for a, b in zip(qvec, pvec, strict=False))
             if score > 0.2:
                 scored.append((i, score))
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuroshell"
-version = "5.7.0"
+version = "5.7.1"
 description = "AI-Powered Intelligent Terminal — translates English to shell, auto-fixes errors, and understands plain language"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -131,15 +131,30 @@ exclude = ["dist", "build", ".venv", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "SIM"]
 ignore = [
-    "S603", "S607",      # subprocess — we use it intentionally
+    "S603", "S607",      # subprocess — core purpose of a shell is spawning processes
     "S101",              # assert — used in tests
     "B008",              # function calls in default args
     "E501",              # line-length — handled by formatter
     "UP007", "UP006",    # X | Y type hints — py310 compat
+    # ── Intentional resilience / domain patterns (reviewed 2026-08) ──
+    "S110", "S112",      # try-except-pass/continue — deliberate graceful-degradation guards
+                         #   around optional subsystems (voice, GUI, C++ engine, clipboard...)
+    "SIM105",            # contextlib.suppress adds an import + frame for hot-path guards
+    "SIM102",            # nested ifs kept for readability of guard chains
+    "E402",              # deferred imports are a startup-latency optimization (lazy loading)
+    "S311",              # `random` used only for jitter/sampling/chaos — never crypto
+    "S310",              # urllib schemes are validated (`_validate_url`) or hardcoded https
+    "S108",              # /tmp paths used in POSIX shm & test fixtures, not privileged files
+    "N806",              # scientific-style locals (matrices) in NLP code
+    "S605", "S606",      # os.system('cls'/clear) & os.startfile — intentional terminal control
+    "S602",              # shell=True limited to Windows MSVC build scripts
+    "S103",              # 0o755 for generated user scripts is the intended permission
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S106"]
+# Package __init__ files re-export their public API
+"**/__init__.py" = ["F401"]
 
 # ─── Mypy ─────────────────────────────────────────────────────────────────────
 [tool.mypy]

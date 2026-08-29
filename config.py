@@ -594,7 +594,7 @@ def _set_nested(obj, path: str, value):
 def _to_dict(obj) -> dict:
     """Convert dataclass to dict recursively."""
     result = {}
-    for key, val in obj.__dataclass_fields__.items():
+    for key, _val in obj.__dataclass_fields__.items():
         v = getattr(obj, key)
         if hasattr(v, "__dataclass_fields__"):
             result[key] = _to_dict(v)

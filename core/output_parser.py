@@ -240,8 +240,8 @@ class OutputParser:
         diff_lines = len(self.DIFF_LINE.findall(output))
 
         if header_count >= 1 and diff_lines >= 2:
-            additions = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
-            deletions = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
+            additions = sum(1 for ln in lines if ln.startswith("+") and not ln.startswith("+++"))
+            deletions = sum(1 for ln in lines if ln.startswith("-") and not ln.startswith("---"))
 
             return ParsedOutput(
                 raw=output,
@@ -295,8 +295,8 @@ class OutputParser:
 
     def _detect_yaml(self, output: str, lines: list[str]) -> ParsedOutput | None:
         """Detect YAML output."""
-        yaml_lines = sum(1 for l in lines if self.YAML_PATTERN.match(l.strip()))
-        yaml_list_lines = sum(1 for l in lines if self.YAML_LIST.match(l))
+        yaml_lines = sum(1 for ln in lines if self.YAML_PATTERN.match(ln.strip()))
+        yaml_list_lines = sum(1 for ln in lines if self.YAML_LIST.match(ln))
 
         if (yaml_lines + yaml_list_lines) >= len(lines) * 0.5 and yaml_lines >= 3:
             # Don't confuse with key-value
@@ -314,7 +314,7 @@ class OutputParser:
         """Detect TOML output."""
         section_count = len(self.INI_SECTION.findall(output))
         # TOML uses dotted keys
-        dotted_keys = sum(1 for l in lines if re.match(r"^\w+\.\w+\s*=", l.strip()))
+        dotted_keys = sum(1 for ln in lines if re.match(r"^\w+\.\w+\s*=", ln.strip()))
 
         if section_count >= 1 and dotted_keys >= 1:
             return ParsedOutput(

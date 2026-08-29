@@ -100,7 +100,7 @@ class AutoDreamDaemon:
             return
 
         transcript = []
-        for i, turn in enumerate(queue):
+        for _i, turn in enumerate(queue):
             role = turn.get("role", "user")
             content = turn.get("content", "")
             transcript.append(f"[{role}]: {content}")
@@ -137,4 +137,3 @@ class AutoDreamDaemon:
                     proc_file.unlink(missing_ok=True)
                 except Exception:
                     pass
-                self.ui_callback(f"AutoDream memory synthesis failed - {e}")

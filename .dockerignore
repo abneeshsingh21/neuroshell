@@ -1,0 +1,41 @@
+# Keep the Docker build context minimal and free of secrets/artifacts
+.git
+.github
+.gitignore
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+build
+dist
+*.egg-info
+.neuroshell
+*.log
+*.db
+history.db
+
+# Local secrets / keys — must never enter an image layer
+.master.key
+*.pem
+*.key
+.env
+.env.*
+
+# Packaging / platform artifacts not needed at runtime
+msix_staging
+store_icons
+vscode-extension
+native_host
+Formula
+assets
+docs
+tests
+test_*.py
+scripts/*.ps1
+scripts/*.bat

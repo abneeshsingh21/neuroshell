@@ -5,8 +5,8 @@ Generator script to compile the 2,588+ phrase dictionary and extended system phr
 directly into native C++20 lookup tables in cpp_engine/launcher/native_phrases.hpp.
 """
 
-import os
 from pathlib import Path
+
 from intelligence._phrase_data import PHRASES
 
 win_wifi_table = r'powershell -NoProfile -Command "$p=(netsh wlan show profiles)|Select-String \"All User Profile\s*:\s*(.+)$\"|%{ $_.Matches.Groups[1].Value.Trim() }; $r=foreach($n in $p){ $o=netsh wlan show profile name=\"$n\" key=clear 2>$null; $m=$o|Select-String \"Key Content\s*:\s*(.+)$\"; [PSCustomObject]@{ \"Wi-Fi Network (SSID)\" = $n; \"Password\" = if($m){ $m.Matches.Groups[1].Value.Trim() }else{ \"[Open Network]\" } } }; $r|Format-Table -AutoSize"'
@@ -96,7 +96,7 @@ with open(out_hpp, "w", encoding="utf-8") as f:
     f.write("public:\n")
     f.write("    NativePhraseDictionary() {\n")
     f.write(f"        dictionary_.reserve({len(all_phrases) + 200});\n")
-    
+
     seen = set()
     for item in all_phrases:
         phrase = item[0]

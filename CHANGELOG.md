@@ -6,6 +6,68 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [5.7.1] — 2026-08-29
+
+### Fixed — Critical runtime bugs (production-hardening audit)
+- **Startup crash**: `threading` was only imported inside `__init__`, so `startup()`
+  raised `NameError` on the critical path — the LLM warmup thread, pattern learner,
+  and predictor training silently never started. `threading` is now a module-level import.
+- **Shutdown never stopped background services**: `NeuroShell.shutdown()` was defined
+  twice; the second definition silently shadowed the first, so the IPC server and
+  AutoDream daemon were never stopped on exit. Consolidated into a single idempotent
+  `shutdown()` that stops background services before printing the session summary.
+- **`deploy promote` crash**: a function-local `from pathlib import Path` shadowed the
+  module-level import, causing `UnboundLocalError` before the re-import line. All
+  redundant local `Path` imports removed.
+- **`voice` / `api start` crash**: `VoiceCommandEngine` and `NeuroShellAPI` were
+  referenced from handlers but only imported inside the background loader's scope,
+  raising `NameError`. Handlers now import them explicitly.
+- **Server safety shield broken**: `server.py` read `safety_res.risk`, an attribute
+  that does not exist on `SafetyResult` (it is `risk_level`) — every command sent
+  through `/ws/terminal` died with `[CRITICAL ERROR]` *after* passing translation.
+  Now uses the correct attribute; blocked commands are actually blocked again.
+- **AutoDream crash-in-cleanup**: the `finally` block referenced an out-of-scope
+  exception variable and invoked a possibly-`None` UI callback.
+- **Slash router quote stripping**: `/clip copy echo 'Hello World'` lost its quotes
+  on POSIX because arguments were re-joined from `shlex` tokens. `/clip copy` now
+  receives the raw argument string verbatim.
+- **Smart-open folder resolution**: well-known profile folders (Downloads, Documents…)
+  failed to resolve when the directory didn't exist on the executing machine,
+  producing an unverified fallback command instead of the deterministic
+  `-EncodedCommand` open. Well-known mappings now resolve deterministically.
+- **LLM retry loop**: late-binding lambda captured the loop's `messages` variable
+  (ruff B023) — bound explicitly to prevent stale-payload retries.
+
+### Security
+- WebSocket API-key comparison now uses `secrets.compare_digest` (constant-time).
+- **All** WebSocket endpoints (`/ws/terminal`, `/ws/telemetry`, `/ws/sysmon`) now pass
+  through a single auth gate — previously only `/ws/terminal` was protected.
+- Server logs a startup warning when `NEUROSHELL_SERVER_KEY` is unset.
+- Raw terminal frames are no longer logged at INFO level (may contain secrets).
+- Docker image now runs as a dedicated non-root `neuroshell` user; added
+  `.dockerignore` to keep secrets and build artifacts out of image layers.
+- `/ws/sysmon` degrades gracefully when `psutil` is missing instead of crashing.
+- Session-memory dedup hash upgraded MD5 → truncated SHA-256.
+- Exception chaining (`raise … from e`) added across sandbox, LLM client, voice,
+  and smart-open error paths.
+
+### Changed
+- Lint debt eliminated: `ruff check .` now passes clean (was 433 violations, CI red).
+  Intentional resilience patterns (graceful-degradation `try/except/pass` guards,
+  lazy imports for startup latency) are codified in `pyproject.toml` with
+  documented justifications instead of failing CI.
+- Deprecated `typing.Dict/List/Tuple` migrated to PEP-585 builtins.
+- Ambiguous single-letter loop variables renamed (`l` → `ln`).
+- `sqlite3.Row` access documented as `.keys()`-only (no `.get()`), guarded with noqa.
+- Version unified to **5.7.1** across `__version__.py`, `pyproject.toml`, `setup.py`
+  (now reads from `__version__.py` as single source of truth) and the Homebrew formula.
+
+### Added
+- `tests/test_production_hardening.py` — 18 regression tests pinning every bug above.
+- `docs/PRODUCTION_AUDIT_2026-08.md` — full audit report with methodology & findings.
+
+---
+
 ## [5.0.0] — 2026-04-25
 
 ### Added

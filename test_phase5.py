@@ -19,17 +19,17 @@ async def run_tests():
     print("Testing LSP subsystem...")
     # Mocking standard subprocess creation
     lsp = LSPClient(["bash", "-c", "echo {}"])
-    tool = LSPTool(lsp)
+    LSPTool(lsp)
     print("LSP loaded.")
 
     print("Testing MCP subsystem...")
     mcp_client = MCPClient("http://localhost:8080", api_key="test")
-    mcp_tool = MCPTool(mcp_client)
+    MCPTool(mcp_client)
     print("MCP loaded.")
 
     print("Testing Tasks Swarm...")
     tm = TaskManager()
-    t_tool = TaskSystemTool(tm)
+    TaskSystemTool(tm)
     task_id = await tm.create_task("do a test")
     t_stat = await tm.get_task(task_id)
     assert t_stat["goal"] == "do a test"
@@ -37,15 +37,15 @@ async def run_tests():
 
     print("Testing Voice Subsystem...")
     try:
-        ac = AudioCapture()
-        wb = WhisperBridge(api_key="123")
+        AudioCapture()
+        WhisperBridge(api_key="123")
         print("Voice loaded.")
     except Exception as e:
         print(f"Voice skipped/warning: {e}")
 
     print("Testing Mode Tools...")
     pmc = PlanModeController()
-    m_tool = ModeTool(pmc)
+    ModeTool(pmc)
     pmc.enter_plan_mode()
     assert pmc.is_active is True
     pmc.exit_plan_mode()
