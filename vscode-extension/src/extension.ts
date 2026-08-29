@@ -681,8 +681,20 @@ async function checkRemoteUpdates(context: vscode.ExtensionContext, silent: bool
                         let remoteTag = parsed.tag_name || '';
                         if (remoteTag.startsWith('v')) remoteTag = remoteTag.substring(1);
 
-                        const currentVer = '5.7.0';
-                        if (remoteTag && remoteTag > currentVer) {
+                        // Read our own version from package.json (single source
+                        // of truth) and compare numerically — string comparison
+                        // would treat "10.0.0" as older than "5.8.0".
+                        const currentVer: string = (context.extension?.packageJSON?.version) || '5.8.0';
+                        const isNewer = (a: string, b: string): boolean => {
+                            const pa = a.split('.').map((x) => parseInt(x, 10) || 0);
+                            const pb = b.split('.').map((x) => parseInt(x, 10) || 0);
+                            for (let i = 0; i < 3; i++) {
+                                if ((pa[i] || 0) > (pb[i] || 0)) return true;
+                                if ((pa[i] || 0) < (pb[i] || 0)) return false;
+                            }
+                            return false;
+                        };
+                        if (remoteTag && isNewer(remoteTag, currentVer)) {
                             const choice = await vscode.window.showInformationMessage(
                                 `✨ NeuroShell update available: v${currentVer} → v${remoteTag}.`,
                                 '⚡ Update Now',

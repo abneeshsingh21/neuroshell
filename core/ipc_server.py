@@ -54,7 +54,13 @@ class NamedPipeServer:
         self.running = False
         self._listener_thread: threading.Thread | None = None
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="IPCWorker")
+        # NOTE (v5.8): the previous implementation wrapped EVERY dispatch in a
+        # single global lock, serializing all clients — one 8-second LLM call
+        # blocked even `ping` for everyone. Only genuinely stateful methods
+        # (slash-command mutation) now take the lock; read-mostly methods
+        # (ping/status/translate/diagnose/ai_pipe) run concurrently.
         self._state_lock = threading.Lock()
+        self._STATEFUL_METHODS = frozenset({"slash"})
         self._server_sock: socket.socket | None = None
 
     def start(self):
@@ -138,6 +144,19 @@ class NamedPipeServer:
                     if not data:
                         break
                     buffer += data
+
+                    # DoS guard: an unbounded buffer previously allowed any
+                    # local client to exhaust daemon memory with a single
+                    # newline-free stream.
+                    if len(buffer) > MAX_PAYLOAD_SIZE:
+                        err = {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32600, "message": "Payload size exceeded"},
+                            "id": None,
+                        }
+                        client_sock.sendall((json.dumps(err) + "\n").encode("utf-8"))
+                        break
+
                     while "\n" in buffer:
                         line, buffer = buffer.split("\n", 1)
                         if line.strip():
@@ -277,8 +296,18 @@ class NamedPipeServer:
                 "id": req_id
             }
 
+        if not isinstance(params, dict):
+            return {
+                "jsonrpc": "2.0",
+                "error": {"code": -32602, "message": "Params must be an object"},
+                "id": req_id
+            }
+
         try:
-            with self._state_lock:
+            if method in self._STATEFUL_METHODS:
+                with self._state_lock:
+                    result = self._dispatch_method(method, params)
+            else:
                 result = self._dispatch_method(method, params)
 
             if is_notification:

@@ -6,65 +6,50 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [5.7.1] — 2026-08-29
+## [5.8.0] — 2026-08-29
 
-### Fixed — Critical runtime bugs (production-hardening audit)
-- **Startup crash**: `threading` was only imported inside `__init__`, so `startup()`
-  raised `NameError` on the critical path — the LLM warmup thread, pattern learner,
-  and predictor training silently never started. `threading` is now a module-level import.
-- **Shutdown never stopped background services**: `NeuroShell.shutdown()` was defined
-  twice; the second definition silently shadowed the first, so the IPC server and
-  AutoDream daemon were never stopped on exit. Consolidated into a single idempotent
-  `shutdown()` that stops background services before printing the session summary.
-- **`deploy promote` crash**: a function-local `from pathlib import Path` shadowed the
-  module-level import, causing `UnboundLocalError` before the re-import line. All
-  redundant local `Path` imports removed.
-- **`voice` / `api start` crash**: `VoiceCommandEngine` and `NeuroShellAPI` were
-  referenced from handlers but only imported inside the background loader's scope,
-  raising `NameError`. Handlers now import them explicitly.
-- **Server safety shield broken**: `server.py` read `safety_res.risk`, an attribute
-  that does not exist on `SafetyResult` (it is `risk_level`) — every command sent
-  through `/ws/terminal` died with `[CRITICAL ERROR]` *after* passing translation.
-  Now uses the correct attribute; blocked commands are actually blocked again.
-- **AutoDream crash-in-cleanup**: the `finally` block referenced an out-of-scope
-  exception variable and invoked a possibly-`None` UI callback.
-- **Slash router quote stripping**: `/clip copy echo 'Hello World'` lost its quotes
-  on POSIX because arguments were re-joined from `shlex` tokens. `/clip copy` now
-  receives the raw argument string verbatim.
-- **Smart-open folder resolution**: well-known profile folders (Downloads, Documents…)
-  failed to resolve when the directory didn't exist on the executing machine,
-  producing an unverified fallback command instead of the deterministic
-  `-EncodedCommand` open. Well-known mappings now resolve deterministically.
-- **LLM retry loop**: late-binding lambda captured the loop's `messages` variable
-  (ruff B023) — bound explicitly to prevent stale-payload retries.
+### Security (Critical)
+- **Command-injection elimination (C++ host)** — All `system()`/`popen()` string-concatenation call sites that mixed in user-controlled input (repo slugs, GitHub URLs, vault key names, browser URLs) replaced with the new `safe_exec.hpp` argv-vector executor (no shell involved) plus strict allowlist validators (`IsValidRepoSlug`, `IsValidGitHubUser`, `IsValidHost`, `IsValidVaultKey`). Payloads like `owner/repo; rm -rf /` and `$(whoami)` are now rejected or passed as inert literals.
+- **`os_vault.hpp` rewritten** — Secrets were previously interpolated into shell command lines (single-quote escape → arbitrary code execution) and the Windows DPAPI path encrypted a secret then *discarded the ciphertext* (`RetrieveSecret` always returned `""`). Secrets now travel via stdin/argv-vector, and the Windows vault persists DPAPI ciphertext to `%USERPROFILE%\.neuroshell\vault\<key>.bin` with real decryption on read.
+- **API keys no longer written in plaintext** — `SaveConfig` now stores keys in the OS credential vault (Keychain / DPAPI / Secret Service) and writes only an `os-vault:` reference into `config.toml`; the plaintext fallback (headless Linux) is chmod `0600` with a visible warning.
+- **DLP masking moved ahead of the viewport** — Secrets were displayed raw on screen and only masked in the recorded copy. The process runner now applies the DLP filter line-by-line *before* any byte reaches stdout.
+- **IPC DoS guards** — Unix-socket receive path now enforces the 10 MB payload cap (previously unbounded memory growth); C++ IPC client caps responses at 16 MB.
+- **Real local security audit** — `audit` previously printed a hardcoded "0 Exposed Secrets / 98 / 100" without scanning a single byte. It now regex-scans source/config files for AWS/GitHub/Groq/OpenAI/Slack keys and private-key blocks, reports findings with file paths, and computes an honest score.
+- **Hardened builds** — CMake now applies `-fstack-protector-strong`, `_FORTIFY_SOURCE=2`, full RELRO + `BIND_NOW`, PIE, `noexecstack` (GCC/Clang) and `/guard:cf /sdl /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA` (MSVC), with optional ASan/UBSan config and LTO.
+- **WebSocket auth hardening**: All WebSocket endpoints (`/ws/terminal`, `/ws/telemetry`, `/ws/sysmon`) now pass through a constant-time `secrets.compare_digest` auth gate; unauthenticated frames demoted from logs.
+- **Container security**: Docker image now runs as a dedicated non-root `neuroshell` user; added `.dockerignore` to exclude secrets and build artifacts from image layers.
 
-### Security
-- WebSocket API-key comparison now uses `secrets.compare_digest` (constant-time).
-- **All** WebSocket endpoints (`/ws/terminal`, `/ws/telemetry`, `/ws/sysmon`) now pass
-  through a single auth gate — previously only `/ws/terminal` was protected.
-- Server logs a startup warning when `NEUROSHELL_SERVER_KEY` is unset.
-- Raw terminal frames are no longer logged at INFO level (may contain secrets).
-- Docker image now runs as a dedicated non-root `neuroshell` user; added
-  `.dockerignore` to keep secrets and build artifacts out of image layers.
-- `/ws/sysmon` degrades gracefully when `psutil` is missing instead of crashing.
-- Session-memory dedup hash upgraded MD5 → truncated SHA-256.
-- Exception chaining (`raise … from e`) added across sandbox, LLM client, voice,
-  and smart-open error paths.
-
-### Changed
-- Lint debt eliminated: `ruff check .` now passes clean (was 433 violations, CI red).
-  Intentional resilience patterns (graceful-degradation `try/except/pass` guards,
-  lazy imports for startup latency) are codified in `pyproject.toml` with
-  documented justifications instead of failing CI.
-- Deprecated `typing.Dict/List/Tuple` migrated to PEP-585 builtins.
-- Ambiguous single-letter loop variables renamed (`l` → `ln`).
-- `sqlite3.Row` access documented as `.keys()`-only (no `.get()`), guarded with noqa.
-- Version unified to **5.7.1** across `__version__.py`, `pyproject.toml`, `setup.py`
-  (now reads from `__version__.py` as single source of truth) and the Homebrew formula.
+### Fixed (Critical runtime bugs & engine hardening)
+- **Startup crash**: `threading` was only imported inside `__init__`, so `startup()` raised `NameError` on the critical path — the LLM warmup thread, pattern learner, and predictor training silently never started. `threading` is now a module-level import.
+- **Shutdown never stopped background services**: `NeuroShell.shutdown()` was defined twice; the second definition silently shadowed the first, so the IPC server and AutoDream daemon were never stopped on exit. Consolidated into a single idempotent `shutdown()` that stops background services before printing the session summary.
+- **`deploy promote` crash**: a function-local `from pathlib import Path` shadowed the module-level import, causing `UnboundLocalError` before the re-import line. All redundant local `Path` imports removed.
+- **`voice` / `api start` crash**: `VoiceCommandEngine` and `NeuroShellAPI` were referenced from handlers but only imported inside the background loader's scope, raising `NameError`. Handlers now import them explicitly.
+- **Server safety shield broken**: `server.py` read `safety_res.risk`, an attribute that does not exist on `SafetyResult` (it is `risk_level`) — every command sent through `/ws/terminal` died with `[CRITICAL ERROR]` *after* passing translation. Now uses the correct attribute; blocked commands are actually blocked again.
+- **AutoDream crash-in-cleanup**: the `finally` block referenced an out-of-scope exception variable and invoked a possibly-`None` UI callback.
+- **SHM ring buffer ABI mismatch** — The C++ `SHMHeader` (pack(1)+alignas trick) compiled to cursors at offsets 16/24 while the Python bridge read offsets 64/72 with data at 128: the two sides could never interoperate. Layout is now explicit (`static_assert`-locked ABI v2: cursors at 64/72, seq at 80, data at 128) and validated end-to-end with a live C++↔Python interop test. Python ring copies are now wrap-aware bulk slices instead of byte-by-byte loops, and both sides validate magic/version/capacity on attach.
+- **Interactive TUI passthrough was input-dead** — `vim`/`htop`/`ssh` spawned on a PTY and streamed output, but keystrokes were never forwarded. Added `PumpStdinLoop()` (POSIX `poll` + Win32 console-event drain) wired into the runner; PTY rows now use real window height instead of hardcoded 30.
+- **`exit` left the terminal broken** — `exit(0)` skipped all destructors, leaving POSIX terminals in raw mode with bracketed paste stuck on. Replaced with a clean shutdown flag; `Run()` drains, stops supervised tasks, and lets RAII restore the terminal.
+- **Ctrl+C never interrupted running commands** — raw mode disables `ISIG` and children were placed in their own process group with no relay. A SIGINT handler now forwards to the active foreground child's process group; `SIGPIPE` ignored.
+- **Update checker compared versions lexicographically** — `"10.0.0" < "5.7.0"` meant future major releases would never be detected (same bug in the VS Code extension). Added `version.hpp` with numeric `CompareSemver`/`IsNewerRelease`; extension now parses numerically and reads its own version from `package.json`.
+- **IPC client truncated large responses** — a single 16 KB `recv`/`ReadFile` silently cut off big agent plans and `ai_pipe` results; now accumulates to the newline frame delimiter with deadline-based timeout and full-write send loops.
+- **Invalid JSON escaping in `EscapeJSON`** — control characters were emitted as malformed `\u1`-style sequences (invalid JSON, corrupted every subsequent number formatting via sticky `std::hex`); now fixed-width `\u00XX`.
+- **IPC server global-lock serialization** — every JSON-RPC method (including `ping`) queued behind a single mutex, so one 8-second LLM call froze all clients. Only genuinely stateful methods (`slash`) are serialized now; `params` type is validated (`-32602`).
+- **Daemon spawner zombie leak** — the forked Python daemon was never reaped; now proper double-fork daemonization with immediate `waitpid` of the intermediate.
+- **`SelectMenu` frame corruption** — `std::string(n, '─')` with a multi-byte glyph is a multi-character-constant overflow producing garbage bytes; added `RepeatGlyph()`.
+- **UTF-8 input rejected** — the POSIX key reader dropped all bytes ≥ 0x7F, making accented/CJK/emoji input impossible; continuation bytes are now accepted.
+- **`/clip copy` corrupted quoting** — `shlex.split` + re-join stripped quotes ("echo 'Hello World'" → "echo Hello World"); the verbatim argument text is now preserved.
+- **Smart-open folder resolution**: well-known profile folders (Downloads, Documents…) failed to resolve when the directory didn't exist on the executing machine. Well-known mappings now resolve deterministically.
+- **LLM retry loop**: late-binding lambda captured the loop's `messages` variable (ruff B023) — bound explicitly to prevent stale-payload retries.
+- **Version drift** — Single sources of truth now: `version.hpp` (native) and `__version__.py` (Python, read by `setup.py`/build scripts).
 
 ### Added
-- `tests/test_production_hardening.py` — 18 regression tests pinning every bug above.
+- `cpp_engine/launcher/safe_exec.hpp` — injection-proof subprocess primitives (argv exec, stdout capture, stdin plumbing, strict POSIX/Win32 quoting, input validators).
+- `cpp_engine/launcher/version.hpp` — native version constants + numeric semver comparison.
+- `cpp_engine/tests/native_tests.cpp` — first native C++ test suite (307 checks) wired into CTest.
+- `tests/test_production_hardening.py` — 18 regression tests for Python lifecycle, safety, and quoting.
+- `tests/test_ipc_hardening.py` + expanded `tests/test_shm_ipc.py` — concurrency, DoS-guard, ABI-layout, wraparound and UTF-8 regression coverage.
 - `docs/PRODUCTION_AUDIT_2026-08.md` — full audit report with methodology & findings.
+- CI: new `native` job building the hardened host on Linux/macOS/Windows, running CTest, plus an ASan/UBSan pass on Linux.
 
 ---
 

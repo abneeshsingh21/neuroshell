@@ -19,7 +19,12 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = ROOT_DIR / "dist"
-VERSION = "5.7.0"
+
+# Single source of truth: read version from __version__.py
+import re as _re
+_v = _re.search(r'__version__\s*=\s*"([^"]+)"',
+                (ROOT_DIR / "__version__.py").read_text(encoding="utf-8"))
+VERSION = _v.group(1) if _v else "0.0.0"
 
 DIST_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -111,7 +116,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="/usr/local/bin"
 APP_DIR="/usr/local/share/neuroshell"
 
-echo "🚀 Installing NeuroShell v5.7.0 for macOS/Linux..."
+echo "🚀 Installing NeuroShell v{VERSION} for macOS/Linux..."
 
 if [ "$EUID" -ne 0 ] && [ ! -w "$TARGET_DIR" ]; then
     SUDO="sudo"
@@ -188,13 +193,13 @@ standalone_launcher = b"#!/usr/bin/env bash\n# NeuroShell Universal POSIX Launch
 (DIST_DIR / "neuroshell").write_bytes(standalone_launcher)
 print(f"  ✓ Created: {DIST_DIR / 'neuroshell'}")
 
-# 6. Upload All Assets to GitHub Release v5.7.0
-print("\n[6/6] Publishing All Assets to GitHub Release v5.7.0...")
+# 6. Upload All Assets to GitHub Release
+print(f"\n[6/6] Publishing All Assets to GitHub Release v{VERSION}...")
 release_assets = [
     DIST_DIR / "NeuroShell-macos-universal.tar.gz",
     DIST_DIR / "NeuroShell-linux-x86_64.tar.gz",
     DIST_DIR / "neuroshell",
-    DIST_DIR / "neuroshell-vscode-5.7.0.vsix",
+    DIST_DIR / f"neuroshell-vscode-{VERSION}.vsix",
     DIST_DIR / "NeuroShell.exe",
     DIST_DIR / "NeuroShell-windows-x64.zip",
     DIST_DIR / f"NeuroShell-windows-x64-{VERSION}.msi",
@@ -204,7 +209,7 @@ release_assets = [
 ]
 upload_cmd = ["gh", "release", "upload", f"v{VERSION}"] + [str(p) for p in release_assets if p.exists()] + ["--clobber"]
 subprocess.run(upload_cmd, cwd=ROOT_DIR, check=False)
-print("  ✓ All assets uploaded to GitHub Release v5.7.0")
+print(f"  ✓ All assets uploaded to GitHub Release v{VERSION}")
 
 # Summary of Built Release Assets
 print("\n" + "=" * 60)

@@ -2733,6 +2733,8 @@ class NeuroShell:
             return True
 
         if cmd in ("clip", "clipboard"):
+            # Pass the raw argument string too: shlex strips quoting, which
+            # corrupted copied text ("echo 'Hello World'" -> "echo Hello World").
             self._handle_slash_clip(args, arg_str)
             return True
 
@@ -2989,7 +2991,7 @@ class NeuroShell:
             self.ui.print_info(f"  📝 Added to plan: {thought}")
         elif sub in ("exit", "finish", "stop"):
             self.plan_mode.exit_plan_mode()
-            self.ui.print_info("  📐 Exited Plan Mode. Returned to active execution mode.")
+                        self.ui.print_info("  📐 Exited Plan Mode. Returned to active execution mode.")
         else:
             self.ui.print_info("  Usage: /plan [status|start <goal>|add <thought>|finish]")
 

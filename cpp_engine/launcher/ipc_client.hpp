@@ -109,25 +109,32 @@ private:
     }
 
     static std::string EscapeJSON(const std::string& s) {
-        std::ostringstream o;
-        for (char c : s) {
+        std::string o;
+        o.reserve(s.size() + 16);
+        static const char* hexDigits = "0123456789abcdef";
+        for (char raw : s) {
+            unsigned char c = static_cast<unsigned char>(raw);
             switch (c) {
-            case '"': o << "\\\""; break;
-            case '\\': o << "\\\\"; break;
-            case '\b': o << "\\b"; break;
-            case '\f': o << "\\f"; break;
-            case '\n': o << "\\n"; break;
-            case '\r': o << "\\r"; break;
-            case '\t': o << "\\t"; break;
+            case '"': o += "\\\""; break;
+            case '\\': o += "\\\\"; break;
+            case '\b': o += "\\b"; break;
+            case '\f': o += "\\f"; break;
+            case '\n': o += "\\n"; break;
+            case '\r': o += "\\r"; break;
+            case '\t': o += "\\t"; break;
             default:
-                if ('\x00' <= c && c <= '\x1f') {
-                    o << "\\u" << std::hex << (int)c;
+                if (c < 0x20) {
+                    // Correct fixed-width \u00XX escape (the previous
+                    // implementation emitted invalid sequences like "\u1").
+                    o += "\\u00";
+                    o += hexDigits[(c >> 4) & 0xF];
+                    o += hexDigits[c & 0xF];
                 } else {
-                    o << c;
+                    o += raw;
                 }
             }
         }
-        return o.str();
+        return o;
     }
 
     bool ConnectInternal() {
@@ -198,6 +205,7 @@ public:
 
         std::lock_guard<std::mutex> lock(clientMutex);
         std::string framed = payload + "\n";
+        constexpr size_t MAX_RESPONSE = 16 * 1024 * 1024; // 16 MB safety cap
 
 #if defined(_WIN32)
         DWORD written = 0;
@@ -206,30 +214,66 @@ public:
             return "";
         }
 
+        // Accumulate until the newline frame delimiter — a single ReadFile
+        // truncated any response larger than one pipe buffer.
         std::string response;
         char buffer[16384];
         DWORD bytesRead = 0;
-        if (ReadFile(hPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-            buffer[bytesRead] = '\0';
-            response = buffer;
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (!ReadFile(hPipe, buffer, sizeof(buffer), &bytesRead, NULL)) {
+                DWORD err = GetLastError();
+                if (err == ERROR_MORE_DATA && bytesRead > 0) {
+                    response.append(buffer, bytesRead);
+                    continue;
+                }
+                Disconnect();
+                break;
+            }
+            if (bytesRead == 0) break;
+            response.append(buffer, bytesRead);
+            if (response.size() > MAX_RESPONSE) { Disconnect(); return ""; }
+            if (!response.empty() &&
+                (response.back() == '\n' || response.back() == '}' || response.back() == ']')) {
+                break; // message-mode pipe: a complete frame was delivered
+            }
         }
         return response;
 #else
-        if (send(sockFd, framed.data(), framed.size(), 0) < 0) {
-            Disconnect();
-            return "";
+        size_t sent = 0;
+        while (sent < framed.size()) {
+            ssize_t n = send(sockFd, framed.data() + sent, framed.size() - sent, 0);
+            if (n <= 0) {
+                Disconnect();
+                return "";
+            }
+            sent += static_cast<size_t>(n);
         }
 
-        struct pollfd pfd = { sockFd, POLLIN, 0 };
-        if (poll(&pfd, 1, timeoutMs) > 0) {
-            char buffer[16384];
-            ssize_t n = recv(sockFd, buffer, sizeof(buffer) - 1, 0);
-            if (n > 0) {
-                buffer[n] = '\0';
-                return std::string(buffer);
+        // Read until the newline frame delimiter or timeout; a single recv()
+        // silently truncated any response > 16 KB (large agent plans, ai_pipe).
+        std::string response;
+        char buffer[16384];
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (true) {
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (remaining <= 0) break;
+
+            struct pollfd pfd = { sockFd, POLLIN, 0 };
+            int pr = poll(&pfd, 1, static_cast<int>(remaining));
+            if (pr <= 0) break;
+
+            ssize_t n = recv(sockFd, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                Disconnect();
+                break;
             }
+            response.append(buffer, static_cast<size_t>(n));
+            if (response.size() > MAX_RESPONSE) { Disconnect(); return ""; }
+            if (response.find('\n') != std::string::npos) break;
         }
-        return "";
+        return response;
 #endif
     }
 

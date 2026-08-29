@@ -17,6 +17,7 @@
     #include <unistd.h>
     #include <fcntl.h>
     #include <sys/types.h>
+    #include <sys/wait.h>
 #endif
 
 namespace NeuroShell::Daemon {
@@ -66,9 +67,16 @@ public:
                 CloseHandle(pi.hThread);
             }
 #else
+            // Double-fork daemonization: the intermediate child exits
+            // immediately and is reaped here, so the grandchild is adopted by
+            // init/systemd. The previous single fork left a permanent zombie
+            // because the host never called waitpid().
             pid_t pid = fork();
             if (pid == 0) {
                 setsid();
+                pid_t pid2 = fork();
+                if (pid2 != 0) _exit(0); // intermediate exits at once
+
                 int devNull = open("/dev/null", O_RDWR);
                 if (devNull >= 0) {
                     dup2(devNull, STDIN_FILENO);
@@ -79,6 +87,9 @@ public:
                 execlp("python3", "python3", "-m", "core.ipc_server", (char*)NULL);
                 execlp("python", "python", "-m", "core.ipc_server", (char*)NULL);
                 _exit(1);
+            } else if (pid > 0) {
+                int status = 0;
+                waitpid(pid, &status, 0); // reap the intermediate immediately
             }
 #endif
             // Background polling loop (runs off the main thread)

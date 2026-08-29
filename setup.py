@@ -11,6 +11,11 @@ from pathlib import Path
 
 from setuptools import find_packages, setup
 
+# Single source of truth: read version from __version__.py
+_version_text = Path(__file__).with_name("__version__.py").read_text(encoding="utf-8")
+_m = re.search(r'__version__\s*=\s*"([^"]+)"', _version_text)
+VERSION = _m.group(1) if _m else "0.0.0"
+
 try:
     from pybind11.setup_helpers import Pybind11Extension, build_ext
     HAS_PYBIND11 = True
