@@ -46,12 +46,12 @@ import time
 from pathlib import Path
 
 try:
+    from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PrivateKey,
         Ed25519PublicKey,
     )
-    from cryptography.exceptions import InvalidSignature
 except ImportError:  # pragma: no cover
     print("error: the 'cryptography' package is required: pip install cryptography",
           file=sys.stderr)
@@ -115,7 +115,7 @@ def cmd_keygen(args: argparse.Namespace) -> int:
     pub_path.write_text(pub_hex + "\n")
     print(f"private key : {priv_path}  (mode 0600 — keep OFFLINE)")
     print(f"public key  : {pub_path}")
-    print(f"\npin this key into release builds with:")
+    print("\npin this key into release builds with:")
     print(f"  cmake -DNEUROSHELL_UPDATE_PUBKEY={pub_hex} ...")
     return 0
 
@@ -138,9 +138,17 @@ def _validate_url(url: str) -> None:
 def cmd_manifest(args: argparse.Namespace) -> int:
     artifacts = []
     for spec in args.artifact:
-        # platform:local_path:url  (url contains ':' so split from the left, max 2)
+        # platform:local_path:url  (url contains ':' so split from the left, handle Windows drive letters)
         try:
-            platform, local_path, url = spec.split(":", 2)
+            platform, rest = spec.split(":", 1)
+            if ":https://" in rest:
+                local_path, url = rest.split(":https://", 1)
+                url = "https://" + url
+            elif ":http://" in rest:
+                local_path, url = rest.split(":http://", 1)
+                url = "http://" + url
+            else:
+                local_path, url = rest.rsplit(":", 1)
         except ValueError:
             print(f"error: bad --artifact spec '{spec}' "
                   "(expected platform:path:url)", file=sys.stderr)

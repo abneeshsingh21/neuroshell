@@ -49,6 +49,8 @@ class TestKeygen:
         assert len(bytes.fromhex(pub.read_text().strip())) == 32
 
     def test_private_key_mode_0600(self, keydir):
+        if sys.platform == "win32":
+            pytest.skip("POSIX file permissions not supported on Windows")
         mode = stat.S_IMODE((keydir / "update_signing.key").stat().st_mode)
         assert mode == 0o600
 

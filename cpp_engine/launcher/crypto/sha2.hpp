@@ -18,6 +18,11 @@
 //     artifacts in fixed-size chunks.
 #pragma once
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -121,7 +126,7 @@ inline BigNum integer_nth_root(const BigNum& n, unsigned root) {
         {
             const BigNum& a = lo;
             const BigNum& b = hi;
-            size_t sz = std::max(a.limb.size(), b.limb.size()) + 1;
+            size_t sz = (std::max)(a.limb.size(), b.limb.size()) + 1;
             sum.limb.assign(sz, 0);
             uint64_t carry = 1; // the "+1" for ceiling midpoint
             for (size_t i = 0; i < sz; ++i) {
@@ -278,7 +283,7 @@ public:
         const uint8_t* p = static_cast<const uint8_t*>(data);
         bitlen_ += static_cast<uint64_t>(len) * 8;
         while (len > 0) {
-            size_t take = std::min(len, sizeof(buffer_) - buflen_);
+            size_t take = (std::min)(len, sizeof(buffer_) - buflen_);
             std::memcpy(buffer_ + buflen_, p, take);
             buflen_ += take;
             p += take;
@@ -374,7 +379,7 @@ public:
         const uint8_t* p = static_cast<const uint8_t*>(data);
         bitlen_lo_ += static_cast<uint64_t>(len) * 8;
         while (len > 0) {
-            size_t take = std::min(len, sizeof(buffer_) - buflen_);
+            size_t take = (std::min)(len, sizeof(buffer_) - buflen_);
             std::memcpy(buffer_ + buflen_, p, take);
             buflen_ += take;
             p += take;
