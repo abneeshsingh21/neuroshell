@@ -79,6 +79,7 @@
 #include "test_orchestrator.hpp"
 #include "version.hpp"
 #include "safe_exec.hpp"
+#include "update_installer.hpp"
 
 namespace fs = std::filesystem;
 
@@ -1388,46 +1389,32 @@ public:
         CheckForUpdatesAsync();
     }
 
+    // Cryptographically verified self-update (v5.9+).
+    // Replaces the old curl|bash / blind-download flow with the signed
+    // pipeline in update_installer.hpp: Ed25519-signed manifest → policy
+    // checks (anti-downgrade, expiry, host allowlist) → SHA-256-bound
+    // artifact download → atomic executable swap. Fails closed when no
+    // release signing key is provisioned in this build.
     void HandleSlashUpdate() {
-        std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ NeuroShell In-Place Self-Updater" << C_RESET << "\n";
-        std::cout << "  " << C_MUTED << "Downloading latest release from GitHub CDN..." << C_RESET << "\n\n";
+        std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ NeuroShell Verified Self-Updater" << C_RESET << "\n";
+        std::cout << "  " << C_MUTED << "Fetching signed release manifest (Ed25519 + SHA-256 verification)..." << C_RESET << "\n\n";
 
-#if defined(_WIN32)
-        std::string downloadCmd = "powershell -NoProfile -Command \"Invoke-WebRequest -Uri 'https://github.com/abneeshsingh21/neuroshell/releases/latest/download/NeuroShell.exe' -OutFile '$env:TEMP\\NeuroShell_new.exe' -UseBasicParsing\"";
-        int ret = system(downloadCmd.c_str());
-        if (ret == 0) {
-            std::string moveCmd = "powershell -NoProfile -Command \"$dest = '$env:LOCALAPPDATA\\Programs\\NeuroShell\\NeuroShell.exe'; if (Test-Path $dest) { Rename-Item $dest ('NeuroShell.exe.old_' + [int][double]::Parse((Get-Date -UFormat %s))) -Force }; Move-Item '$env:TEMP\\NeuroShell_new.exe' $dest -Force\"";
-            system(moveCmd.c_str());
+        neuroshell::update::InstallResult res = neuroshell::update::UpdateInstaller::Run();
 
+        if (res.ok) {
             g_update_available.store(false);
             g_remote_version = "";
             fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
             long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             std::ofstream out(cachePath);
-            out << "{\"last_check\":" << now << ",\"latest_version\":\"" << NEUROSHELL_VERSION << "\"}";
+            out << "{\"last_check\":" << now << ",\"latest_version\":\"" << res.new_version << "\"}";
 
-            std::cout << "  " << C_BOLD << C_GREEN << "✨ Successfully updated NeuroShell to the latest release!" << C_RESET << "\n";
+            std::cout << "  " << C_BOLD << C_GREEN << "✨ " << res.message << C_RESET << "\n";
             std::cout << "  " << C_MUTED << "Please restart your terminal to activate the new version." << C_RESET << "\n\n";
         } else {
-            std::cout << "  " << C_RED << "❌ Failed to download update. You can manually download from https://github.com/abneeshsingh21/neuroshell/releases" << C_RESET << "\n\n";
+            std::cout << "  " << C_RED << "❌ Update not installed: " << res.message << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "You can update manually from https://github.com/abneeshsingh21/neuroshell/releases" << C_RESET << "\n\n";
         }
-#else
-        std::string downloadCmd = "curl -fsSL https://raw.githubusercontent.com/abneeshsingh21/neuroshell/main/scripts/install.sh | bash";
-        int ret = system(downloadCmd.c_str());
-        if (ret == 0) {
-            g_update_available.store(false);
-            g_remote_version = "";
-            fs::path cachePath = PlatformFS::GetHomeDir() / ".neuroshell" / "update_cache.json";
-            long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            std::ofstream out(cachePath);
-            out << "{\"last_check\":" << now << ",\"latest_version\":\"" << NEUROSHELL_VERSION << "\"}";
-
-            std::cout << "  " << C_BOLD << C_GREEN << "✨ Successfully updated NeuroShell to the latest release!" << C_RESET << "\n";
-            std::cout << "  " << C_MUTED << "Please restart your terminal to activate the new version." << C_RESET << "\n\n";
-        } else {
-            std::cout << "  " << C_RED << "❌ Failed to update. You can run 'brew upgrade neuroshell' or download from GitHub releases." << C_RESET << "\n\n";
-        }
-#endif
     }
 
     fs::path GetConfigPath() {

@@ -10,9 +10,9 @@
 #include <sstream>
 #include <cctype>
 
-#define NEUROSHELL_VERSION "5.8.0"
+#define NEUROSHELL_VERSION "5.9.0"
 #define NEUROSHELL_VERSION_MAJOR 5
-#define NEUROSHELL_VERSION_MINOR 8
+#define NEUROSHELL_VERSION_MINOR 9
 #define NEUROSHELL_VERSION_PATCH 0
 
 namespace neuroshell::version {
