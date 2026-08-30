@@ -1,6 +1,6 @@
 # 📚 NeuroShell — Complete Command & Syntax Reference Manual
 
-This document is the exhaustive reference manual for all built-in commands, natural language queries, 1-word shortcuts, task supervisor controls, AI directives, and keyboard shortcuts in **NeuroShell v5.6.0**.
+This document is the exhaustive reference manual for all built-in commands, natural language queries, 1-word shortcuts, task supervisor controls, AI directives, and keyboard shortcuts in **NeuroShell v5.18.0**.
 
 ---
 
@@ -10,9 +10,14 @@ This document is the exhaustive reference manual for all built-in commands, natu
 3. [Multi-Process Task Supervisor Syntax](#3-multi-process-task-supervisor-syntax)
 4. [Polyglot Parallel Test Orchestrator](#4-polyglot-parallel-test-orchestrator)
 5. [AI Directives & Output Pipes](#5-ai-directives--output-pipes)
-6. [Intelligent Navigation & Jumper](#6-intelligent-navigation--jumper)
-7. [Slash Commands & Configuration](#7-slash-commands--configuration)
-8. [Hotkeys & Keybindings](#8-hotkeys--keybindings)
+6. [Universal Undo & Snapshot Controls](#6-universal-undo--snapshot-controls)
+7. [Kernel-Level Sandboxing Controls](#7-kernel-level-sandboxing-controls)
+8. [Remote SSH Execution (`nsh`)](#8-remote-ssh-execution-nsh)
+9. [WASM Plugin Manager (`neuroshell-plugin`)](#9-wasm-plugin-manager-neuroshell-plugin)
+10. [Model Context Protocol (MCP) Mode (`neuroshell-mcp`)](#10-model-context-protocol-mcp-mode-neuroshell-mcp)
+11. [Intelligent Navigation & Jumper](#11-intelligent-navigation--jumper)
+12. [Complete Slash Command Directory](#12-complete-slash-command-directory)
+13. [Hotkeys & Keybindings](#13-hotkeys--keybindings)
 
 ---
 
@@ -70,69 +75,24 @@ NeuroShell includes ultra-fast, 1-word aliases for common everyday tasks:
 | **`wifi`** | Wi-Fi Password Viewer | Lists all saved Wi-Fi SSID profiles and reveals passwords safely |
 | **`repos`** | GitHub Repo Catalog | Displays your repositories in an enterprise-aligned box table with index numbers `1..N` |
 | **`audit`** | Security Scanner | Runs a Zero-Trust secret leak, dependency CVE, and safety scan on current folder |
-
----
-
-## 3. Remote Repository & Document Intelligence
-
-NeuroShell provides zero-clone exploration, reading, auditing, and management of any local document or remote GitHub repository worldwide (your own or anyone else's public repositories):
-
-```
-  ╭────┬──────────────────────────────────────┬────────────┬────────────┬──────────────────────────────────────────╮
-  │  # │ REPOSITORY                           │ VISIBILITY │ UPDATED    │ DESCRIPTION                              │
-  ├────┼──────────────────────────────────────┼────────────┼────────────┼──────────────────────────────────────────┤
-  │  1 │ abneeshsingh21/neuroshell            │ public     │ 2026-08-18 │ AI-Powered Intelligent Terminal Host     │
-  │  2 │ abneeshsingh21/ira-voice-assistant   │ private    │ 2026-08-16 │ Voice assistant daemon                   │
-  │  3 │ abneeshsingh21/epl-website           │ public     │ 2026-07-20 │ Official website for EPL                 │
-  ╰────┴──────────────────────────────────────┴────────────┴────────────┴──────────────────────────────────────────╯
-```
-
-### Numbered Interactive Commands
-After running `repos` or `repos <user|org>`, all repositories are indexed in memory:
-
-| Command | Syntax | What It Does |
-| :--- | :--- | :--- |
-| **`repos`** | `repos` or `my repos` | Lists your own GitHub repositories with index numbers |
-| **`repos <user\|org>`** | `repos vercel` / `repos google` | Lists public repositories from another developer or company |
-| **`read <#\|target>`** | `read 1` / `read facebook/react` / `read README.md` | Reads local file or remote README in formatted markdown |
-| **`audit <#\|target>`** | `audit 1` / `audit openai/whisper` / `audit .` | Scans for secret leaks, dependency CVEs, and security posture |
-| **`tree <#\|target>`** | `tree 1` / `tree vercel/next.js` | Displays remote file and directory tree without cloning |
-| **`clone <#\|target>`** | `clone 1` / `clone torvalds/linux` | Clones target repository to current directory |
-| **`open <#\|target>`** | `open 1` / `open microsoft/vscode` | Opens repository in default web browser |
-
----
-| **`tasks`** | Task Supervisor Dashboard | Opens real-time dashboard of background workers with CPU/RAM metrics |
-| **`test`** | Parallel Test Suite | Auto-detects project language and runs all unit tests across all CPU cores |
-| **`test changed`**| Git Impact Test Runner | Runs tests only for files modified in git working directory |
-| **`clean`** | Cache Cleaner | Purges temporary artifacts (`node_modules/.cache`, `__pycache__`, `.pytest_cache`) |
-| **`stop all`** | Global Teardown | Terminates all running background tasks and child processes with 0 zombies |
+| **`undo`** | Filesystem Rollback | Restores modified or deleted files using the most recent pre-execution snapshot |
 
 ---
 
 ## 3. Multi-Process Task Supervisor Syntax
 
-Start, manage, and supervise multiple services concurrently within a single terminal:
+Manage background processes, daemons, and microservices with zero zombie leakage:
 
 ```bash
-# Start 2 or more services concurrently in parallel:
-start frontend and backend
-run dev and api
-start web, worker and redis
+# Start background jobs:
+npm run dev &
+python -m uvicorn server:app &
 
-# Inspect live status and PID tree:
-tasks
+# Inspect active workers:
+jobs
 
-# Stop a single service by name or ID:
-stop frontend
-stop backend
-kill 1
-
-# Restart a single service:
-restart backend
-restart frontend
-
-# Teardown everything cleanly:
-stop all
+# Stop a background task:
+kill %1
 ```
 
 ---
@@ -148,7 +108,7 @@ test
 # Smart Git Impact Analysis (runs tests only for files touched in git):
 test changed
 
-# Polyglot repo filters (if project contains both Python backend & Node frontend):
+# Polyglot repo filters:
 test python       # Runs pytest / unittest
 test node         # Runs npm test / vitest / jest
 test rust         # Runs cargo test
@@ -202,11 +162,103 @@ python manage.py migrate | @fix
 
 ---
 
-## 6. Intelligent Navigation & Jumper
+## 6. Universal Undo & Snapshot Controls
+
+NeuroShell automatically captures pre-execution CoW/reflink snapshots before running destructive commands:
+
+```bash
+# Roll back the most recent operation:
+undo
+# or via slash command:
+/snapshots undo
+
+# List all available snapshots:
+/snapshots list
+
+# Create a manual named snapshot:
+/snapshots create "pre-refactor"
+```
+
+---
+
+## 7. Kernel-Level Sandboxing Controls
+
+Confinement enforcement using Linux Landlock LSM + seccomp-BPF filters:
+
+```bash
+# Set sandboxing mode:
+/sandbox project      # Confines AI-translated commands only (default)
+/sandbox strict       # Confines all non-interactive commands
+/sandbox off          # Disables kernel sandboxing
+
+# Run a command unconfined explicitly:
+!sudo systemctl restart nginx
+```
+
+---
+
+## 8. Remote SSH Execution (`nsh`)
+
+Execute commands on remote systems with local safety verification and local DLP data scrubbing:
+
+```bash
+# Interactive remote REPL:
+nsh user@hostname
+
+# One-shot command execution:
+nsh user@hostname "cat /etc/nginx/nginx.conf"
+
+# Auto-approve CAUTION/DANGER commands:
+nsh --yes user@hostname "docker restart web"
+```
+
+---
+
+## 9. WASM Plugin Manager (`neuroshell-plugin`)
+
+Run third-party WebAssembly/WASI plugins inside an isolated sandbox with zero ambient authority:
+
+```bash
+# Install a plugin with interactive consent:
+neuroshell-plugin install ./formatter.wasm --yes
+
+# List installed plugins:
+neuroshell-plugin list
+
+# Inspect granted permissions:
+neuroshell-plugin info formatter
+
+# Execute plugin:
+neuroshell-plugin run formatter -- file.py
+
+# Uninstall plugin:
+neuroshell-plugin uninstall formatter
+```
+
+---
+
+## 10. Model Context Protocol (MCP) Mode (`neuroshell-mcp`)
+
+Run NeuroShell as an MCP-compliant JSON-RPC 2.0 tool server for AI agents (e.g. Claude Desktop, Cursor):
+
+```bash
+# Launch stdio server:
+neuroshell-mcp
+
+# Supported MCP Tools:
+# - neuroshell_translate: Translates NL to shell commands
+# - neuroshell_safety_check: Pre-execution risk assessment
+# - neuroshell_execute: Runs command through 4-layer safety shield
+# - neuroshell_undo: Rolls back recent file modifications
+```
+
+---
+
+## 11. Intelligent Navigation & Jumper
 
 | Navigation Command | Description | Example |
 | :--- | :--- | :--- |
-| **`z <folder>`** | Smart Deep Jumper (Fuzzy Directory Jump) | `z neuro` $\rightarrow$ Jumps directly to `C:\Users\dev\projects\neuroshell` |
+| **`z <folder>`** | Smart Deep Jumper (Fuzzy Directory Jump) | `z neuro` $\rightarrow$ Jumps directly to project folder |
 | **`..`** | Move 1 folder up | `cd ..` |
 | **`...`** | Move 2 folders up | `cd ../..` |
 | **`....`** | Move 3 folders up | `cd ../../..` |
@@ -214,30 +266,44 @@ python manage.py migrate | @fix
 
 ---
 
-## 7. Slash Commands & Configuration
+## 12. Complete Slash Command Directory
 
-| Slash Command | Description | Action |
-| :--- | :--- | :--- |
-| **`/help`** or **`help`** | Enterprise Reference Directory | Displays categorized command reference box |
-| **`/update`** or **`update`** | In-Place Self-Updater | Downloads and applies the latest release in 1-click |
-| **`/api-key`** | Configure AI Providers | Interactive wizard to set Groq, OpenAI, Claude, Gemini API keys |
-| **`/model`** | Model Switcher | Switch active language model (e.g. `llama-3.3-70b-versatile`, `gpt-4o`) |
-| **`/theme`** | Theme Picker | Switch between 10 terminal color themes (Cyberpunk, Tokyo Night, Dracula, Matrix...) |
-| **`/dlp`** | Secret Masking Status | View real-time Viewport DLP statistics and unmasked state |
-| **`cls`** / **`clear`** | Clear Screen | Clears console viewport and reprints clean logo |
-| **`exit`** / **`quit`** | Exit Terminal | Shuts down shell and all background workers cleanly |
+| Slash Command | Description |
+| :--- | :--- |
+| **`/help`**, **`/?`** | Displays interactive categorized documentation |
+| **`/api-key`** | Configure AI API keys (Groq, OpenAI, Gemini, Claude) |
+| **`/model`** | Interactive LLM model switcher menu |
+| **`/swarm`** | Orchestrates complex multi-agent goals across tools |
+| **`/agent`** | Autonomous agent mode with step-by-step approval |
+| **`/plan`** | Interactive planning mode |
+| **`/undo`**, **`/snapshots`** | File rollback & snapshot management |
+| **`/sandbox`** | Inspect & toggle Linux kernel sandboxing modes |
+| **`/scan`**, **`/security`** | Zero-trust security, CVE & secret scanner |
+| **`/theme`** | Interactive TrueColor color theme picker |
+| **`/config`** | Show, set, save, or reset configuration keys |
+| **`/profile`** | Switch workspace environment profiles |
+| **`/plugins`** | Manage WASM and Python extensions |
+| **`/dream`** | Trigger AutoDream memory consolidation |
+| **`/backup`** | Encrypted config & session backup export |
+| **`/record`** | Record terminal session stream for playback |
+| **`/clip`** | Manage clipboard intelligence |
+| **`/voice`** | Voice-to-command Whisper bridge |
+| **`/git`** | Git operations dashboard |
+| **`/notebook`** | Interactive command notebook & markdown exporter |
+| **`/stats`** | Execution performance & token usage metrics |
+| **`/update`** | In-place cryptographic self-updater |
+| **`/clear`** | Clear console viewport |
+| **`/exit`** | Clean shutdown of shell and child processes |
 
 ---
 
-## 8. Hotkeys & Keybindings
+## 13. Hotkeys & Keybindings
 
 | Key Combo | Function | Description |
 | :--- | :--- | :--- |
-| **`[F1]`** / **`[Ctrl+P]`** | **Command Palette** | Interactive searchable overlay containing all features |
-| **`[Ctrl+R]`** | **History Reverse Search** | Search past command history with fuzzy matching |
+| **`[F1]`** / **`[Ctrl+Shift+P]`** | **Command Palette** | Searchable overlay containing all commands & features |
+| **`[Ctrl+R]`** | **Ranked History Search** | SQLite FTS5 frecency + CWD ranked history search modal |
 | **`[Ctrl+T]`** | **New Tab** | Create a new isolated terminal tab |
 | **`[Ctrl+W]`** | **Close Tab** | Close currently active terminal tab |
-| **`[Ctrl+U]`** | **Toggle DLP Mask** | Reveal / unmask sensitive tokens temporarily |
-| **`[Tab]`** | **Autocomplete** | Accept grey ghost-text inline prediction |
 | **`[Up]` / `[Down]`** | **History Traversal** | Cycle through previous executed commands |
 | **`[Ctrl+C]`** | **Cancel Process** | Interrupt current foreground running task |

@@ -1,6 +1,6 @@
 # 📖 NeuroShell — Exhaustive Feature & Module Catalog (The Complete Architecture Bible)
 
-This document is the **definitive, exhaustive catalog** of every architectural domain, module, class, feature, command, prompt, extension, configuration parameter, and security mechanism in **NeuroShell v5.6.0**.
+This document is the **definitive, exhaustive catalog** of every architectural domain, module, class, feature, command, prompt, extension, configuration parameter, and security mechanism in **NeuroShell v5.18.0**.
 
 ---
 
@@ -11,9 +11,9 @@ This document is the **definitive, exhaustive catalog** of every architectural d
 4. [Learning & Autonomous Memory (`learning/`)](#4-learning--autonomous-memory-learning)
 5. [LLM Routing, Multi-Provider & Resilience (`llm/` & `resilience/`)](#5-llm-routing-multi-provider--resilience-llm--resilience)
 6. [Native C++20 High-Speed Engine (`cpp_engine/`)](#6-native-c20-high-speed-engine-cpp_engine)
-7. [Operations, Web & DevOps Automation (`operations/`)](#7-operations-web--devops-automation-operations)
-8. [Enterprise Extensions & Security (`extensions/`)](#8-enterprise-extensions--security-extensions)
-9. [Desktop GUI Cockpit & REST API Server](#9-desktop-gui-cockpit--rest-api-server)
+7. [Supply Chain & Provenance Engine (`scripts/`)](#7-supply-chain--provenance-engine-scripts)
+8. [Operations, Web & DevOps Automation (`operations/`)](#8-operations-web--devops-automation-operations)
+9. [Enterprise Extensions & Security (`extensions/`)](#9-enterprise-extensions--security-extensions)
 10. [VS Code Extension (`vscode-extension/`)](#10-vs-code-extension-vscode-extension)
 11. [Master Configuration Dictionary (`config.toml`)](#11-master-configuration-dictionary-configtoml)
 12. [Complete Command, Prompt & Directive Dictionary](#12-complete-command-prompt--directive-dictionary)
@@ -22,7 +22,7 @@ This document is the **definitive, exhaustive catalog** of every architectural d
 
 ## 1. Architectural Domain Overview
 
-NeuroShell is composed of **7 core operational domains**, **70+ Python modules**, **1 native C++20 terminal engine**, **1 TypeScript VS Code extension**, and **8 CustomTkinter desktop extension panels**:
+NeuroShell is composed of **8 core operational domains**, **92 Python submodules**, **1 native C++20 terminal engine**, **1 TypeScript VS Code extension**, and **13 packaging deployment targets**:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -30,15 +30,15 @@ NeuroShell is composed of **7 core operational domains**, **70+ Python modules**
 ├────────────────────────────────┬────────────────────────────────┬──────────────────────┤
 │ 1. Native C++20 Engine         │ 2. Intelligence & NLP Layer    │ 3. Core & Sandbox    │
 │  • Win32 ConPTY & POSIX PTY    │  • 4-Layer Zero-Trust Safety   │  • ShellExecutor     │
-│  • Task Supervisor (0-zombie)  │  • Multi-LLM Router (6 backends│  • GitSandbox        │
-│  • Polyglot Test Orchestrator  │  • 2,550+ Offline Phrases      │  • SQLite+FTS5 Store │
-│  • Viewport Secret DLP Masker  │  • Autonomous Swarm Planner    │  • Process Monitor   │
+│  • SHM ABI v3 Ring Buffer      │  • Multi-LLM Router (6 backends│  • UndoEngine        │
+│  • Blast-Radius Impact Preview │  • 2,554+ Offline Phrases      │  • SQLite+FTS5 Store │
+│  • Landlock Kernel Sandboxing  │  • Autonomous Swarm Planner    │  • RemoteExecutor    │
 ├────────────────────────────────┼────────────────────────────────┼──────────────────────┤
-│ 4. Enterprise Extensions       │ 5. Learning & Memory           │ 6. User Interfaces   │
-│  • SHA-256 Audit Trail         │  • AutoDream Memory            │  • C++ Terminal Host │
-│  • Vulnerability Scanner       │  • Markov Pattern Learner      │  • Desktop Cockpit   │
-│  • Session Notebook & Snippets │  • Adaptive Autocomplete       │  • VS Code Extension │
-│  • Plugin System (Sandboxed)   │  • Feedback Weight Optimizer   │  • REST API Server   │
+│ 4. Supply Chain & Packaging    │ 5. Plugin Runtime (WASM/WASI)  │ 6. User Interfaces   │
+│  • CycloneDX 1.5 SBOM          │  • Zero Ambient Authority      │  • C++ Terminal Host │
+│  • SLSA v1 in-toto Provenance  │  • Capability Preopened FS     │  • MCP Stdio Server  │
+│  • Ed25519 Signed Manifests    │  • Fuel & Memory Budgeting     │  • VS Code Extension │
+│  • 13-Manifest Consistency     │  • Informed Consent & SHA-256  │  • FastAPI WebSockets│
 └────────────────────────────────┴────────────────────────────────┴──────────────────────┘
 ```
 
@@ -49,6 +49,10 @@ NeuroShell is composed of **7 core operational domains**, **70+ Python modules**
 | Module | Key Class / Component | Purpose & Capabilities |
 | :--- | :--- | :--- |
 | **`core/executor.py`** | `ShellExecutor` | Cross-platform command execution, max 10 concurrent background workers, stdout/stderr non-blocking buffer management, process snapshotting, memory/CPU telemetry. |
+| **`core/mcp_server.py`** | `MCPServer` | Model Context Protocol JSON-RPC 2.0 stdio server with tool schema definitions, two-phase confirmation for danger commands, and hash-chained audit logging. |
+| **`core/remote_executor.py`** | `RemoteExecutor` | Multiplexed SSH execution (`nsh`) with local-first NLP translation, RBAC policy gating, safety checking, and inbound/outbound DLP credential scrubbing. |
+| **`core/plugin_runtime.py`** | `PluginRuntime` | WASM/WASI sandboxed plugin execution via Wasmtime with preopened capability directories, env allowlists, fuel instruction metering, and memory ceilings. |
+| **`core/shm_bridge.py`** | `SHMBridge` | Shared-memory IPC bridge implementing the ABI v3 lock-free SPSC 8MB circular ring buffer for sub-millisecond streaming token delivery. |
 | **`core/context.py`** | `ContextManager` | OS environment detection (Windows/macOS/Linux), current working directory tracking, virtual environment inspection, Git repository state analysis. |
 | **`core/history.py`** | `HistoryStore` | SQLite-backed persistent history with FTS5 full-text indexing, 90-day retention pruning, CSV/JSON session exports. |
 | **`core/output_parser.py`** | `OutputParser` | Detects and structures command outputs: CSV, JSON, XML, key-value tables, log formats, stack traces, and exit codes. |

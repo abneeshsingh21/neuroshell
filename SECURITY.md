@@ -7,9 +7,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 5.0.x   | ✅ Active security patches |
-| 4.2.x   | ⚠️ Critical fixes only     |
-| < 4.2   | ❌ End of life             |
+| 5.18.x  | ✅ Active security patches & supply-chain provenance |
+| 5.x.x   | ⚠️ Critical fixes only |
+| < 5.0   | ❌ End of life |
 
 ## Reporting a Vulnerability
 
@@ -29,11 +29,11 @@ We will acknowledge reports within **48 hours** and aim to release a patch withi
 
 NeuroShell implements the following security controls:
 
-### Zero-Trust Privacy (PII Scrubbing)
+### Zero-Trust Privacy (PII & DLP Scrubbing)
 - All terminal output is scanned for sensitive data **before** transmission to any cloud LLM
 - Automatic redaction of: AWS keys, OpenAI/Anthropic tokens, GitHub tokens, passwords, private keys, database connection strings, Bearer tokens
-- PII scrubbing runs **entirely locally** — no data leaves the machine unfiltered
-- Raw Shell Mode disables all cloud communication entirely
+- Inbound and Outbound DLP scrubbing runs **entirely locally** — no data leaves the machine unfiltered
+- Remote SSH execution (`nsh`) scrubs remote command outputs locally before printing to terminal
 
 ### Secret Management
 - All API keys and secrets are encrypted with **AES-128-CBC (Fernet)** using a machine-derived PBKDF2HMAC-SHA256 key
@@ -41,13 +41,21 @@ NeuroShell implements the following security controls:
 - Key derivation uses 390,000 PBKDF2 iterations — compliant with OWASP recommendations
 - Secret files receive `chmod 600` on Unix
 
-### Command Safety
-- Four-layer safety system: pattern match → regex analysis → LLM check → user confirmation
+### Command Safety & Kernel Sandboxing
+- Four-layer safety shield: pattern match → regex analysis → LLM check → user confirmation
+- **Kernel-Level Sandboxing** via Linux Landlock LSM (ABI 1-3+) and seccomp-BPF filter tables
+- **Blast-Radius Impact Preview**: dry-run recursive file and byte counting before destructive operations
+- **Universal Undo Engine**: pre-execution Copy-on-Write (CoW) / reflink snapshots with atomic rollback
 - **Injection guard** blocks null bytes, newlines, subshell operators in user input
 - **Prompt injection sanitizer** strips LLM control tokens (`[INST]`, `<<SYS>>`, etc.) from AI outputs
 - Fork bombs, `rm -rf /`, `format C:`, and `dd if=/dev/` are **hard-blocked**
 
-### Supply-Chain
+### Supply-Chain Security & Attestation
+- **Ed25519-Signed Release Manifests**: all in-place self-updates are cryptographically verified with non-malleability ($S < L$) and anti-downgrade enforcement
+- **SLSA v1 in-toto Provenance Attestations**: signed statement and DSSE PAE envelopes verifying builder identity and artifact SHA-256 digests
+- **CycloneDX 1.5 SBOM**: deterministic, offline-generated SBOM covering base dependencies, extras, and native binaries
+- Dependencies scanned with `pip-audit` on every CI push; SAST scans with `bandit`
+- Zero ambient authority WASM/WASI plugin runtime with CPU fuel metering and memory ceilings
 - SHA-256 hash verification of all NLP model files
 - Dependencies scanned with `pip-audit` on every CI push
 - SAST scan with `bandit` on every CI push

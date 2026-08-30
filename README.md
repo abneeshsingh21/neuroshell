@@ -7,7 +7,10 @@
 [![Release](https://img.shields.io/badge/GitHub%20Release-v5.18.0-blue.svg?logo=github)](https://github.com/abneeshsingh21/neuroshell/releases/latest)
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Extension-v5.18.0-blue.svg?logo=visual-studio-code)](https://github.com/abneeshsingh21/neuroshell/releases/latest/download/neuroshell-vscode-5.18.0.vsix)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![Tests Passing](https://img.shields.io/badge/Tests-481%20Passed%20(100%25)-brightgreen.svg)](tests/)
+[![Python Tests](https://img.shields.io/badge/Python%20Tests-695%20Passed%20(100%25)-brightgreen.svg)](tests/)
+[![Native C++ Checks](https://img.shields.io/badge/Native%20C%2B%2B%20Checks-654%20Passed%20(100%25)-brightgreen.svg)](cpp_engine/tests/)
+[![Linter](https://img.shields.io/badge/Ruff-0%20Errors-brightgreen.svg)](pyproject.toml)
+[![SLSA v1](https://img.shields.io/badge/SLSA-Level%201%20Provenance-blue.svg)](docs/SUPPLY_CHAIN.md)
 
 ---
 
@@ -78,13 +81,18 @@ Whether you type in plain English, pipe live compiler errors into AI, orchestrat
 | :--- | :--- | :--- |
 | **🗣️ Plain English Translation** | Translates natural language into platform-specific commands. | `find all large mp4 files and sort by size` |
 | **🌊 First-Class AI Pipings** | Pipe stdout/stderr directly into streaming LLM reasoning. | `pytest 2>&1 \| @fix` or `git diff \| @ai "write commit"` |
-| **🐙 Remote Repo Intelligence** | Explore, read, and audit any GitHub repo worldwide without cloning. | `repos vercel`, `read 1`, `audit 1`, `tree 1` |
 | **🤖 Autonomous Agent Swarms** | Multi-step task execution with step-by-step TUI approval cards. | `@agent "Setup PostgreSQL 16 docker-compose & run migrations"` |
 | **🛡️ 4-Layer Zero-Trust Safety** | Blocks dangerous commands before execution with cryptographic logs. | Catches `rm -rf /`, fork bombs, unauthorized drops |
-| **💻 ConPTY Console Fidelity** | 100% interactive terminal fidelity for full-screen applications. | `vim`, `nano`, `htop`, `fzf`, `tmux`, `ssh`, `docker exec -it` |
+| **💥 Blast-Radius Impact Preview** | Dry-run recursive file/byte analysis with danger severity grading. | `/security policy`, destructive command confirmation |
+| **⏪ Universal Undo Engine** | Pre-execution CoW/reflink snapshotting with 1-command rollback. | `undo` or `/snapshots undo` |
+| **🔒 Kernel Sandboxing (Landlock)** | Kernel-level syscall & path confinement for AI-translated commands. | `/sandbox project\|strict\|off` |
+| **🌐 Remote SSH Execution (`nsh`)** | Remote execution over SSH with local-first safety vetting & DLP. | `nsh user@host "tail -f /var/log/syslog"` |
+| **🔌 WASM/WASI Plugin Runtime** | Capability-scoped WebAssembly plugins with CPU fuel & memory caps. | `neuroshell-plugin install plugin.wasm` |
+| **🤖 Model Context Protocol (MCP)** | JSON-RPC 2.0 stdio server mode exposing translation & execution. | `neuroshell-mcp` |
+| **💻 ConPTY Console Fidelity** | 100% interactive terminal fidelity for full-screen curses apps. | `vim`, `nano`, `htop`, `fzf`, `tmux`, `ssh`, `docker exec` |
 | **⌨️ Ghost-Text Autocomplete** | Real-time predictive inline suggestions from Markov learning. | Press `Right Arrow` or `Tab` to accept |
 | **⚙️ Interactive Slash Menus** | TrueColor arrow-key configuration for models, keys, and themes. | `/model`, `/api-key`, `/theme`, `/update`, `/repos` |
-| **🔌 Universal Extensions** | First-class integration in VS Code, Cursor, and native shells. | VS Code Extension (`28 KB`) + Zsh/Bash/Fish/PWSH hooks |
+| **📦 Supply Chain Provenance** | CycloneDX 1.5 SBOM + SLSA v1 in-toto tamper-evident build attestations. | `verify_provenance.py --dsse ...` |
 
 ---
 
@@ -175,19 +183,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 ---
 
-### 🧩 4. Visual Studio Code & Cursor Extension
-
-1. Open VS Code or Cursor $\rightarrow$ Extensions tab (`Ctrl+Shift+X`).
-2. Search for **`NeuroShell`** (Publisher: `epl-lang`) and click **Install**.
-3. *Alternatively*, install via command line:
-   ```bash
-   code --install-extension epl-lang.neuroshell-vscode
-   ```
-4. **Auto-Installer**: If the native engine is not found, the extension will display a 1-click installer with a **live progress bar** (`XX MB / YY MB %`) that automatically configures NeuroShell as your default integrated terminal!
-
----
-
-### 🐚 5. Native Shell Integration Hooks
+### 🐚 Native Shell Integration Hooks
 
 If you prefer using your existing default shell (`zsh`, `bash`, `fish`, `powershell`) with inline NeuroShell AI translation:
 
@@ -256,6 +252,8 @@ Let NeuroShell orchestrate complex, multi-step engineering tasks:
 - **`/model`**: Switch LLM providers with arrow keys (Groq, OpenAI, Anthropic, Gemini, OpenRouter, Ollama).
 - **`/api-key`**: Encrypted credential manager using PBKDF2 + Fernet AES-128.
 - **`/theme`**: Live theme picker (Cyberpunk Neon, Nord Frost, Dracula, Monokai, Synthwave, Solarized).
+- **`/snapshots undo` or `undo`**: Roll back filesystem changes via pre-execution CoW/reflink snapshots.
+- **`/sandbox project|strict|off`**: Configure kernel-level Landlock/seccomp confinement.
 
 ---
 
@@ -276,14 +274,20 @@ Let NeuroShell orchestrate complex, multi-step engineering tasks:
 
 ## 🧪 Test Suite & Verification
 
-NeuroShell includes an extensive, multi-tier automated test suite covering core execution, intelligence routing, resilience circuit breakers, IPC protocols, and enterprise security:
+NeuroShell includes an exhaustive, multi-tier automated test suite covering core execution, intelligence routing, resilience circuit breakers, IPC protocols, WASM plugins, supply chain, and native C++20 acceleration:
 
 ```bash
+# Run full Python test suite
 pytest tests/ -v
+
+# Run Native C++20 test suite (MSVC / Clang / GCC)
+./dist/native_tests.exe
 ```
 
 ```text
-======================= 481 passed, 2 skipped in 32.89s (100% Pass Rate) =======================
+====================== 695 passed, 66 skipped in 39.27s (100% Pass Rate) =======================
+654 checks, 0 failures (Native C++20 Test Suite)
+All checks passed! (Ruff static analysis)
 ```
 
 ---
