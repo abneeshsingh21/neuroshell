@@ -268,7 +268,7 @@ FILE_TYPE_MAP: dict[str, list[str]] = {
 
 class SmartOpenEngine:
     """
-    Advanced intent router for "open", "launch", "navigate", and 
+    Advanced intent router for "open", "launch", "navigate", and
     system action commands.
 
     Detection pipeline:
@@ -596,7 +596,7 @@ class SmartOpenEngine:
 
     def _url_open_cmd(self, url: str) -> str:
         """Generate platform-specific URL open command.
-        
+
         Uses powershell Start-Process on Windows (works from any shell context,
         unlike 'cmd /c start' which fails when the active shell is PowerShell).
         """
@@ -681,7 +681,7 @@ class SmartOpenEngine:
     def _resolve_folder(self, name: str) -> str | None:
         """
         Resolve a folder name to an absolute path.
-        
+
         Search order:
         1. Exact path (if absolute or relative and exists)
         2. Subfolder of current directory (case-insensitive)
@@ -804,7 +804,8 @@ class SmartOpenEngine:
                         continue
 
                     for d in dirs:
-                        if d.startswith("."): continue
+                        if d.startswith("."):
+                            continue
                         score = SmartOpenEngine._similarity_score(name_lower, d.lower())
                         if score > best_score and score > 0.5:
                             best_score = score
@@ -866,7 +867,7 @@ class SmartOpenEngine:
 
     def _open_folder(self, path: str, explanation: str = "") -> OpenResult:
         """Generate platform-specific folder open command with dedup guard.
-        
+
         Prevents multiple explorer windows from opening when the user re-runs
         the same "open file explorer" command within EXPLORER_DEBOUNCE_S seconds.
         """
@@ -1136,12 +1137,13 @@ class SmartOpenEngine:
 import asyncio
 import subprocess
 from collections.abc import AsyncGenerator
-from typing import Any, Dict
+from typing import Any
 
 try:
     from intelligence.tools.base_tool import BaseTool
 except ImportError:
-    class BaseTool: pass
+    class BaseTool:
+        pass
 
 class SmartOpenTool(BaseTool):
     """
@@ -1157,7 +1159,7 @@ class SmartOpenTool(BaseTool):
         return "Resolve and execute natural language open/launch commands (e.g. 'open chrome', 'launch vscode')."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -1166,7 +1168,7 @@ class SmartOpenTool(BaseTool):
             "required": ["query"]
         }
 
-    async def call(self, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+    async def call(self, **kwargs) -> AsyncGenerator[dict[str, Any], None]:
         query = kwargs.get("query")
         if not query:
             yield {"type": "error", "message": "query parameter is required"}

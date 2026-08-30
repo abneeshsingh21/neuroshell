@@ -2655,11 +2655,13 @@ class NeuroShell:
     # Unified Slash Command Router (/)
     # ═══════════════════════════════════════════════════════
 
-    def _handle_slash_command(self, user_input: str, cid: str) -> bool:
+    def _handle_slash_command(self, user_input: str, cid: str = "") -> bool:
         """
         Unified handler for all '/' Slash Commands across NeuroShell.
         Returns True if the command was recognized and handled.
         """
+        if not cid and hasattr(self, "tracer") and self.tracer:
+            cid = self.tracer.start_trace()
         clean = user_input.strip()
         if not clean.startswith("/"):
             return False

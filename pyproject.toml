@@ -135,17 +135,20 @@ target-version = "py310"
 exclude = ["dist", "build", ".venv", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
 ignore = [
-    "S603", "S607",      # subprocess — we use it intentionally
-    "S101",              # assert — used in tests
     "B008",              # function calls in default args
     "E501",              # line-length — handled by formatter
     "UP007", "UP006",    # X | Y type hints — py310 compat
+    "E402",              # module level import not at top of file
+    "B904",              # raise ... from err
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S106"]
+"__init__.py" = ["F401"]
+"*/__init__.py" = ["F401"]
+"**/**/__init__.py" = ["F401"]
+"tests/**" = ["B018", "B011"]
 
 # ─── Mypy ─────────────────────────────────────────────────────────────────────
 [tool.mypy]

@@ -162,7 +162,7 @@ class TestExecute:
         victim = tmp_path / "victim_dir"
         victim.mkdir()
         (victim / "f.txt").write_text("data")
-        cmd = f"rm -rf {victim}"
+        cmd = f'rmdir /s /q "{victim}"' if sys.platform == "win32" else f"rm -rf {victim}"
 
         payload, is_error = tool(server, "neuroshell_execute", {"command": cmd})
         assert is_error

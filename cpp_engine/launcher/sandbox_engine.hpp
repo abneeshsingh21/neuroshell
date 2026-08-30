@@ -472,6 +472,20 @@ struct PreparedSandbox {
         PreparedSandbox p;
         p.enabled = spec.enabled;
         p.fail_closed = spec.fail_closed;
+        if (!spec.enabled) return p;
+
+        auto add_unique = [&p](const std::string& path) {
+            if (path.empty()) return;
+            for (const auto& e : p.rw_paths)
+                if (e == path) return;
+            p.rw_paths.push_back(path);
+        };
+        add_unique(spec.project_dir);
+        for (const auto& e : spec.rw_paths) add_unique(e);
+        add_unique("/dev/null");
+        add_unique("/dev/zero");
+        add_unique("/dev/tty");
+        add_unique("/dev/full");
         return p;
     }
     int ApplyInChild() const {

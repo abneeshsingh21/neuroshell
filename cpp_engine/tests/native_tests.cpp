@@ -932,6 +932,8 @@ static void TestBlastRadiusAnalyzer() {
     { std::ofstream f(dir / "sub" / "c.txt"); f << "world"; }
     std::error_code ec;
     fs::create_symlink(dir / "a.txt", dir / "link_a", ec);
+    bool has_link = (!ec && fs::exists(dir / "link_a", ec));
+    uint64_t expected_files = has_link ? 4 : 3;
 
     BlastRadiusAnalyzer az;
     const std::string cwd = dir.string();
@@ -942,10 +944,12 @@ static void TestBlastRadiusAnalyzer() {
         CHECK(t.exists && !t.is_dir && t.files == 1 && t.bytes == 5);
         auto d = az.Measure(dir);
         CHECK(d.exists && d.is_dir);
-        CHECK(d.files == 4);                      // a, b, sub/c, link_a
+        CHECK(d.files == expected_files);
         CHECK(d.bytes >= 2 * 1024 * 1024);
-        auto l = az.Measure(dir / "link_a");
-        CHECK(l.exists && l.files == 1 && l.bytes == 0); // link counted, not followed
+        if (has_link) {
+            auto l = az.Measure(dir / "link_a");
+            CHECK(l.exists && l.files == 1 && l.bytes == 0); // link counted, not followed
+        }
         auto m = az.Measure(dir / "nope");
         CHECK(!m.exists && m.files == 0);
     }
@@ -956,7 +960,7 @@ static void TestBlastRadiusAnalyzer() {
         CHECK(ts.size() == 1);
         if (!ts.empty()) CHECK(ts[0].path.find("a.txt") != std::string::npos);
         auto all = az.ResolveTargets("*", cwd);
-        CHECK(all.size() == 4);
+        CHECK(all.size() == expected_files);
         auto none = az.ResolveTargets("*.zip", cwd);
         CHECK(none.size() == 1 && !none[0].exists); // no match → reported missing
     }
@@ -977,11 +981,11 @@ static void TestBlastRadiusAnalyzer() {
         CHECK(r.total_bytes >= 2 * 1024 * 1024);
     }
 
-    // ── rm -rf on the sandbox dir ⇒ MEDIUM (4 files) with full counts ──
+    // ── rm -rf on the sandbox dir ⇒ MEDIUM with full counts ──
     {
         BlastReport r = az.Analyze("rm -rf " + dir.string(), "/");
         CHECK(r.severity == BlastSeverity::Medium);
-        CHECK(r.total_files == 4);
+        CHECK(r.total_files == expected_files);
     }
 
     // ── rm -rf / and ~ ⇒ CRITICAL regardless of counts ──
@@ -1116,21 +1120,26 @@ static void TestUndoEngine() {
 
     // ── 1. Snapshot a directory delete, actually delete, undo restores ──
     {
+        bool has_link = fs::is_symlink(work / "proj" / "link.md", ec);
+        uint64_t expected_undo_files = has_link ? 3 : 2;
+
         BlastReport rep = az.Analyze("rm -rf proj", work.string());
         CHECK(rep.NeedsConfirmation());
         auto snap = eng.SnapshotBeforeExecute(rep, "rm -rf proj", work.string());
         CHECK(snap.status == SnapshotStatus::Saved);
-        CHECK(snap.files == 3); // main.c, README.md, link.md
+        CHECK(snap.files == expected_undo_files); // main.c, README.md, (optional link.md)
 
         fs::remove_all(work / "proj");
         CHECK(!fs::exists(work / "proj"));
 
         auto r = eng.Undo();
         CHECK(r.ok);
-        CHECK(r.files_restored == 3);
+        CHECK(r.files_restored == expected_undo_files);
         CHECK(ReadWholeFile(work / "proj" / "src" / "main.c") == "int main(){}");
         CHECK(ReadWholeFile(work / "proj" / "README.md") == "# readme");
-        CHECK(fs::is_symlink(work / "proj" / "link.md"));
+        if (has_link) {
+            CHECK(fs::is_symlink(work / "proj" / "link.md"));
+        }
         // Transaction consumed after successful restore
         CHECK(eng.ListTransactions().empty());
     }

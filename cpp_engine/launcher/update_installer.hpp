@@ -165,13 +165,22 @@ public:
         return r;
     }
 
+    static std::string EscapePs(const std::string& s) {
+        std::string out;
+        for (char c : s) {
+            if (c == '\'') out += "''";
+            else out += c;
+        }
+        return out;
+    }
+
     // ── network helpers (no shell; bounded output) ──
     static bool FetchSmall(const std::string& url, size_t max_bytes, std::string& out) {
 #if defined(_WIN32)
         auto res = safe_exec::RunCapture(
             {"powershell", "-NoProfile", "-NonInteractive", "-Command",
              "$ProgressPreference='SilentlyContinue';"
-             "(Invoke-WebRequest -Uri ([uri]'" + url + "') -UseBasicParsing -TimeoutSec 20).Content"},
+             "(Invoke-WebRequest -Uri ([uri]'" + EscapePs(url) + "') -UseBasicParsing -TimeoutSec 20).Content"},
             "", false, max_bytes + 1);
 #else
         auto res = safe_exec::RunCapture(
@@ -190,8 +199,8 @@ public:
         auto res = safe_exec::RunCapture(
             {"powershell", "-NoProfile", "-NonInteractive", "-Command",
              "$ProgressPreference='SilentlyContinue';"
-             "Invoke-WebRequest -Uri ([uri]'" + url + "') -UseBasicParsing -TimeoutSec 300 "
-             "-OutFile '" + dest.string() + "'"});
+             "Invoke-WebRequest -Uri ([uri]'" + EscapePs(url) + "') -UseBasicParsing -TimeoutSec 300 "
+             "-OutFile '" + EscapePs(dest.string()) + "'"});
         return res.spawned && res.exit_code == 0;
 #else
         auto res = safe_exec::RunCapture(

@@ -324,16 +324,43 @@ public:
         static const char* kCritical[] = {
             "/", "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64",
             "/var", "/boot", "/opt", "/home", "/root", "/dev", "/proc", "/sys",
+            "c:", "c:/", "c:\\", "c:/windows", "c:\\windows",
+            "c:/program files", "c:\\program files", "c:/users", "c:\\users",
         };
         std::string norm = path;
+        for (char& c : norm) {
+            if (c == '\\') c = '/';
+            else c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        }
         while (norm.size() > 1 && norm.back() == '/') norm.pop_back();
+        if (norm == "/" || norm == "c:" || (norm.size() == 2 && norm[1] == ':')) return true;
         for (const char* c : kCritical) {
-            if (norm == c) return true;
+            std::string crit = c;
+            for (char& ch : crit) {
+                if (ch == '\\') ch = '/';
+                else ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+            }
+            while (crit.size() > 1 && crit.back() == '/') crit.pop_back();
+            if (norm == crit || norm == "/" + crit || (norm.size() >= 2 && norm.substr(2) == crit))
+                return true;
         }
         if (const char* home = std::getenv("HOME")) {
             std::string h = home;
+            for (char& ch : h) {
+                if (ch == '\\') ch = '/';
+                else ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+            }
             while (h.size() > 1 && h.back() == '/') h.pop_back();
-            if (!h.empty() && norm == h) return true;
+            if (!h.empty() && (norm == h || norm == "/" + h)) return true;
+        }
+        if (const char* userprofile = std::getenv("USERPROFILE")) {
+            std::string u = userprofile;
+            for (char& ch : u) {
+                if (ch == '\\') ch = '/';
+                else ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+            }
+            while (u.size() > 1 && u.back() == '/') u.pop_back();
+            if (!u.empty() && (norm == u || norm == "/" + u)) return true;
         }
         return false;
     }
@@ -413,8 +440,12 @@ private:
             op.segment = seg;
             bool recursive = (cmd == "rm") && HasRecursiveFlag(a);
             for (const std::string& raw : nonFlagArgs(1)) {
+                if (IsSystemCriticalPath(raw)) {
+                    op.severity = BlastSeverity::Critical;
+                    op.note = "system-critical path";
+                }
                 for (BlastTarget& t : ResolveTargets(raw, cwd)) {
-                    if (IsSystemCriticalPath(t.path)) {
+                    if (IsSystemCriticalPath(t.path) || IsSystemCriticalPath(raw)) {
                         op.severity = BlastSeverity::Critical;
                         op.note = "system-critical path";
                     }
@@ -503,8 +534,12 @@ private:
             op.severity = BlastSeverity::Medium;
             std::vector<std::string> args = nonFlagArgs(1);
             for (size_t i = 1; i < args.size(); ++i) { // args[0] = mode/owner
+                if (IsSystemCriticalPath(args[i])) {
+                    op.severity = BlastSeverity::Critical;
+                    op.note = "recursive permission change on system path";
+                }
                 for (BlastTarget& t : ResolveTargets(args[i], cwd)) {
-                    if (IsSystemCriticalPath(t.path)) {
+                    if (IsSystemCriticalPath(t.path) || IsSystemCriticalPath(args[i])) {
                         op.severity = BlastSeverity::Critical;
                         op.note = "recursive permission change on system path";
                     }

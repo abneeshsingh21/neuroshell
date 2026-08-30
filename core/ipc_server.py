@@ -444,11 +444,10 @@ class NamedPipeServer:
         """Route to NeuroShell sub-engines."""
         if method == "translate":
             query = params.get("query", "")
-            cwd = params.get("cwd", os.getcwd())
-            translation = self.shell.translator.translate(query, self.shell.context)
+            translation = self.shell.translator.translate(query)
             if translation and translation.command:
                 safety_fn = getattr(self.shell.safety, "assess", getattr(self.shell.safety, "check", None))
-                assessment = safety_fn(translation.command, cwd) if safety_fn else None
+                assessment = safety_fn(translation.command) if safety_fn else None
                 risk = getattr(getattr(assessment, "level", assessment), "value", str(assessment))
                 return {
                     "command": translation.command,
@@ -472,12 +471,13 @@ class NamedPipeServer:
             command = params.get("command", "")
             output = params.get("output", "")
             exit_code = params.get("exit_code", 1)
-            cwd = params.get("cwd", os.getcwd())
 
             try:
-                from intelligence.error_fixer import ErrorFixer
-                fixer = ErrorFixer(self.shell.llm, self.shell.context)
-                fix_result = fixer.fix_error(command, output, exit_code, cwd)
+                fixer = getattr(self.shell, "fixer", None)
+                if not fixer:
+                    from intelligence.error_fixer import ErrorFixer
+                    fixer = ErrorFixer(self.shell.llm, self.shell.history, self.shell.context)
+                fix_result = fixer.fix(output, command)
                 if fix_result:
                     return {
                         "category": getattr(fix_result, "category", "execution_error"),
@@ -497,33 +497,35 @@ class NamedPipeServer:
 
         elif method == "agent_plan":
             task = params.get("task", "")
-            cwd = params.get("cwd", os.getcwd())
 
             try:
-                from intelligence.agent import AgentPlanner
-                planner = AgentPlanner(self.shell.llm, self.shell.context)
-                plan = planner.create_plan(task, cwd)
-                if plan and hasattr(plan, "steps"):
+                planner = getattr(self.shell, "agent", None)
+                if not planner:
+                    from intelligence.agent import AgentPlanner
+                    planner = AgentPlanner(self.shell.llm, self.shell.executor, self.shell.safety)
+                plan = planner.plan(task)
+                if plan and hasattr(plan, "steps") and plan.steps:
                     steps_data = [
                         {
-                            "order": s.order if hasattr(s, "order") else idx + 1,
-                            "command": s.command if hasattr(s, "command") else str(s),
-                            "description": s.description if hasattr(s, "description") else "",
+                            "order": getattr(s, "order", idx + 1),
+                            "command": getattr(s, "command", str(s)),
+                            "description": getattr(s, "description", ""),
                             "risk": "CAUTION" if getattr(s, "is_destructive", False) else "SAFE",
                         }
                         for idx, s in enumerate(plan.steps)
                     ]
-                    return {
-                        "plan_id": getattr(plan, "plan_id", "plan_1"),
-                        "task": task,
-                        "steps": steps_data,
-                    }
+                    if steps_data:
+                        return {
+                            "plan_id": getattr(plan, "plan_id", "plan_1"),
+                            "task": task,
+                            "steps": steps_data,
+                        }
             except Exception:
                 pass
 
             # Fallback simple 1-step plan
-            trans = self.shell.translator.translate(task, self.shell.context)
-            cmd = trans.command if trans else task
+            trans = self.shell.translator.translate(task)
+            cmd = getattr(trans, "command", "") or task
             return {
                 "plan_id": "plan_fallback",
                 "task": task,
@@ -536,7 +538,6 @@ class NamedPipeServer:
             directive = params.get("directive", "@ai")
             prompt = params.get("prompt", "Analyze the following command output:")
             input_text = params.get("input_text", "")
-            cwd = params.get("cwd", os.getcwd())
 
             full_prompt = f"{prompt}\n\n```\n{input_text[-4000:]}\n```"
             if directive == "@fix":

@@ -67,9 +67,17 @@ class TestRemoteTarget:
 
 @pytest.fixture()
 def executor(tmp_path):
+    if sys.platform == "win32":
+        transport_argv = [
+            sys.executable,
+            "-c",
+            "import sys, subprocess; sys.exit(subprocess.run(sys.argv[1], shell=True).returncode)",
+        ]
+    else:
+        transport_argv = ["bash", "-c"]
     return RemoteExecutor(
         RemoteTarget.parse("tester@fake-host"),
-        transport_argv=["bash", "-c"],
+        transport_argv=transport_argv,
         audit=MCPAuditLog(tmp_path / "audit.jsonl"),
     )
 
@@ -105,7 +113,8 @@ class TestLocalGate:
         victim = tmp_path / "victim"
         victim.mkdir()
         (victim / "x").write_text("1")
-        r = executor.execute(f"rm -rf {victim}", confirmed=True)
+        cmd = f'rmdir /s /q "{victim}"' if sys.platform == "win32" else f"rm -rf {victim}"
+        r = executor.execute(cmd, confirmed=True)
         assert r.executed and r.exit_code == 0
         assert not victim.exists()
 
@@ -127,7 +136,11 @@ class TestLocalGate:
 
 class TestExecution:
     def test_stdout_stderr_and_exit_code(self, executor):
-        r = executor.execute("echo out-line && echo err-line >&2 && exit 3")
+        if sys.platform == "win32":
+            cmd = "python -c \"import sys; print('out-line'); sys.stderr.write('err-line\\n'); sys.exit(3)\""
+        else:
+            cmd = "echo out-line && echo err-line >&2 && exit 3"
+        r = executor.execute(cmd)
         assert r.executed
         assert r.exit_code == 3
         assert "out-line" in r.stdout
@@ -221,7 +234,10 @@ class TestSSHArgv:
         path = ex._control_path()
         from core.remote_executor import CONTROL_DIR
         assert str(CONTROL_DIR) in path
-        import stat, os
+        if sys.platform == "win32":
+            pytest.skip("POSIX directory permissions not enforced on Windows")
+        import os
+        import stat
         mode = stat.S_IMODE(os.stat(CONTROL_DIR).st_mode)
         assert mode == 0o700
 

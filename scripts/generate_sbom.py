@@ -150,7 +150,7 @@ def _minimal_toml(text: str) -> dict[str, Any]:
             continue
         if line.startswith("[") and line.endswith("]"):
             current = root
-            for part in line[1:-1].split("."):
+            for part in line.strip("[]").split("."):
                 current = current.setdefault(part.strip().strip('"'), {})
             continue
         if "=" not in line:

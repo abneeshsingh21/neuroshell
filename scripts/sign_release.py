@@ -94,10 +94,11 @@ def _write_private(path: Path, key: Ed25519PrivateKey) -> None:
 
 
 def _read_private(path: Path) -> Ed25519PrivateKey:
-    mode = stat.S_IMODE(path.stat().st_mode)
-    if mode & 0o077:
-        print(f"warning: {path} is group/world accessible (mode {oct(mode)}); "
-              "run: chmod 600 " + str(path), file=sys.stderr)
+    if os.name != "nt":
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode & 0o077:
+            print(f"warning: {path} is group/world accessible (mode {oct(mode)}); "
+                  "run: chmod 600 " + str(path), file=sys.stderr)
     raw = bytes.fromhex(path.read_text().strip())
     if len(raw) != 32:
         raise ValueError("private key file must contain 64 hex chars (32 bytes)")
@@ -246,6 +247,14 @@ def cmd_attest(args: argparse.Namespace) -> int:
     """Phase 10: generate + sign a SLSA v1 provenance statement in one step."""
     import provenance
 
+    extra_args = []
+    if getattr(args, "invocation_id", None):
+        extra_args += ["--invocation-id", args.invocation_id]
+    if getattr(args, "started_on", None):
+        extra_args += ["--started-on", args.started_on]
+    if getattr(args, "finished_on", None):
+        extra_args += ["--finished-on", args.finished_on]
+
     rc = provenance.main([
         "generate",
         *sum([["--subject", s] for s in args.subject], []),
@@ -253,6 +262,7 @@ def cmd_attest(args: argparse.Namespace) -> int:
         "--source-uri", args.source_uri,
         "--commit", args.commit,
         "--build-type", args.build_type,
+        *extra_args,
         "--out", args.out,
     ])
     if rc != 0:
@@ -263,7 +273,7 @@ def cmd_attest(args: argparse.Namespace) -> int:
     if rc != 0:
         return rc
     # Sanity gate mirroring the manifest flow: verify what we just produced.
-    pub = provenance.sign_statement(Path(args.key), Path(args.out))[1]
+    pub = _pub_hex(_read_private(Path(args.key)))
     rc = verify_provenance_main([
         "verify", "--pubkey", pub, "--statement", args.out, "--sig", sig_out,
         "--expect-builder", args.builder_id,

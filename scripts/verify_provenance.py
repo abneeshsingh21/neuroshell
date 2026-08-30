@@ -91,16 +91,27 @@ def verify_dsse_envelope(pub: Any, envelope: dict[str, Any]) -> bytes:
     try:
         payload_type = envelope["payloadType"]
         payload = base64.b64decode(envelope["payload"])
-        signature = base64.b64decode(envelope["signatures"][0]["sig"])
-    except (KeyError, ValueError, IndexError) as e:
+        signatures = envelope.get("signatures", [])
+        if not signatures:
+            raise VerificationError("DSSE envelope contains no signatures")
+    except (KeyError, ValueError) as e:
         raise VerificationError(f"malformed DSSE envelope: {e}") from e
     pae = b"DSSEv1 %d %b %d %b" % (len(payload_type), payload_type.encode(),
                                    len(payload), payload)
-    try:
-        pub.verify(signature, pae)
-    except InvalidSignature as e:
+
+    verified = False
+    for s_entry in signatures:
+        try:
+            sig_bytes = base64.b64decode(s_entry["sig"])
+            pub.verify(sig_bytes, pae)
+            verified = True
+            break
+        except (InvalidSignature, KeyError, ValueError):
+            continue
+
+    if not verified:
         raise VerificationError(
-            "DSSE signature does not verify over the PAE-encoded payload") from e
+            "DSSE signature does not verify over the PAE-encoded payload")
     return payload
 
 
@@ -214,7 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("verify", help="verify a signed provenance statement")
     v.add_argument("--pubkey", required=True,
                    help="path to .pub file or 64-char hex key")
-    v.add_argument("--statement", required=True)
+    v.add_argument("--statement", default=None,
+                   help="path to raw provenance statement file (required if not using --dsse)")
     v.add_argument("--sig", default=None, help="detached hex signature file")
     v.add_argument("--dsse", default=None,
                    help="DSSE envelope file (alternative to --statement/--sig; "
@@ -231,6 +243,11 @@ def main(argv: list[str] | None = None) -> int:
         # bare form without the 'verify' subcommand
         args = ap.parse_args(["verify", *(argv or [])])
 
+    if not args.dsse and not args.statement:
+        print("error: either --statement (with --sig) or --dsse is required",
+              file=sys.stderr)
+        return 2
+
     artifacts: list[tuple[str, Path]] = []
     for spec in args.artifact:
         name, sep, path = spec.partition(":")
@@ -243,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         doc = verify(
             pubkey=args.pubkey,
-            statement=Path(args.statement),
+            statement=Path(args.statement) if args.statement else Path(),
             sig=Path(args.sig) if args.sig else None,
             dsse=Path(args.dsse) if args.dsse else None,
             expect_builders=list(args.expect_builder),

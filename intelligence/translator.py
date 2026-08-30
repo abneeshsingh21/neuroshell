@@ -1097,7 +1097,7 @@ Return JSON:
         history_str = "\n".join(f"  {r.command}" for r in recent)
 
         entity_hint = ""
-        if entities:
+        if isinstance(entities, dict) and entities:
             parts = []
             for etype, values in entities.items():
                 if values:

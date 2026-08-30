@@ -108,7 +108,7 @@ class PluginManifest:
     sha256: str = ""          # filled at install time
 
     @classmethod
-    def parse(cls, raw: dict) -> "PluginManifest":
+    def parse(cls, raw: dict) -> PluginManifest:
         if not isinstance(raw, dict):
             raise PluginError("manifest must be a JSON object")
         if raw.get("schema") != MANIFEST_SCHEMA:
@@ -390,8 +390,7 @@ class PluginRuntime:
                           "expected": manifest.sha256, "actual": actual})
             return result
 
-        from wasmtime import (Config, Engine, Linker, Module, Store, Trap,
-                              WasiConfig)
+        from wasmtime import Config, Engine, Linker, Module, Store, WasiConfig
 
         cfg = Config()
         cfg.consume_fuel = True

@@ -1,0 +1,8 @@
+# Ensure raw-signed supply chain documents maintain exact byte line endings
+*.json text eol=lf
+*.sig text eol=lf
+*.cdx.json text eol=lf
+*.intoto.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+PKGBUILD text eol=lf

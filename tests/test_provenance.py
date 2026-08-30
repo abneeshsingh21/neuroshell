@@ -259,6 +259,6 @@ class TestSignReleaseWiring:
         """Any byte change — even whitespace — breaks the signature."""
         statement, sig, pub, _ = signed
         raw = statement.read_bytes()
-        statement.write_bytes(raw.replace(b"},\n", b"}, \n", 1))
+        statement.write_bytes(raw.replace(b"}", b"} ", 1) if b"}" in raw else raw + b" ")
         with pytest.raises(verify_provenance.VerificationError, match="signature"):
             _verify(pub=pub, statement=statement, sig=sig)

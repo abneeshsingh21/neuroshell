@@ -38,7 +38,6 @@ import os
 import struct
 import sys
 import threading
-from typing import Optional
 
 SHM_RING_CAPACITY = 8 * 1024 * 1024  # 8 MB — must match C++ host
 SHM_MAGIC = 0x4E455552  # "NEUR"
@@ -167,7 +166,7 @@ class SHMClientBridge:
         except Exception:
             return False
 
-    def read_message(self) -> Optional[str]:
+    def read_message(self) -> str | None:
         if not self._is_connected or self._buf is None:
             return None
 
@@ -190,7 +189,7 @@ class SHMClientBridge:
         except Exception:
             return None
 
-    def _read_message_bytes(self) -> Optional[bytes]:
+    def _read_message_bytes(self) -> bytes | None:
         """Like read_message but returns raw bytes (frame parsing needs them)."""
         if not self._is_connected or self._buf is None:
             return None
@@ -236,7 +235,7 @@ class SHMClientBridge:
         except Exception:
             return False
 
-    def read_frame(self) -> Optional[tuple[int, int, str]]:
+    def read_frame(self) -> tuple[int, int, str] | None:
         """Consumer side: returns (type, stream_id, payload) or None."""
         raw = self._read_message_bytes()
         if raw is None or len(raw) < 5:

@@ -71,7 +71,7 @@ class RemoteTarget:
     port: int = 0
 
     @classmethod
-    def parse(cls, spec: str) -> "RemoteTarget":
+    def parse(cls, spec: str) -> RemoteTarget:
         spec = (spec or "").strip()
         m = _TARGET_RE.match(spec)
         if not m:

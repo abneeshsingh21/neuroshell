@@ -40,7 +40,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "neuroshell"
