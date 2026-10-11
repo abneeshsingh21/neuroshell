@@ -2630,9 +2630,14 @@ public:
         dictionary_["turn wifi on"] = PhraseEntry{"netsh interface set interface \"Wi-Fi\" enabled", "nmcli radio wifi on" };
         dictionary_["turn wifi off"] = PhraseEntry{"netsh interface set interface \"Wi-Fi\" disabled", "nmcli radio wifi off" };
         dictionary_["restart wifi"] = PhraseEntry{"netsh interface set interface \"Wi-Fi\" disabled && netsh interface set interface \"Wi-Fi\" enabled", "nmcli radio wifi off && nmcli radio wifi on" };
-        dictionary_["my public ip"] = PhraseEntry{"curl -s https://ifconfig.me", "curl -s https://ifconfig.me" };
-        dictionary_["what is my public ip"] = PhraseEntry{"curl -s https://ifconfig.me", "curl -s https://ifconfig.me" };
-        dictionary_["show public ip"] = PhraseEntry{"curl -s https://ifconfig.me", "curl -s https://ifconfig.me" };
+        dictionary_["my public ip"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["what is my public ip"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["show public ip"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["show my public ip"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["show my public ip address"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["show public ip address"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["my public ip address"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
+        dictionary_["what is my public ip address"] = PhraseEntry{"curl.exe -s https://api.ipify.org", "curl -s https://api.ipify.org" };
         dictionary_["show local ip"] = PhraseEntry{"ipconfig", "ip a || ifconfig" };
         dictionary_["what is my ip"] = PhraseEntry{"ipconfig", "ip a || ifconfig" };
         dictionary_["show ip address"] = PhraseEntry{"ipconfig", "ip a || ifconfig" };

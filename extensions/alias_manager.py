@@ -57,7 +57,7 @@ class AliasManager:
         "activate": ".venv\\Scripts\\activate" if os.name == "nt" else "source .venv/bin/activate",
         "serve": "python -m http.server 8000",
         "ports": "netstat -tlnp" if os.name != "nt" else "netstat -ano",
-        "myip": "curl -s ifconfig.me",
+        "myip": "curl.exe -s https://api.ipify.org" if os.name == "nt" else "curl -s https://api.ipify.org",
         "tree": "tree /F" if os.name == "nt" else "tree -L 2",
     }
 
