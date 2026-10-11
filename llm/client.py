@@ -40,12 +40,12 @@ except ImportError:
 
 # Groq model mapping (local model → Groq equivalent)
 GROQ_MODEL_MAP = {
-    "qwen3:4b": "llama-3.1-8b-instant",
-    "llama3": "llama-3.1-8b-instant",
-    "llama3:8b": "llama-3.1-8b-instant",
-    "mistral": "mixtral-8x7b-32768",
-    "gemma2": "gemma2-9b-it",
-    "deepseek-r1": "deepseek-r1-distill-llama-70b",
+    "qwen3:4b": "qwen/qwen3.8-27b",
+    "llama3": "openai/gpt-oss-20b",
+    "llama3:8b": "openai/gpt-oss-20b",
+    "mistral": "openai/gpt-oss-20b",
+    "gemma2": "openai/gpt-oss-20b",
+    "deepseek-r1": "openai/gpt-oss-120b",
 }
 
 # Module-level persistent thread pool for non-blocking hard timeouts
@@ -401,7 +401,7 @@ class LLMClient:
     @property
     def groq_model(self) -> str:
         """Get the Groq model equivalent for the current local model."""
-        return GROQ_MODEL_MAP.get(self.config.model, "llama-3.1-8b-instant")
+        return GROQ_MODEL_MAP.get(self.config.model, "openai/gpt-oss-20b")
 
     @property
     def has_any_llm(self) -> bool:
@@ -720,7 +720,7 @@ class LLMClient:
                     user_q = prompt.split("Command:")[-1].strip()
 
                 match = native.translate(user_q)
-                if match and match.command:
+                if match and match.command and match.confidence >= 0.85:
                     json_payload = json.dumps({
                         "command": match.command,
                         "confidence": match.confidence,
@@ -737,22 +737,24 @@ class LLMClient:
             except Exception as e:
                 _llm_log.debug(f"Native engine error in LLMClient: {e}")
 
-        # ── Priority 2: Configured Cloud Provider → Ollama (local) ──
-        if provider == "groq" and self._groq_available:
+        # ── Priority 2: Active or Fallback LLM Inference (Groq / OpenAI / Anthropic) ──
+        if (provider in ("native", "groq") or not HAS_OLLAMA) and self._groq_available:
             try:
                 result = self._groq_generate(prompt, system_prompt, temperature)
                 if result.success:
                     return result
             except Exception:
                 pass
-        elif provider in ("openai", "openrouter", "gemini") and self._openai_available:
+
+        if (provider in ("openai", "openrouter", "gemini") or not HAS_OLLAMA) and self._openai_available:
             try:
                 result = self._openai_generate(prompt, system_prompt, temperature)
                 if result.success:
                     return result
             except Exception:
                 pass
-        elif provider == "anthropic" and self._anthropic_available:
+
+        if self._anthropic_available:
             try:
                 result = self._anthropic_generate(prompt, system_prompt, temperature)
                 if result.success:
@@ -760,8 +762,10 @@ class LLMClient:
             except Exception:
                 pass
 
-        if not HAS_OLLAMA:
-            return self._fallback_response(f"Provider {provider} failed or unavailable, and Ollama is not installed.")
+        if not HAS_OLLAMA or not self.is_available():
+            if self._groq_available:
+                return self._groq_generate(prompt, system_prompt, temperature)
+            return self._fallback_response(f"Active provider '{provider}' failed and no alternative LLM backend is available.")
 
         # Check cache
         if use_cache:

@@ -442,11 +442,20 @@ class NamedPipeServer:
 
     def _dispatch_method(self, method: str, params: dict) -> Any:
         """Route to NeuroShell sub-engines."""
-        if hasattr(self.shell, "wait_for_modules"):
-            self.shell.wait_for_modules(timeout=10.0)
+        if hasattr(self.shell, "_wait_for_modules"):
+            self.shell._wait_for_modules(timeout=30.0)
+        elif hasattr(self.shell, "wait_for_modules"):
+            self.shell.wait_for_modules(timeout=30.0)
 
         if method == "translate":
             query = params.get("query", "")
+            if not hasattr(self.shell, "translator") or self.shell.translator is None:
+                return {
+                    "command": query,
+                    "explanation": "Direct shell passthrough",
+                    "risk_level": "SAFE",
+                    "confidence": 1.0,
+                }
             translation = self.shell.translator.translate(query)
             if translation and translation.command:
                 safety_fn = getattr(self.shell.safety, "check", getattr(self.shell.safety, "assess", None))
@@ -605,16 +614,32 @@ class NamedPipeServer:
 
 if __name__ == "__main__":
     import time
-
     from main import NeuroShell
+
+    # Check if a daemon is already alive on the pipe
+    if os.name == "nt":
+        try:
+            with open(PIPE_NAME, "r+b", buffering=0) as f:
+                f.write(b'{"jsonrpc":"2.0","method":"ping","id":1}\n')
+                resp = f.read(1024)
+                if b"pong" in resp:
+                    print("NeuroShell IPC daemon is already running.")
+                    sys.exit(0)
+        except Exception:
+            pass
 
     app = NeuroShell()
     if hasattr(app, "wait_for_modules"):
-        app.wait_for_modules(timeout=15.0)
-    server = NamedPipeServer(app)
-    server.start()
+        app.wait_for_modules(timeout=30.0)
+
+    server = getattr(app, "ipc_server", None)
+    if server is None:
+        server = NamedPipeServer(app)
+        server.start()
+
     try:
         while True:
             time.sleep(1)
     except (KeyboardInterrupt, SystemExit):
-        server.stop()
+        if server:
+            server.stop()

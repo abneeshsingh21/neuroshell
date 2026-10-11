@@ -122,6 +122,9 @@ LINUX_APP_REGISTRY: dict[str, tuple[str, str]] = {
 
 SITE_MAP: dict[str, str] = {
     "github": "https://github.com",
+    "github profile": "https://github.com",
+    "my github": "https://github.com",
+    "my github profile": "https://github.com",
     "google": "https://google.com",
     "youtube": "https://youtube.com",
     "stackoverflow": "https://stackoverflow.com",
@@ -283,7 +286,7 @@ class SmartOpenEngine:
 
     # Regex to detect "open" intent from natural language
     OPEN_INTENT = re.compile(
-        r"^(?:open|launch|start|run|navigate\s+to|go\s+to|browse)\s+(.+)$",
+        r"^(?:open|launch|navigate\s+to|go\s+to|browse)\s+(.+)$",
         re.IGNORECASE,
     )
 
@@ -436,12 +439,7 @@ class SmartOpenEngine:
                 if child_path:
                     return self._open_folder(child_path, f"Open '{child}' inside '{parent}'")
 
-        # 12. Last resort: fuzzy folder search
-        fuzzy = self._fuzzy_find_folder(target_lower)
-        if fuzzy:
-            return self._open_folder(fuzzy, f"Open '{target}' (found: {fuzzy})")
-
-        # 13. If nothing matched, try as a direct path
+        # 12. If nothing matched, try as a direct path
         if os.path.exists(target):
             if os.path.isdir(target):
                 return self._open_folder(target, f"Open folder: {target}")
@@ -890,29 +888,7 @@ class SmartOpenEngine:
             )
 
         if self._is_windows:
-            import base64
-            # PowerShell script to find an existing explorer window with this exact path and focus it,
-            # or launch a new explorer window target if not found.
-            # Convert the absolute path safely for PowerShell string.
-            safe_path = abs_path.replace("'", "''")
-            ps_script = (
-                f"$target = '{safe_path}';"
-                "$windows = (New-Object -ComObject Shell.Application).Windows();"
-                "$found = $false;"
-                "foreach($w in $windows) {"
-                "  try {"
-                "    if ($w.Document.Folder.Self.Path -eq $target) {"
-                "      (New-Object -ComObject WScript.Shell).AppActivate($w.HWND) | Out-Null;"
-                "      $found = $true;"
-                "      break;"
-                "    }"
-                "  } catch {}"
-                "};"
-                "if (-not $found) { Start-Process explorer.exe -ArgumentList \"\"\"$target\"\"\" }"
-            )
-            # Encode as UTF-16-LE for PowerShell's -EncodedCommand to avoid all quoting issues
-            b64_script = base64.b64encode(ps_script.encode('utf-16-le')).decode('utf-8')
-            cmd = f'powershell -NoProfile -EncodedCommand {b64_script}'
+            cmd = f'explorer "{abs_path}"'
             self._last_explorer_path = abs_path
             self._last_explorer_time = now
         elif platform.system() == "Darwin":

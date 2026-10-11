@@ -693,14 +693,13 @@ class Translator:
         """
         Translate natural language to shell command(s).
 
-        Pipeline:
-        1. Check feedback corrections
-        2. Check history cache
-        2.5. Route open/launch/power intents through SmartOpenEngine
-        3. Try local pattern matching
-        3.5. Try 2554+ offline phrase dictionary
-        4. Try 100% Native Autonomous Neural Core (EmbeddingGemma 2)
-        5. Fall back to multi-step or cloud LLM
+        Model-First Dynamic Pipeline:
+        1. Check feedback corrections (explicit user overrides)
+        2. Check history cache (exact NL hit)
+        3. Route explicit app/URL/folder open intents via SmartOpenEngine (high confidence only)
+        4. Multi-step detection (e.g. "clone repo and then run tests")
+        5. AI Model Translation (Primary Intelligence: On-Device / Cloud / SLM)
+        6. Graceful Offline Fallbacks (Native Neural Core / local patterns if model unreachable)
         """
         user_input_clean = user_input.strip()
         if not user_input_clean:
@@ -727,37 +726,56 @@ class Translator:
         if cached:
             return cached
 
-        # 2.5. Route open/launch/power intents through SmartOpenEngine
+        # 3. Route explicit desktop app / URL / folder open intents
         smart = self._try_smart_open(user_input_clean)
-        if smart:
+        if smart and smart.confidence >= 0.90:
             return smart
 
-        # 3. Try local pattern matching
+        # 4. Multi-step detection
+        if self._is_multi_step(user_input_clean):
+            return self._translate_multi_step(user_input_clean, entities)
+
+        # 5. AI MODEL TRANSLATION (Primary Intelligence)
+        # Dynamically synthesizes tailored commands based on context, OS, language, and tools
+        llm_result = None
+        if hasattr(self, "llm") and self.llm:
+            try:
+                llm_result = self._llm_translate(user_input_clean, entities)
+                if llm_result and llm_result.command and llm_result.confidence > 0.0:
+                    return llm_result
+            except Exception as e:
+                # Log debug and continue to offline fallbacks
+                pass
+
+        # 6. Offline / Fallback Layers (Only if AI Model is unreachable / offline)
+        # 6.1. High-confidence Native Neural Core (EmbeddingGemma 2 vector match)
+        native_match = self._try_native_engine(user_input_clean)
+        if native_match and native_match.confidence >= 0.75:
+            return native_match
+
+        # 6.2. Local dynamic patterns (only exact syntax)
         local = self._try_local_patterns(user_input_clean)
         if local:
             return local
 
-        # 4. Try 100% Native Autonomous Neural Core (EmbeddingGemma 2)
-        # Handles compound multi-step operations, slot extraction, and cross-platform synthesis
-        native_match = self._try_native_engine(user_input_clean)
-        if native_match and native_match.confidence >= 0.55:
-            return native_match
-
-        # 4.5. Try 2554+ Offline Phrase Dictionary (TF-IDF Cosine Matcher) as fallback
+        # 6.3. Offline Phrase Dictionary (last-resort offline fallback with high threshold)
         phrase_match = self._try_phrase_dictionary(user_input_clean)
-        if phrase_match and phrase_match.confidence >= 0.70:
+        if phrase_match and phrase_match.confidence >= 0.85:
             return phrase_match
 
-        # 4.6. If native match has lower confidence, still use if available over generic fallback
-        if native_match:
-            return native_match
+        # 6.4. Return LLM result if available even with lower confidence
+        if llm_result:
+            return llm_result
 
-        # 5. Multi-step detection
-        if self._is_multi_step(user_input_clean):
-            return self._translate_multi_step(user_input_clean, entities)
-
-        # 6. Fallback LLM translation
-        return self._llm_translate(user_input_clean, entities)
+        return TranslationResult(
+            command="",
+            confidence=0.0,
+            explanation="Unable to resolve intent. Please try rephrasing.",
+            provenance=ProvenanceTag(
+                source=ProvenanceSource.FALLBACK,
+                confidence=0.0,
+            ),
+        )
 
     def _try_native_engine(self, user_input: str) -> TranslationResult | None:
         """Query the 100% Native Autonomous On-Device Neural Core (<10ms)."""

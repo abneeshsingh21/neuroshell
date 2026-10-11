@@ -1484,8 +1484,6 @@ private:
                                             neuroshell::SHM_STREAM_POSIX_NAME};
     neuroshell::StreamRecorder streamRecorder;
     neuroshell::SplitPaneManager splitPanes;
-    neuroshell::NativePhraseDictionary nativeDictionary;
-    neuroshell::ASTParameterExtractor astExtractor;
     neuroshell::InTerminalCommandPalette cmdPalette;
     neuroshell::TaskSupervisor taskSupervisor;
 
@@ -2549,7 +2547,8 @@ public:
             "git", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "python", "python3",
             "node", "cargo", "rustc", "go", "gcc", "g++", "clang", "make", "cmake", "ctest",
             "curl", "wget", "tar", "zip", "unzip", "ssh", "scp", "rsync", "ffmpeg",
-            "powershell", "pwsh", "cmd", "bash", "zsh", "sh"
+            "powershell", "pwsh", "cmd", "bash", "zsh", "sh",
+            "pytest", "npx", "bun", "deno", "dotnet", "mvn", "gradle", "flutter", "gh", "winget"
         };
         for (const auto& t : tools) {
             if (firstWord == t) return true;
@@ -2567,6 +2566,11 @@ public:
         if (s == std::string::npos) return false;
         lower = lower.substr(s);
 
+        // Explicit AI directives
+        if (lower.rfind("@ai ", 0) == 0 || lower.rfind("@agent ", 0) == 0 || lower[0] == '?') {
+            return true;
+        }
+
         // Tokenize words
         std::istringstream iss(lower);
         std::string firstWord;
@@ -2575,36 +2579,8 @@ public:
         int wordCount = 1;
         while (iss >> word) wordCount++;
 
-        // Natural language action verbs & inquiry starters
-        const std::vector<std::string> nlStarters = {
-            "check", "find", "search", "list", "show", "get", "view", "display",
-            "clean", "cleanup", "remove", "delete", "create", "make", "build", "run",
-            "start", "stop", "restart", "terminate", "compress", "extract", "unzip",
-            "backup", "monitor", "test", "measure", "clone", "push", "pull", "commit",
-            "count", "calculate", "tell", "give", "can", "how", "what", "where", "why",
-            "who", "please", "help", "explain", "inspect", "analyze", "scan",
-            "wifi", "my", "free", "kill", "open", "fetch", "download", "disk", "ram", "memory"
-        };
-        for (const auto& starter : nlStarters) {
-            if (firstWord == starter && wordCount >= 2) return true;
-        }
-
-        // Common multi-word phrase indicators
-        const std::vector<std::string> nlIndicators = {
-            " on all ", " in human ", " for all ", " of all ", " with size ", " across all ",
-            " that are ", " which are ", " how to ", " how do i ", " readable format",
-            " password for ", " public ip", " open ports", " running processes", " disk space",
-            " memory usage", " ram usage", " port "
-        };
-        for (const auto& ind : nlIndicators) {
-            if (lower.find(ind) != std::string::npos) return true;
-        }
-
-        if (wordCount >= 3) {
-            return true;
-        }
-
-        return false;
+        // Any non-shell input with 2 or more words is dynamic natural language for the AI model
+        return (wordCount >= 2);
     }
 
     std::string TranslateNaturalLanguage(const std::string& input) {
@@ -2616,196 +2592,9 @@ public:
         size_t last = lower.find_last_not_of(" \t\r\n");
         lower = lower.substr(first, last - first + 1);
 
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-        const bool isWindows = true;
-#else
-        const bool isWindows = false;
-#endif
-
-        // 1. Native O(1) Fast Embedded Phrase Dictionary (2,630+ phrases)
-        std::string dictMatch = nativeDictionary.Lookup(lower, isWindows);
-        if (!dictMatch.empty()) {
-            return dictMatch;
-        }
-
-        // 2. Dynamic AST Parameter Extractor (<0.05ms)
-        std::string astMatch = astExtractor.ExtractAndTransform(input, isWindows);
-        if (!astMatch.empty()) {
-            return astMatch;
-        }
-
-        // 2. Dynamic Wi-Fi Specific Network Lookup
-        if (lower.rfind("show wifi password for ", 0) == 0 || lower.rfind("wifi password for ", 0) == 0 || lower.rfind("wifi password ", 0) == 0) {
-            size_t p = lower.find("for ");
-            std::string ssid = (p != std::string::npos) ? input.substr(p + 4) : input.substr(14);
-            ssid.erase(0, ssid.find_first_not_of(" \t\r\n\"'"));
-            ssid.erase(ssid.find_last_not_of(" \t\r\n\"'") + 1);
-            if (!ssid.empty()) {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-                return "powershell -NoProfile -Command \"$m = (netsh wlan show profile name=\\\"" + ssid + "\\\" key=clear 2>$null | Select-String 'Key Content\\\\s*:\\\\s*(.+)$'); if ($m) { [PSCustomObject]@{ 'Wi-Fi Network' = '" + ssid + "'; 'Password' = $m.Matches.Groups[1].Value.Trim() } | Format-List } else { Write-Host 'No password found or Open Network for \\\"" + ssid + "\\\"' }\"";
-#elif defined(__APPLE__)
-                return "security find-generic-password -ga \"" + ssid + "\" -w";
-#else
-                return "sudo nmcli -s -g 802-11-wireless-security.psk connection show \"" + ssid + "\" 2>/dev/null || sudo grep -r '^psk=' /etc/NetworkManager/system-connections/\"" + ssid + "\".nmconnection";
-#endif
-            }
-        }
-
-        // 3. Port Killer (kill port 8080, free port 3000, etc.)
-        if (lower.rfind("kill port ", 0) == 0 || lower.rfind("free port ", 0) == 0 || lower.rfind("terminate port ", 0) == 0) {
-            std::string portStr = input.substr(10);
-            portStr.erase(0, portStr.find_first_not_of(" \t\r\n"));
-            portStr.erase(portStr.find_last_not_of(" \t\r\n") + 1);
-            if (!portStr.empty()) {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-                return "powershell -Command \"Stop-Process -Id (Get-NetTCPConnection -LocalPort " + portStr + " -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue\"";
-#else
-                return "fuser -k " + portStr + "/tcp 2>/dev/null || lsof -ti:" + portStr + " | xargs kill -9 2>/dev/null";
-#endif
-            }
-        }
-
-        // 4. File Explorer & Browser Openers
-        if (lower == "open file explorer" || lower == "open explorer" || lower == "file explorer" || lower == "open current folder") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            return "explorer .";
-#elif defined(__APPLE__)
-            return "open .";
-#else
-            return "xdg-open .";
-#endif
-        }
-        if (lower.rfind("open folder ", 0) == 0) {
-            std::string pathStr = input.substr(12);
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            return "explorer \"" + pathStr + "\"";
-#elif defined(__APPLE__)
-            return "open \"" + pathStr + "\"";
-#else
-            return "xdg-open \"" + pathStr + "\"";
-#endif
-        }
-        if (lower.rfind("open http://", 0) == 0 || lower.rfind("open https://", 0) == 0) {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            return "start " + input.substr(5);
-#elif defined(__APPLE__)
-            return "open " + input.substr(5);
-#else
-            return "xdg-open " + input.substr(5);
-#endif
-        }
-        if (lower.rfind("open ", 0) == 0) {
-            std::string target = input.substr(5);
-            if (target == "chrome" || target == "browser") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-                return "start msedge || start chrome";
-#elif defined(__APPLE__)
-                return "open -a \"Google Chrome\" || open -a Safari";
-#else
-                return "google-chrome || firefox || xdg-open https://google.com";
-#endif
-            }
-            if (target == "github" || target == "my github") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-                return "start https://github.com";
-#elif defined(__APPLE__)
-                return "open https://github.com";
-#else
-                return "xdg-open https://github.com";
-#endif
-            }
-            if (target == "calculator" || target == "calc") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-                return "calc";
-#elif defined(__APPLE__)
-                return "open -a Calculator";
-#else
-                return "gnome-calculator || kcalc || bc";
-#endif
-            }
-        }
-
-        // 5. Web & Browser Download Operations
-        if (lower.rfind("download ", 0) == 0) {
-            std::string url = input.substr(9);
-            url.erase(0, url.find_first_not_of(" \t\r\n"));
-            url.erase(url.find_last_not_of(" \t\r\n") + 1);
-            return "curl -LO \"" + url + "\"";
-        }
-        if (lower.rfind("fetch ", 0) == 0) {
-            std::string url = input.substr(6);
-            return "curl -sL \"" + url + "\"";
-        }
-
-        // 6. GitHub & Git Operations
-        if (lower == "show my github repos" || lower == "list my repos" || lower == "my repos" || lower == "view my repos" || lower == "github repos") {
-            return "gh repo list || git log --oneline -n 5";
-        }
-        if (lower == "find all git repos" || lower == "list local repos" || lower == "show local repos" || lower == "local repos") {
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            return "dir /s /b /ad .git";
-#else
-            return "find . -name .git -type d";
-#endif
-        }
-        if (lower.rfind("clone repo ", 0) == 0 || lower.rfind("clone ", 0) == 0) {
-            size_t startIdx = (lower.rfind("clone repo ", 0) == 0) ? 11 : 6;
-            return "git clone " + input.substr(startIdx);
-        }
-        if (lower.rfind("push to ", 0) == 0) {
-            std::string branch = input.substr(8);
-            if (branch == "github") return "git push origin main || git push";
-            return "git push origin " + branch;
-        }
-        if (lower == "push" || lower == "push to github" || lower == "push changes" || lower == "git push") {
-            return "git push origin main || git push";
-        }
-        if (lower.rfind("pull from ", 0) == 0) {
-            std::string branch = input.substr(10);
-            if (branch == "github") return "git pull origin main || git pull";
-            return "git pull origin " + branch;
-        }
-        if (lower == "pull" || lower == "pull from github" || lower == "pull changes" || lower == "git pull") {
-            return "git pull origin main || git pull";
-        }
-        if (lower == "git status" || lower == "repo status" || lower == "check git status") {
-            return "git status";
-        }
-        if (lower.rfind("commit ", 0) == 0 || lower.rfind("commit changes ", 0) == 0) {
-            size_t msgPos = input.find("\"");
-            std::string msg = "update";
-            if (msgPos != std::string::npos) {
-                size_t endQuote = input.find("\"", msgPos + 1);
-                if (endQuote != std::string::npos) {
-                    msg = input.substr(msgPos + 1, endQuote - msgPos - 1);
-                }
-            }
-            return "git add . && git commit -m \"" + msg + "\"";
-        }
-
-        // 7. File Searching & Utilities
-        if (lower.rfind("find all ", 0) == 0 && lower.find(" files") != std::string::npos) {
-            size_t extStart = 9;
-            size_t extEnd = lower.find(" files");
-            std::string ext = lower.substr(extStart, extEnd - extStart);
-#if defined(NEUROSHELL_PLATFORM_WINDOWS)
-            if (ext == "python" || ext == "py") return "dir /s /b *.py";
-            if (ext == "javascript" || ext == "js") return "dir /s /b *.js";
-            if (ext == "typescript" || ext == "ts") return "dir /s /b *.ts";
-            if (ext == "c++" || ext == "cpp") return "dir /s /b *.cpp *.h";
-            return "dir /s /b *." + ext;
-#else
-            if (ext == "python" || ext == "py") return "find . -name \"*.py\"";
-            if (ext == "javascript" || ext == "js") return "find . -name \"*.js\"";
-            if (ext == "typescript" || ext == "ts") return "find . -name \"*.ts\"";
-            if (ext == "c++" || ext == "cpp") return "find . -name \"*.cpp\" -o -name \"*.h\"";
-            return "find . -name \"*." + ext + "\"";
-#endif
-        }
-
-        // 8. Query Python Intelligence IPC Daemon (Autonomous Native Neural Core - EmbeddingGemma 2)
+        // Query Python Intelligence IPC Daemon (Dynamically powered by AI model)
         if (!ipcClient.EnsureConnected()) {
-            NeuroShell::Daemon::DaemonManager::EnsureDaemonRunningSync(ipcClient, 4);
+            NeuroShell::Daemon::DaemonManager::EnsureDaemonRunningSync(ipcClient, 20);
         }
 
         NeuroShell::IPC::TranslationResult trans = ipcClient.Translate(input, fs::current_path().string());
@@ -3732,51 +3521,8 @@ public:
             return;
         }
 
-        if (lowerTrim == "test python" || lowerTrim == "pytest") {
-            ExecuteCommand("pytest -n auto -v");
-            return;
-        }
-        if (lowerTrim == "test node" || lowerTrim == "test frontend" || lowerTrim == "test js" || lowerTrim == "test ts") {
-            ExecuteCommand(fs::exists("vitest.config.ts") ? "npx vitest run --threads" : "npm test");
-            return;
-        }
-        if (lowerTrim == "test rust" || lowerTrim == "cargo test") {
-            ExecuteCommand("cargo test");
-            return;
-        }
-        if (lowerTrim == "test go") {
-            ExecuteCommand("go test -p 4 -v ./...");
-            return;
-        }
-
-        if (lowerTrim == "@test changed" || lowerTrim == "test changed" || lowerTrim == "test diff" || lowerTrim == "test git" || lowerTrim == "test modified" || lowerTrim == "test my changes") {
-            std::vector<std::string> changed = neuroshell::TestOrchestrator::GetChangedTestFiles();
-            if (changed.empty()) {
-                std::cout << "\n" << C_GREEN << "  ✨ No modified test files detected in git repository." << C_RESET << "\n\n";
-            } else {
-                std::string testCmd = neuroshell::TestOrchestrator::GetParallelTestCommand(changed, fs::current_path());
-                std::cout << "\n" << C_CYAN << "  🎯 Running Impact-Aware Tests: " << C_BOLD << C_WHITE << testCmd << C_RESET << "\n\n";
-                ExecuteCommand(testCmd);
-            }
-            return;
-        }
-
-        // Short Aliases for Wi-Fi passwords, Ports, Specs
-        if (lowerTrim == "wifi" || lowerTrim == "passwords" || lowerTrim == "wifi passwords") {
-            ExecuteCommand("show wifi passwords");
-            return;
-        }
-        if (lowerTrim == "ports" || lowerTrim == "open ports" || lowerTrim == "sockets") {
-            ExecuteCommand("show open ports");
-            return;
-        }
-        if (lowerTrim == "specs" || lowerTrim == "hardware" || lowerTrim == "system specs") {
-            ExecuteCommand("system specs");
-            return;
-        }
-
-        // ── Remote Repo & Document Intelligence Directives ──
-        if (lowerTrim == "repos" || lowerTrim == "my repos" || lowerTrim == "list repos" || lowerTrim == "show repos" || lowerTrim == "my repositories" || lowerTrim == "list my repos" || lowerTrim == "show my repos" || lowerTrim == "gh repo list" || lowerTrim == "github repos" || lowerTrim == "/repos") {
+        // Explicit slash command for repository viewer
+        if (lowerTrim == "/repos" || lowerTrim == "/repositories") {
             HandleReposCommand();
             return;
         }
@@ -4182,16 +3928,14 @@ public:
         bool wasAiTranslated = false;
 
         if (IsNaturalLanguageQuery(effectiveInput)) {
+            std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << effectiveInput << "'..." << C_RESET << "\n";
             transformed = TranslateNaturalLanguage(effectiveInput);
             if (!transformed.empty()) {
-                std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << effectiveInput << "'..." << C_RESET << "\n";
                 std::cout << "  " << C_GREEN << "✔ Transformed → " << C_BOLD << C_WHITE << transformed << C_RESET << "\n\n";
                 commandToRun = transformed;
                 wasAiTranslated = true;
             } else {
-                std::cout << "  " << C_YELLOW << "💡 Recognized natural language query: '" << effectiveInput << "'." << C_RESET << "\n";
-                std::cout << "  " << C_MUTED << "On-device Neural Core could not resolve this intent. Please try rephrasing." << C_RESET << "\n\n";
-                return;
+                commandToRun = effectiveInput;
             }
         }
 

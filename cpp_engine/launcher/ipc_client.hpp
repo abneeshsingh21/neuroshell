@@ -139,7 +139,7 @@ private:
 
     bool ConnectInternal() {
 #if defined(_WIN32)
-        if (WaitNamedPipeW(pipeName.c_str(), 100)) {
+        if (WaitNamedPipeW(pipeName.c_str(), 1000)) {
             hPipe = CreateFileW(
                 pipeName.c_str(),
                 GENERIC_READ | GENERIC_WRITE,
@@ -147,6 +147,8 @@ private:
                 0, NULL
             );
             if (hPipe != INVALID_HANDLE_VALUE) {
+                DWORD mode = PIPE_READMODE_MESSAGE;
+                SetNamedPipeHandleState(hPipe, &mode, NULL, NULL);
                 isConnected = true;
                 return true;
             }
@@ -288,7 +290,7 @@ public:
         TranslationResult res;
         std::string req = "{\"jsonrpc\":\"2.0\",\"method\":\"translate\",\"params\":{\"query\":\"" +
                           EscapeJSON(query) + "\",\"cwd\":\"" + EscapeJSON(cwd) + "\"},\"id\":2}";
-        std::string resp = SendRawRPC(req, 8000);
+        std::string resp = SendRawRPC(req, 25000);
         if (resp.empty() || resp.find("\"error\"") != std::string::npos) return res;
 
         res.command = ExtractStringField(resp, "command");
@@ -305,7 +307,7 @@ public:
         std::string req = "{\"jsonrpc\":\"2.0\",\"method\":\"diagnose_error\",\"params\":{\"command\":\"" +
                           EscapeJSON(command) + "\",\"output\":\"" + EscapeJSON(output) +
                           "\",\"exit_code\":" + std::to_string(exitCode) + ",\"cwd\":\"" + EscapeJSON(cwd) + "\"},\"id\":3}";
-        std::string resp = SendRawRPC(req, 8000);
+        std::string resp = SendRawRPC(req, 25000);
         if (resp.empty()) return res;
 
         res.category = ExtractStringField(resp, "category");
@@ -320,7 +322,7 @@ public:
         AgentPlanResult res;
         std::string req = "{\"jsonrpc\":\"2.0\",\"method\":\"agent_plan\",\"params\":{\"task\":\"" +
                           EscapeJSON(task) + "\",\"cwd\":\"" + EscapeJSON(cwd) + "\"},\"id\":4}";
-        std::string resp = SendRawRPC(req, 12000);
+        std::string resp = SendRawRPC(req, 30000);
         if (resp.empty()) return res;
 
         res.plan_id = ExtractStringField(resp, "plan_id");

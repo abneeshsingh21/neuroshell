@@ -1489,16 +1489,13 @@ class NeuroShell:
             self.tracer.end_trace(cid)
             return
 
-        # ── SmartOpen: intercept open/launch/clone/power before NLP mis-routes them ──
-        _SMART_PREFIXES = ("open ", "launch ", "start ", "run ", "navigate to ",
-                           "go to ", "browse ", "clone ", "download ", "get ",
-                           "zip ", "unzip ", "compress ", "extract ", "create zip ",
-                           "create a zip ", "create an zip ", "archive ")
+        # ── SmartOpen: intercept explicit desktop app / URL / folder opens ──
+        _SMART_PREFIXES = ("open ", "launch ", "browse ", "navigate to ", "go to ")
         _POWER_WORDS   = ("lock", "restart", "reboot", "shutdown", "shut down",
                           "sign out", "log out", "sleep", "lock screen",
                           "lock computer", "flush dns", "clear dns",
                           "screenshot", "take screenshot", "battery status",
-                          "check battery", "empty recycle bin", "my ip")
+                          "check battery", "empty recycle bin")
         if (
             any(lower.startswith(p) for p in _SMART_PREFIXES)
             or lower in _POWER_WORDS
@@ -2002,26 +1999,25 @@ class NeuroShell:
             self._handle_shell_command(result.command, self.tracer.start_trace())
             return
 
-        # ── 2. No smart match — fall back to native OS open ──
-        try:
-            os.startfile(target)  # Windows-native, no console flash
-            self.ui.print_info(f"  ✅ Attempting to open: {target}")
-        except OSError:
-            # Fallback for edge cases — hide the console window
-            import subprocess
-            si = subprocess.STARTUPINFO()
-            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            si.wShowWindow = 0  # SW_HIDE
+        # ── 2. Check if target is a real file or directory on disk ──
+        if os.path.exists(target):
             try:
-                subprocess.Popen(
-                    ["cmd.exe", "/c", "start", "", target],
-                    startupinfo=si,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-                self.ui.print_info(f"  ✅ Attempting to open: {target}")
-            except Exception as e:
-                self.ui.print_error(f"  ❌ Could not open '{target}': {e}")
-                self.ui.print_info("  💡 Tip: Type 'fix' to auto-fix that error")
+                os.startfile(target)  # Windows-native, no console flash
+                self.ui.print_info(f"  ✅ Opened: {target}")
+                return
+            except Exception:
+                pass
+
+        # ── 3. Fall back to dynamic AI translator ──
+        if hasattr(self, "translator") and self.translator:
+            trans = self.translator.translate(target)
+            if trans and trans.command:
+                self.ui.print_translation(trans)
+                if self.ui.confirm("Execute?"):
+                    self._handle_shell_command(trans.command, self.tracer.start_trace())
+                return
+
+        self.ui.print_error(f"  ❌ Could not resolve '{target}'.")
 
     def _handle_shell_command(self, command: str, cid: str):
         """Execute shell command through safety pipeline."""

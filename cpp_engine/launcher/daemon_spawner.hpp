@@ -99,14 +99,14 @@ private:
     }
 
 public:
-    static bool EnsureDaemonRunningSync(NeuroShell::IPC::NeuroIPCClient& ipc, int timeoutSeconds = 5) {
+    static bool EnsureDaemonRunningSync(NeuroShell::IPC::NeuroIPCClient& ipc, int timeoutSeconds = 20) {
         if (ipc.Ping()) return true;
 
         SpawnProcess();
 
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
         while (std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
             if (ipc.Ping()) return true;
         }
         return ipc.Ping();
@@ -120,7 +120,7 @@ public:
         }
 
         std::thread([&ipc]() {
-            EnsureDaemonRunningSync(ipc, 6);
+            EnsureDaemonRunningSync(ipc, 20);
             is_spawning_.store(false);
         }).detach();
     }
