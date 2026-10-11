@@ -59,3 +59,7 @@ github.com/
 name/
 neuroshell-web/
 .sixth/
+
+# Native AI Model Weights (Large binaries >100MB tracked in releases/Kaggle)
+*.onnx
+*.onnx.data

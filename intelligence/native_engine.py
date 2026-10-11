@@ -62,9 +62,11 @@ class NativeEngine:
         else:
             self.models_dir = Path(models_dir)
 
-        self.onnx_path = self.models_dir / "model.onnx"
+        int8_path = self.models_dir / "model_int8.onnx"
+        self.onnx_path = int8_path if int8_path.exists() else (self.models_dir / "model.onnx")
         self.db_path = self.models_dir / "action_vectors.db"
         self.catalog_path = self.models_dir / "canonical_recipes.json"
+        self.tokenizer_path = self.models_dir / "tokenizer.json"
 
         self._session = None
         self._tokenizer = None
@@ -105,7 +107,18 @@ class NativeEngine:
             except Exception as e:
                 _log.warning(f"ONNX session init note: {e}")
 
-        # 4. Load pre-computed vector database if available
+        # 4. Load native Tokenizer if available
+        if self.tokenizer_path.exists():
+            try:
+                from tokenizers import Tokenizer
+                self._tokenizer = Tokenizer.from_file(str(self.tokenizer_path))
+                self._tokenizer.enable_truncation(max_length=64)
+                self._tokenizer.enable_padding(length=64)
+                _log.info(f"Loaded Native Tokenizer from {self.tokenizer_path}")
+            except Exception as e:
+                _log.warning(f"Tokenizer load note: {e}")
+
+        # 5. Load pre-computed vector database if available
         if self.db_path.exists():
             try:
                 import numpy as np
@@ -314,10 +327,19 @@ class NativeEngine:
             return None
 
     def _tokenize(self, text: str) -> tuple[Any, Any]:
-        """Fast numpy tokenizer encoding."""
+        """Encodes text using the native Tokenizer or robust token hashing fallback."""
         import numpy as np
+
+        if self._tokenizer:
+            try:
+                encoding = self._tokenizer.encode(text)
+                input_ids = np.array([encoding.ids], dtype=np.int64)
+                attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
+                return input_ids, attention_mask
+            except Exception as e:
+                _log.debug(f"Tokenizer encode exception: {e}")
+
         words = text.lower().split()
-        # Simple robust token hashing for CPU inference test
         tokens = [hash(w) % 30000 for w in words][:64]
         if not tokens:
             tokens = [1]

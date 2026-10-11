@@ -54,8 +54,9 @@ print("\n[1/5] Building Windows MSI Installers...")
 # 1.1 Stage models/native_ai into dist for MSI harvesting
 models_src = ROOT_DIR / "models"
 if models_src.exists():
-    shutil.copytree(models_src, DIST_DIR / "models", dirs_exist_ok=True)
-    print("  ✓ Staged: models/native_ai into dist/ for installer bundling")
+    ignore_pattern = shutil.ignore_patterns("*.onnx.data", "model.onnx") if (models_src / "native_ai" / "model_int8.onnx").exists() else None
+    shutil.copytree(models_src, DIST_DIR / "models", dirs_exist_ok=True, ignore=ignore_pattern)
+    print("  ✓ Staged: models/native_ai (INT8 optimized) into dist/ for installer bundling")
 
 subprocess.run([
     "python", "scripts/build_windows_msi.py",
