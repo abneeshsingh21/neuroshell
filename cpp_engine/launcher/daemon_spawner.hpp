@@ -8,6 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <filesystem>
 #include "ipc_client.hpp"
 
 #if defined(_WIN32)
@@ -47,6 +48,32 @@ public:
                 return;
             }
 
+            std::wstring appDir;
+            wchar_t exeBuf[MAX_PATH * 2];
+            DWORD n = GetModuleFileNameW(nullptr, exeBuf, MAX_PATH * 2);
+            if (n > 0) {
+                std::filesystem::path p(exeBuf);
+                if (std::filesystem::exists(p.parent_path() / "core")) {
+                    appDir = p.parent_path().wstring();
+                } else if (std::filesystem::exists(p.parent_path().parent_path() / "core")) {
+                    appDir = p.parent_path().parent_path().wstring();
+                } else {
+                    appDir = p.parent_path().wstring();
+                }
+            }
+
+            std::wstring pythonExe = L"python";
+            if (!appDir.empty()) {
+                std::filesystem::path venvPy = std::filesystem::path(appDir) / ".venv" / "Scripts" / "python.exe";
+                if (std::filesystem::exists(venvPy)) {
+                    pythonExe = L"\"" + venvPy.wstring() + L"\"";
+                }
+            }
+
+            std::wstring cmd = pythonExe + L" -m core.ipc_server";
+            std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
+            cmdBuf.push_back(0);
+
             STARTUPINFOW si;
             PROCESS_INFORMATION pi;
             ZeroMemory(&si, sizeof(si));
@@ -54,13 +81,11 @@ public:
             si.dwFlags |= STARTF_USESHOWWINDOW;
             si.wShowWindow = SW_HIDE;
 
-            std::wstring cmd = L"python -m core.ipc_server";
-            std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
-            cmdBuf.push_back(0);
-
             BOOL success = CreateProcessW(
                 NULL, cmdBuf.data(), NULL, NULL, FALSE,
-                CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, NULL, &si, &pi
+                CREATE_NO_WINDOW | DETACHED_PROCESS, NULL,
+                appDir.empty() ? NULL : appDir.c_str(),
+                &si, &pi
             );
             if (success) {
                 CloseHandle(pi.hProcess);

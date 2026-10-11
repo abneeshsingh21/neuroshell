@@ -1326,8 +1326,8 @@ public:
 
 class EnterpriseTerminalHost {
 private:
-    std::string activeProvider = "groq";
-    std::string activeModel = "llama-3.3-70b-versatile";
+    std::string activeProvider = "native";
+    std::string activeModel = "embeddinggemma-2-270m";
     std::string activeTheme = "Cyberpunk Neon";
 
     PredictionEngine predictor;
@@ -2562,7 +2562,8 @@ public:
 
     void HandleSlashApiKey() {
         std::vector<MenuItem> providers = {
-            {"GROQ", "Ultra-Fast Cloud Inference (Default)", "groq"},
+            {"NATIVE", "Native On-Device AI (EmbeddingGemma 2 - 100% Offline Default)", "native"},
+            {"GROQ", "Ultra-Fast Cloud Inference", "groq"},
             {"OPENAI", "GPT-4o, GPT-4o-mini", "openai"},
             {"ANTHROPIC", "Claude 3.5 Sonnet", "anthropic"},
             {"GEMINI", "Google DeepMind 1.5 Flash / Pro", "gemini"},
@@ -2583,12 +2584,20 @@ public:
         if (choice < 0) return;
 
         MenuItem selected = providers[choice];
-        std::string defaultModel = "llama-3.3-70b-versatile";
+        std::string defaultModel = "embeddinggemma-2-270m";
+        if (selected.id == "groq") defaultModel = "llama-3.3-70b-versatile";
         if (selected.id == "openai") defaultModel = "gpt-4o-mini";
         if (selected.id == "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
         if (selected.id == "gemini") defaultModel = "gemini-1.5-flash";
         if (selected.id == "openrouter") defaultModel = "meta-llama/llama-3.3-70b-instruct";
         if (selected.id == "ollama") defaultModel = "phi3:mini";
+
+        if (selected.id == "native") {
+            SaveConfig("native", "embeddinggemma-2-270m");
+            std::cout << "  " << C_GREEN << "✅ Provider set to Native On-Device AI (100% Offline & Private). Zero API keys required!" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Default Model: embeddinggemma-2-270m" << C_RESET << "\n\n";
+            return;
+        }
 
         if (selected.id == "ollama") {
             SaveConfig("ollama", defaultModel);
@@ -2611,7 +2620,8 @@ public:
 
     void HandleSlashModel() {
         std::vector<MenuItem> models = {
-            {"llama-3.3-70b-versatile", "Groq Cloud • Ultra Fast (Recommended)", "llama-3.3-70b-versatile"},
+            {"embeddinggemma-2-270m", "Native On-Device EmbeddingGemma 2 (Default)", "embeddinggemma-2-270m"},
+            {"llama-3.3-70b-versatile", "Groq Cloud • Ultra Fast", "llama-3.3-70b-versatile"},
             {"gpt-4o-mini", "OpenAI • Efficient & Smart", "gpt-4o-mini"},
             {"claude-3-5-sonnet-20241022", "Anthropic • Best Coding Agent", "claude-3-5-sonnet-20241022"},
             {"gemini-1.5-flash", "Google • 1M Context Window", "gemini-1.5-flash"},
