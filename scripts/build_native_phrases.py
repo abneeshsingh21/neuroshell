@@ -34,9 +34,9 @@ additional_phrases = [
     ("restart wifi", "netsh interface set interface \"Wi-Fi\" disabled && netsh interface set interface \"Wi-Fi\" enabled", "nmcli radio wifi off && nmcli radio wifi on"),
 
     # IP & Network
-    ("my public ip", "curl -s https://ifconfig.me", "curl -s https://ifconfig.me"),
-    ("what is my public ip", "curl -s https://ifconfig.me", "curl -s https://ifconfig.me"),
-    ("show public ip", "curl -s https://ifconfig.me", "curl -s https://ifconfig.me"),
+    ("my public ip", "curl -s https://api.ipify.org", "curl -s https://api.ipify.org"),
+    ("what is my public ip", "curl -s https://api.ipify.org", "curl -s https://api.ipify.org"),
+    ("show public ip", "curl -s https://api.ipify.org", "curl -s https://api.ipify.org"),
     ("show local ip", "ipconfig", "ip a || ifconfig"),
     ("what is my ip", "ipconfig", "ip a || ifconfig"),
     ("show ip address", "ipconfig", "ip a || ifconfig"),

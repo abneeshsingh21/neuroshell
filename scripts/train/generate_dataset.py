@@ -632,8 +632,8 @@ RECIPES: list[Recipe] = [
         category="SYSTEM",
         canonical_nl="check free disk space on all mounted drives in human readable format",
         default_cmd="df -h",
-        powershell_cmd="Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used,@{Name='Size';Expression={$_.Free + $_.Used}}",
-        cmd_exe="wmic logicaldisk get caption,freespace,size",
+        powershell_cmd="Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize",
+        cmd_exe="powershell -NoProfile -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize\"",
         nl_templates=[
             "check free disk space on all mounted drives in human readable format",
             "how much hard drive space is left",
@@ -799,9 +799,9 @@ RECIPES: list[Recipe] = [
         action_id="net_get_public_ip",
         category="NETWORK",
         canonical_nl="show my public ip address",
-        default_cmd="curl -s https://ifconfig.me",
-        powershell_cmd="(Invoke-RestMethod -Uri https://ifconfig.me).Trim()",
-        cmd_exe="curl -s https://ifconfig.me",
+        default_cmd="curl -s https://api.ipify.org",
+        powershell_cmd="(Invoke-RestMethod -Uri https://api.ipify.org).Trim()",
+        cmd_exe="curl -s https://api.ipify.org",
         nl_templates=[
             "show my public ip address",
             "what is my external ip",

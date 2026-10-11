@@ -16,6 +16,9 @@ struct PhraseEntry {
     const char* unix_cmd;
 };
 
+constexpr const char* kDiskSpaceWin = "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize";
+constexpr const char* kMemUsageWin = "Get-CimInstance Win32_OperatingSystem | Select-Object @{N='Total(GB)';E={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}}, @{N='Free(GB)';E={[math]::Round($_.FreePhysicalMemory/1MB,2)}}, @{N='Used(GB)';E={[math]::Round(($_.TotalVisibleMemorySize - $_.FreePhysicalMemory)/1MB,2)}} | Format-Table -AutoSize";
+
 class NativePhraseDictionary {
 private:
     std::unordered_map<std::string, PhraseEntry> dictionary_;
@@ -61,7 +64,7 @@ public:
         dictionary_["read index.js"] = PhraseEntry{"type index.js", "cat index.js" };
         dictionary_["please free up port 3000"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :3000') do taskkill /F /PID %a", "lsof -ti:3000 | xargs kill -9" };
         dictionary_["please delete tests without asking"] = PhraseEntry{"del /f /q tests", "rm -rf tests" };
-        dictionary_["disk usage"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["disk usage"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please release port 27017"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :27017') do taskkill /F /PID %a", "lsof -ti:27017 | xargs kill -9" };
         dictionary_["transfer app.ts dist to {}"] = PhraseEntry{"move app.ts dist", "mv app.ts dist" };
         dictionary_["shell into container db"] = PhraseEntry{"docker exec -it db bash", "docker exec -it db bash" };
@@ -83,7 +86,7 @@ public:
         dictionary_["please look for text todo"] = PhraseEntry{"findstr /s /i \"TODO\" *.*", "grep -rnw . -e \"TODO\"" };
         dictionary_["please terminate process redis"] = PhraseEntry{"taskkill /IM redis /F", "pkill redis" };
         dictionary_["remove container backend"] = PhraseEntry{"docker rm backend", "docker rm backend" };
-        dictionary_["check hard drive"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["check hard drive"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please install node module tailwindcss"] = PhraseEntry{"npm install tailwindcss", "npm install tailwindcss" };
         dictionary_["print index.js"] = PhraseEntry{"type index.js", "cat index.js" };
         dictionary_["rename index.js dist to {}"] = PhraseEntry{"move index.js dist", "mv index.js dist" };
@@ -93,7 +96,7 @@ public:
         dictionary_["show all images"] = PhraseEntry{"docker images", "docker images" };
         dictionary_["please kill port 8000"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :8000') do taskkill /F /PID %a", "lsof -ti:8000 | xargs kill -9" };
         dictionary_["please destroy .git"] = PhraseEntry{"del /f /q .git", "rm -rf .git" };
-        dictionary_["can you show disk space"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you show disk space"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please generate directory tests"] = PhraseEntry{"mkdir tests", "mkdir -p tests" };
         dictionary_["trash test.py"] = PhraseEntry{"del test.py", "rm test.py" };
         dictionary_["remove build completely"] = PhraseEntry{"del /f /q build", "rm -rf build" };
@@ -227,7 +230,7 @@ public:
         dictionary_["please compile docker frontend"] = PhraseEntry{"docker build -t frontend .", "docker build -t frontend ." };
         dictionary_["mkdir venv"] = PhraseEntry{"mkdir venv", "mkdir -p venv" };
         dictionary_["please what is inside index.js"] = PhraseEntry{"type index.js", "cat index.js" };
-        dictionary_["please free space"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please free space"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please remove file styles.css"] = PhraseEntry{"del styles.css", "rm styles.css" };
         dictionary_["please open data.csv in terminal"] = PhraseEntry{"type data.csv", "cat data.csv" };
         dictionary_["mv config.json dist {}"] = PhraseEntry{"move config.json dist", "mv config.json dist" };
@@ -294,7 +297,7 @@ public:
         dictionary_["please terminate port 6379"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :6379') do taskkill /F /PID %a", "lsof -ti:6379 | xargs kill -9" };
         dictionary_["please show content of readme.md"] = PhraseEntry{"type README.md", "cat README.md" };
         dictionary_["please check repository status"] = PhraseEntry{"git status", "git status" };
-        dictionary_["please how much memory is free"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please how much memory is free"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["search for text import"] = PhraseEntry{"findstr /s /i \"import\" *.*", "grep -rnw . -e \"import\"" };
         dictionary_["drop main.py"] = PhraseEntry{"del main.py", "rm main.py" };
         dictionary_["please search codebase for api_key"] = PhraseEntry{"findstr /s /i \"api_key\" *.*", "grep -rnw . -e \"api_key\"" };
@@ -489,7 +492,7 @@ public:
         dictionary_["please search for text function"] = PhraseEntry{"findstr /s /i \"function\" *.*", "grep -rnw . -e \"function\"" };
         dictionary_["kill app docker"] = PhraseEntry{"taskkill /IM docker /F", "pkill docker" };
         dictionary_["please setup node project"] = PhraseEntry{"npm install", "npm install" };
-        dictionary_["memory stats"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["memory stats"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["can you show me the secret files"] = PhraseEntry{"dir /a", "ls -la" };
         dictionary_["duplicate index.js venv to {}"] = PhraseEntry{"copy index.js venv", "cp index.js venv" };
         dictionary_["please show logs for container alpine"] = PhraseEntry{"docker logs -f alpine", "docker logs -f alpine" };
@@ -570,7 +573,7 @@ public:
         dictionary_["please remove .git completely"] = PhraseEntry{"del /f /q .git", "rm -rf .git" };
         dictionary_["kill process on port 8080"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %a", "lsof -ti:8080 | xargs kill -9" };
         dictionary_["find the file app.ts"] = PhraseEntry{"dir /s /b app.ts", "find . -name app.ts" };
-        dictionary_["can you show memory"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you show memory"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["where is app.ts"] = PhraseEntry{"dir /s /b app.ts", "find . -name app.ts" };
         dictionary_["please docker logs frontend"] = PhraseEntry{"docker logs -f frontend", "docker logs -f frontend" };
         dictionary_["please close process redis"] = PhraseEntry{"taskkill /IM redis /F", "pkill redis" };
@@ -637,7 +640,7 @@ public:
         dictionary_["please remove dist completely"] = PhraseEntry{"del /f /q dist", "rm -rf dist" };
         dictionary_["please show logs for container ubuntu"] = PhraseEntry{"docker logs -f ubuntu", "docker logs -f ubuntu" };
         dictionary_["please cat server.js"] = PhraseEntry{"type server.js", "cat server.js" };
-        dictionary_["free memory"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["free memory"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["npm install pandas"] = PhraseEntry{"npm install pandas", "npm install pandas" };
         dictionary_["please open index.js in terminal"] = PhraseEntry{"type index.js", "cat index.js" };
         dictionary_["please search for text todo"] = PhraseEntry{"findstr /s /i \"TODO\" *.*", "grep -rnw . -e \"TODO\"" };
@@ -659,7 +662,7 @@ public:
         dictionary_["please add dev dependency numpy"] = PhraseEntry{"npm install -D numpy", "npm install -D numpy" };
         dictionary_["pip install react"] = PhraseEntry{"pip install react", "pip install react" };
         dictionary_["please create new folder assets"] = PhraseEntry{"mkdir assets", "mkdir -p assets" };
-        dictionary_["can you free memory"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you free memory"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["docker exec worker"] = PhraseEntry{"docker exec -it worker bash", "docker exec -it worker bash" };
         dictionary_["please view file logo.png"] = PhraseEntry{"type logo.png", "cat logo.png" };
         dictionary_["move index.js src to {}"] = PhraseEntry{"move index.js src", "mv index.js src" };
@@ -679,7 +682,7 @@ public:
         dictionary_["kill app redis"] = PhraseEntry{"taskkill /IM redis /F", "pkill redis" };
         dictionary_["please cat backup.zip"] = PhraseEntry{"type backup.zip", "cat backup.zip" };
         dictionary_["destroy container alpine"] = PhraseEntry{"docker rm alpine", "docker rm alpine" };
-        dictionary_["check memory usage"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["check memory usage"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["can you make python venv"] = PhraseEntry{"python -m venv venv", "python3 -m venv venv" };
         dictionary_["please delete logo.png"] = PhraseEntry{"del logo.png", "rm logo.png" };
         dictionary_["please push commits to remote"] = PhraseEntry{"git push", "git push" };
@@ -710,7 +713,7 @@ public:
         dictionary_["kill port 6379"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :6379') do taskkill /F /PID %a", "lsof -ti:6379 | xargs kill -9" };
         dictionary_["start dev server"] = PhraseEntry{"npm run dev", "npm run dev" };
         dictionary_["delete file styles.css"] = PhraseEntry{"del styles.css", "rm styles.css" };
-        dictionary_["please memory stats"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please memory stats"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please list running containers"] = PhraseEntry{"docker ps", "docker ps" };
         dictionary_["copy main.py venv to {}"] = PhraseEntry{"copy main.py venv", "cp main.py venv" };
         dictionary_["display app.ts"] = PhraseEntry{"type app.ts", "cat app.ts" };
@@ -809,7 +812,7 @@ public:
         dictionary_["move app.ts build to {}"] = PhraseEntry{"move app.ts build", "mv app.ts build" };
         dictionary_["build folder venv"] = PhraseEntry{"mkdir venv", "mkdir -p venv" };
         dictionary_["delete file app.ts"] = PhraseEntry{"del app.ts", "rm app.ts" };
-        dictionary_["can you check disk"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you check disk"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please delete build forcefully"] = PhraseEntry{"del /f /q build", "rm -rf build" };
         dictionary_["git branch"] = PhraseEntry{"git branch -a", "git branch -a" };
         dictionary_["please install flask as dev"] = PhraseEntry{"npm install -D flask", "npm install -D flask" };
@@ -858,7 +861,7 @@ public:
         dictionary_["please stop program java"] = PhraseEntry{"taskkill /IM java /F", "pkill java" };
         dictionary_["please add pip module express"] = PhraseEntry{"pip install express", "pip install express" };
         dictionary_["search file named logo.png"] = PhraseEntry{"dir /s /b logo.png", "find . -name logo.png" };
-        dictionary_["can you check ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you check ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please search file named test.py"] = PhraseEntry{"dir /s /b test.py", "find . -name test.py" };
         dictionary_["get rid of readme.md"] = PhraseEntry{"del README.md", "rm README.md" };
         dictionary_["kill app python"] = PhraseEntry{"taskkill /IM python /F", "pkill python" };
@@ -871,7 +874,7 @@ public:
         dictionary_["please run development mode"] = PhraseEntry{"npm run dev", "npm run dev" };
         dictionary_["git commit add feature"] = PhraseEntry{"git commit -m \"add feature\"", "git commit -m \"add feature\"" };
         dictionary_["please release port 4200"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :4200') do taskkill /F /PID %a", "lsof -ti:4200 | xargs kill -9" };
-        dictionary_["please check hard drive"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please check hard drive"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please nuke public"] = PhraseEntry{"del /f /q public", "rm -rf public" };
         dictionary_["run node server"] = PhraseEntry{"npm start", "npm start" };
         dictionary_["delete tests forcefully"] = PhraseEntry{"del /f /q tests", "rm -rf tests" };
@@ -884,7 +887,7 @@ public:
         dictionary_["drop config.json"] = PhraseEntry{"del config.json", "rm config.json" };
         dictionary_["force remove public"] = PhraseEntry{"del /f /q public", "rm -rf public" };
         dictionary_["please force quit postgres"] = PhraseEntry{"taskkill /IM postgres /F", "pkill postgres" };
-        dictionary_["please display ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please display ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please find the file data.csv"] = PhraseEntry{"dir /s /b data.csv", "find . -name data.csv" };
         dictionary_["search for server.js"] = PhraseEntry{"dir /s /b server.js", "find . -name server.js" };
         dictionary_["clean terminal"] = PhraseEntry{"cls", "clear" };
@@ -909,7 +912,7 @@ public:
         dictionary_["move to branch production"] = PhraseEntry{"git checkout production", "git checkout production" };
         dictionary_["please create directory dist"] = PhraseEntry{"mkdir dist", "mkdir -p dist" };
         dictionary_["please docker rm alpine"] = PhraseEntry{"docker rm alpine", "docker rm alpine" };
-        dictionary_["please disk usage"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please disk usage"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["delete docker redis"] = PhraseEntry{"docker rm redis", "docker rm redis" };
         dictionary_["kill port 3000"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :3000') do taskkill /F /PID %a", "lsof -ti:3000 | xargs kill -9" };
         dictionary_["git commit initial commit"] = PhraseEntry{"git commit -m \"initial commit\"", "git commit -m \"initial commit\"" };
@@ -1026,7 +1029,7 @@ public:
         dictionary_["please display index.js"] = PhraseEntry{"type index.js", "cat index.js" };
         dictionary_["please git checkout develop"] = PhraseEntry{"git checkout develop", "git checkout develop" };
         dictionary_["npm install react"] = PhraseEntry{"npm install react", "npm install react" };
-        dictionary_["please storage stats"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please storage stats"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["find string function"] = PhraseEntry{"findstr /s /i \"function\" *.*", "grep -rnw . -e \"function\"" };
         dictionary_["switch to branch main"] = PhraseEntry{"git checkout main", "git checkout main" };
         dictionary_["please send to origin"] = PhraseEntry{"git push", "git push" };
@@ -1238,12 +1241,12 @@ public:
         dictionary_["please terminate process chrome"] = PhraseEntry{"taskkill /IM chrome /F", "pkill chrome" };
         dictionary_["move app.ts dist to {}"] = PhraseEntry{"move app.ts dist", "mv app.ts dist" };
         dictionary_["please show git status"] = PhraseEntry{"git status", "git status" };
-        dictionary_["please system ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please system ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["change branch to feature/login"] = PhraseEntry{"git checkout feature/login", "git checkout feature/login" };
         dictionary_["cp app.ts build {}"] = PhraseEntry{"copy app.ts build", "cp app.ts build" };
         dictionary_["please create docker image alpine"] = PhraseEntry{"docker build -t alpine .", "docker build -t alpine ." };
         dictionary_["please delete src without asking"] = PhraseEntry{"del /f /q src", "rm -rf src" };
-        dictionary_["please how much storage is left"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please how much storage is left"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["force remove components"] = PhraseEntry{"del /f /q components", "rm -rf components" };
         dictionary_["delete readme.md"] = PhraseEntry{"del README.md", "rm README.md" };
         dictionary_["please create directory .git"] = PhraseEntry{"mkdir .git", "mkdir -p .git" };
@@ -1441,12 +1444,12 @@ public:
         dictionary_["please get rid of server.js"] = PhraseEntry{"del server.js", "rm server.js" };
         dictionary_["kill process on port 8000"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :8000') do taskkill /F /PID %a", "lsof -ti:8000 | xargs kill -9" };
         dictionary_["create docker image redis"] = PhraseEntry{"docker build -t redis .", "docker build -t redis ." };
-        dictionary_["can you system ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
-        dictionary_["can you check hard drive"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you system ram"] = PhraseEntry{kMemUsageWin, "free -m" };
+        dictionary_["can you check hard drive"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["duplicate app.ts build to {}"] = PhraseEntry{"copy app.ts build", "cp app.ts build" };
         dictionary_["please terminate port 5000"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :5000') do taskkill /F /PID %a", "lsof -ti:5000 | xargs kill -9" };
         dictionary_["move readme.md venv to {}"] = PhraseEntry{"move README.md venv", "mv README.md venv" };
-        dictionary_["how much memory is free"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["how much memory is free"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please erase file data.csv"] = PhraseEntry{"del data.csv", "rm data.csv" };
         dictionary_["please docker build backend"] = PhraseEntry{"docker build -t backend .", "docker build -t backend ." };
         dictionary_["please kill port 6379"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :6379') do taskkill /F /PID %a", "lsof -ti:6379 | xargs kill -9" };
@@ -1484,7 +1487,7 @@ public:
         dictionary_["please find readme.md"] = PhraseEntry{"dir /s /b README.md", "find . -name README.md" };
         dictionary_["new dir venv"] = PhraseEntry{"mkdir venv", "mkdir -p venv" };
         dictionary_["please free up port 8080"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :8080') do taskkill /F /PID %a", "lsof -ti:8080 | xargs kill -9" };
-        dictionary_["can you how much storage is left"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you how much storage is left"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["search project for console.log"] = PhraseEntry{"findstr /s /i \"console.log\" *.*", "grep -rnw . -e \"console.log\"" };
         dictionary_["search codebase for console.log"] = PhraseEntry{"findstr /s /i \"console.log\" *.*", "grep -rnw . -e \"console.log\"" };
         dictionary_["find styles.css"] = PhraseEntry{"dir /s /b styles.css", "find . -name styles.css" };
@@ -1581,7 +1584,7 @@ public:
         dictionary_["install node module requests"] = PhraseEntry{"npm install requests", "npm install requests" };
         dictionary_["please install node module requests"] = PhraseEntry{"npm install requests", "npm install requests" };
         dictionary_["rename config.json build to {}"] = PhraseEntry{"move config.json build", "mv config.json build" };
-        dictionary_["free space"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["free space"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please search file named data.csv"] = PhraseEntry{"dir /s /b data.csv", "find . -name data.csv" };
         dictionary_["shutdown container worker"] = PhraseEntry{"docker stop worker", "docker stop worker" };
         dictionary_["please mkdir .git"] = PhraseEntry{"mkdir .git", "mkdir -p .git" };
@@ -1604,7 +1607,7 @@ public:
         dictionary_["please get npm package tailwindcss"] = PhraseEntry{"npm install tailwindcss", "npm install tailwindcss" };
         dictionary_["please new dir public"] = PhraseEntry{"mkdir public", "mkdir -p public" };
         dictionary_["please get rid of data.csv"] = PhraseEntry{"del data.csv", "rm data.csv" };
-        dictionary_["check disk"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["check disk"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please kill port 5432"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :5432') do taskkill /F /PID %a", "lsof -ti:5432 | xargs kill -9" };
         dictionary_["can you start node app"] = PhraseEntry{"npm start", "npm start" };
         dictionary_["add package tailwindcss"] = PhraseEntry{"npm install tailwindcss", "npm install tailwindcss" };
@@ -1661,14 +1664,14 @@ public:
         dictionary_["please terminate process python"] = PhraseEntry{"taskkill /IM python /F", "pkill python" };
         dictionary_["create directory components"] = PhraseEntry{"mkdir components", "mkdir -p components" };
         dictionary_["please clone repo git@github.com:user/repo.git"] = PhraseEntry{"git clone git@github.com:user/repo.git", "git clone git@github.com:user/repo.git" };
-        dictionary_["can you storage stats"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you storage stats"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please install python package typescript"] = PhraseEntry{"pip install typescript", "pip install typescript" };
         dictionary_["please docker list all"] = PhraseEntry{"docker ps -a", "docker ps -a" };
         dictionary_["cp index.js dist {}"] = PhraseEntry{"copy index.js dist", "cp index.js dist" };
         dictionary_["search for app.ts"] = PhraseEntry{"dir /s /b app.ts", "find . -name app.ts" };
         dictionary_["can you pull from remote"] = PhraseEntry{"git pull", "git pull" };
         dictionary_["please view docker logs ubuntu"] = PhraseEntry{"docker logs -f ubuntu", "docker logs -f ubuntu" };
-        dictionary_["check ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["check ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["look for text console.log"] = PhraseEntry{"findstr /s /i \"console.log\" *.*", "grep -rnw . -e \"console.log\"" };
         dictionary_["find all occurrences of password"] = PhraseEntry{"findstr /s /i \"password\" *.*", "grep -rnw . -e \"password\"" };
         dictionary_["move index.js build to {}"] = PhraseEntry{"move index.js build", "mv index.js build" };
@@ -1725,7 +1728,7 @@ public:
         dictionary_["mkdir src"] = PhraseEntry{"mkdir src", "mkdir -p src" };
         dictionary_["new dir .git"] = PhraseEntry{"mkdir .git", "mkdir -p .git" };
         dictionary_["commit with message add feature"] = PhraseEntry{"git commit -m \"add feature\"", "git commit -m \"add feature\"" };
-        dictionary_["can you check memory usage"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you check memory usage"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please are there any uncommitted changes"] = PhraseEntry{"git status", "git status" };
         dictionary_["create directory build"] = PhraseEntry{"mkdir build", "mkdir -p build" };
         dictionary_["please add dev dependency flask"] = PhraseEntry{"npm install -D flask", "npm install -D flask" };
@@ -1750,7 +1753,7 @@ public:
         dictionary_["please create docker image backend"] = PhraseEntry{"docker build -t backend .", "docker build -t backend ." };
         dictionary_["duplicate main.py venv to {}"] = PhraseEntry{"copy main.py venv", "cp main.py venv" };
         dictionary_["install python package pandas"] = PhraseEntry{"pip install pandas", "pip install pandas" };
-        dictionary_["please drive capacity"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please drive capacity"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["show logs for container worker"] = PhraseEntry{"docker logs -f worker", "docker logs -f worker" };
         dictionary_["please create new folder public"] = PhraseEntry{"mkdir public", "mkdir -p public" };
         dictionary_["please get rid of styles.css"] = PhraseEntry{"del styles.css", "rm styles.css" };
@@ -1782,7 +1785,7 @@ public:
         dictionary_["docker build redis"] = PhraseEntry{"docker build -t redis .", "docker build -t redis ." };
         dictionary_["please search codebase for fixme"] = PhraseEntry{"findstr /s /i \"FIXME\" *.*", "grep -rnw . -e \"FIXME\"" };
         dictionary_["please force quit chrome"] = PhraseEntry{"taskkill /IM chrome /F", "pkill chrome" };
-        dictionary_["can you display ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you display ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please look for text password"] = PhraseEntry{"findstr /s /i \"password\" *.*", "grep -rnw . -e \"password\"" };
         dictionary_["please delete the file named main.py"] = PhraseEntry{"del main.py", "rm main.py" };
         dictionary_["create directory tests"] = PhraseEntry{"mkdir tests", "mkdir -p tests" };
@@ -1835,7 +1838,7 @@ public:
         dictionary_["release port 3000"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :3000') do taskkill /F /PID %a", "lsof -ti:3000 | xargs kill -9" };
         dictionary_["please create new folder components"] = PhraseEntry{"mkdir components", "mkdir -p components" };
         dictionary_["force delete .git"] = PhraseEntry{"del /f /q .git", "rm -rf .git" };
-        dictionary_["please free memory"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please free memory"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["generate directory components"] = PhraseEntry{"mkdir components", "mkdir -p components" };
         dictionary_["view docker logs db"] = PhraseEntry{"docker logs -f db", "docker logs -f db" };
         dictionary_["mv readme.md venv {}"] = PhraseEntry{"move README.md venv", "mv README.md venv" };
@@ -1851,7 +1854,7 @@ public:
         dictionary_["please find all occurrences of function"] = PhraseEntry{"findstr /s /i \"function\" *.*", "grep -rnw . -e \"function\"" };
         dictionary_["please build folder tests"] = PhraseEntry{"mkdir tests", "mkdir -p tests" };
         dictionary_["find test.py"] = PhraseEntry{"dir /s /b test.py", "find . -name test.py" };
-        dictionary_["can you disk usage"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you disk usage"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please find the file styles.css"] = PhraseEntry{"dir /s /b styles.css", "find . -name styles.css" };
         dictionary_["please change branch to develop"] = PhraseEntry{"git checkout develop", "git checkout develop" };
         dictionary_["please make folder src"] = PhraseEntry{"mkdir src", "mkdir -p src" };
@@ -1881,7 +1884,7 @@ public:
         dictionary_["transfer config.json node_modules to {}"] = PhraseEntry{"move config.json node_modules", "mv config.json node_modules" };
         dictionary_["change branch to master"] = PhraseEntry{"git checkout master", "git checkout master" };
         dictionary_["can you list all files recursively"] = PhraseEntry{"dir /s /a", "ls -laR" };
-        dictionary_["please show disk space"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please show disk space"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["trash config.json"] = PhraseEntry{"del config.json", "rm config.json" };
         dictionary_["please install node modules"] = PhraseEntry{"npm install", "npm install" };
         dictionary_["please delete directory public and all contents"] = PhraseEntry{"del /f /q public", "rm -rf public" };
@@ -1937,7 +1940,7 @@ public:
         dictionary_["please run python tests"] = PhraseEntry{"pytest", "pytest" };
         dictionary_["read test.py"] = PhraseEntry{"type test.py", "cat test.py" };
         dictionary_["cp main.py build {}"] = PhraseEntry{"copy main.py build", "cp main.py build" };
-        dictionary_["can you how much memory is free"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you how much memory is free"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please remove file server.js"] = PhraseEntry{"del server.js", "rm server.js" };
         dictionary_["generate directory build"] = PhraseEntry{"mkdir build", "mkdir -p build" };
         dictionary_["display data.csv"] = PhraseEntry{"type data.csv", "cat data.csv" };
@@ -1952,10 +1955,10 @@ public:
         dictionary_["show dotfiles"] = PhraseEntry{"dir /a", "ls -la" };
         dictionary_["please commit with message clean up"] = PhraseEntry{"git commit -m \"clean up\"", "git commit -m \"clean up\"" };
         dictionary_["list everything"] = PhraseEntry{"dir /s /a", "ls -laR" };
-        dictionary_["can you free space"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you free space"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["add dev dependency react"] = PhraseEntry{"npm install -D react", "npm install -D react" };
         dictionary_["delete src without asking"] = PhraseEntry{"del /f /q src", "rm -rf src" };
-        dictionary_["can you drive capacity"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["can you drive capacity"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["mv main.py dist {}"] = PhraseEntry{"move main.py dist", "mv main.py dist" };
         dictionary_["please docker logs worker"] = PhraseEntry{"docker logs -f worker", "docker logs -f worker" };
         dictionary_["mv config.json build {}"] = PhraseEntry{"move config.json build", "mv config.json build" };
@@ -2019,7 +2022,7 @@ public:
         dictionary_["mkdir assets"] = PhraseEntry{"mkdir assets", "mkdir -p assets" };
         dictionary_["please look for file server.js"] = PhraseEntry{"dir /s /b server.js", "find . -name server.js" };
         dictionary_["please search for backup.zip"] = PhraseEntry{"dir /s /b backup.zip", "find . -name backup.zip" };
-        dictionary_["drive capacity"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["drive capacity"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["cp main.py venv {}"] = PhraseEntry{"copy main.py venv", "cp main.py venv" };
         dictionary_["please open bash in backend"] = PhraseEntry{"docker exec -it backend bash", "docker exec -it backend bash" };
         dictionary_["can you setup node project"] = PhraseEntry{"npm install", "npm install" };
@@ -2057,7 +2060,7 @@ public:
         dictionary_["erase file server.js"] = PhraseEntry{"del server.js", "rm server.js" };
         dictionary_["git commit refactor code"] = PhraseEntry{"git commit -m \"refactor code\"", "git commit -m \"refactor code\"" };
         dictionary_["save changes as refactor code"] = PhraseEntry{"git commit -m \"refactor code\"", "git commit -m \"refactor code\"" };
-        dictionary_["please check memory usage"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please check memory usage"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please kill process on port 3306"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :3306') do taskkill /F /PID %a", "lsof -ti:3306 | xargs kill -9" };
         dictionary_["grep import"] = PhraseEntry{"findstr /s /i \"import\" *.*", "grep -rnw . -e \"import\"" };
         dictionary_["rename app.ts venv to {}"] = PhraseEntry{"move app.ts venv", "mv app.ts venv" };
@@ -2090,7 +2093,7 @@ public:
         dictionary_["create virtual env"] = PhraseEntry{"python -m venv venv", "python3 -m venv venv" };
         dictionary_["please what docker containers are running"] = PhraseEntry{"docker ps", "docker ps" };
         dictionary_["forcefully remove src"] = PhraseEntry{"del /f /q src", "rm -rf src" };
-        dictionary_["show disk space"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["show disk space"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["please forcefully remove public"] = PhraseEntry{"del /f /q public", "rm -rf public" };
         dictionary_["please git push origin"] = PhraseEntry{"git push", "git push" };
         dictionary_["force remove .git"] = PhraseEntry{"del /f /q .git", "rm -rf .git" };
@@ -2117,7 +2120,7 @@ public:
         dictionary_["please delete public forcefully"] = PhraseEntry{"del /f /q public", "rm -rf public" };
         dictionary_["generate directory tests"] = PhraseEntry{"mkdir tests", "mkdir -p tests" };
         dictionary_["please cat test.py"] = PhraseEntry{"type test.py", "cat test.py" };
-        dictionary_["can you memory stats"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["can you memory stats"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please close process java"] = PhraseEntry{"taskkill /IM java /F", "pkill java" };
         dictionary_["can you remove unused docker data"] = PhraseEntry{"docker system prune -a", "docker system prune -a" };
         dictionary_["can you what docker containers are running"] = PhraseEntry{"docker ps", "docker ps" };
@@ -2250,7 +2253,7 @@ public:
         dictionary_["new dir assets"] = PhraseEntry{"mkdir assets", "mkdir -p assets" };
         dictionary_["show content of styles.css"] = PhraseEntry{"type styles.css", "cat styles.css" };
         dictionary_["please build image backend"] = PhraseEntry{"docker build -t backend .", "docker build -t backend ." };
-        dictionary_["display ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["display ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["get python lib flask"] = PhraseEntry{"pip install flask", "pip install flask" };
         dictionary_["please destroy node_modules"] = PhraseEntry{"del /f /q node_modules", "rm -rf node_modules" };
         dictionary_["search codebase for todo"] = PhraseEntry{"findstr /s /i \"TODO\" *.*", "grep -rnw . -e \"TODO\"" };
@@ -2335,7 +2338,7 @@ public:
         dictionary_["compile docker worker"] = PhraseEntry{"docker build -t worker .", "docker build -t worker ." };
         dictionary_["delete directory components and all contents"] = PhraseEntry{"del /f /q components", "rm -rf components" };
         dictionary_["please force quit java"] = PhraseEntry{"taskkill /IM java /F", "pkill java" };
-        dictionary_["storage stats"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["storage stats"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["delete the file named logo.png"] = PhraseEntry{"del logo.png", "rm logo.png" };
         dictionary_["find all occurrences of class"] = PhraseEntry{"findstr /s /i \"class\" *.*", "grep -rnw . -e \"class\"" };
         dictionary_["git checkout master"] = PhraseEntry{"git checkout master", "git checkout master" };
@@ -2420,17 +2423,17 @@ public:
         dictionary_["please search for readme.md"] = PhraseEntry{"dir /s /b README.md", "find . -name README.md" };
         dictionary_["create directory dist"] = PhraseEntry{"mkdir dist", "mkdir -p dist" };
         dictionary_["delete directory .git and all contents"] = PhraseEntry{"del /f /q .git", "rm -rf .git" };
-        dictionary_["how much storage is left"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["how much storage is left"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["force quit python"] = PhraseEntry{"taskkill /IM python /F", "pkill python" };
         dictionary_["terminate port 6379"] = PhraseEntry{"FOR /F \"tokens=5\" %a in ('netstat -aon ^| findstr :6379') do taskkill /F /PID %a", "lsof -ti:6379 | xargs kill -9" };
         dictionary_["switch to branch develop"] = PhraseEntry{"git checkout develop", "git checkout develop" };
         dictionary_["please stop program postgres"] = PhraseEntry{"taskkill /IM postgres /F", "pkill postgres" };
-        dictionary_["show memory"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
-        dictionary_["please show memory"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["show memory"] = PhraseEntry{kMemUsageWin, "free -m" };
+        dictionary_["please show memory"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["delete venv without asking"] = PhraseEntry{"del /f /q venv", "rm -rf venv" };
         dictionary_["clone app.ts node_modules into {}"] = PhraseEntry{"copy app.ts node_modules", "cp app.ts node_modules" };
         dictionary_["commit with message refactor code"] = PhraseEntry{"git commit -m \"refactor code\"", "git commit -m \"refactor code\"" };
-        dictionary_["please check ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["please check ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["please search codebase for password"] = PhraseEntry{"findstr /s /i \"password\" *.*", "grep -rnw . -e \"password\"" };
         dictionary_["force remove build"] = PhraseEntry{"del /f /q build", "rm -rf build" };
         dictionary_["get python lib tailwindcss"] = PhraseEntry{"pip install tailwindcss", "pip install tailwindcss" };
@@ -2508,7 +2511,7 @@ public:
         dictionary_["please kill process postgres"] = PhraseEntry{"taskkill /IM postgres /F", "pkill postgres" };
         dictionary_["can you download latest code"] = PhraseEntry{"git pull", "git pull" };
         dictionary_["cat readme.md"] = PhraseEntry{"type README.md", "cat README.md" };
-        dictionary_["system ram"] = PhraseEntry{"systeminfo | findstr Memory", "free -m" };
+        dictionary_["system ram"] = PhraseEntry{kMemUsageWin, "free -m" };
         dictionary_["move config.json venv to {}"] = PhraseEntry{"move config.json venv", "mv config.json venv" };
         dictionary_["please destroy container db"] = PhraseEntry{"docker rm db", "docker rm db" };
         dictionary_["please force remove assets"] = PhraseEntry{"del /f /q assets", "rm -rf assets" };
@@ -2524,7 +2527,7 @@ public:
         dictionary_["please where is logo.png"] = PhraseEntry{"dir /s /b logo.png", "find . -name logo.png" };
         dictionary_["find file index.js"] = PhraseEntry{"dir /s /b index.js", "find . -name index.js" };
         dictionary_["docker build db"] = PhraseEntry{"docker build -t db .", "docker build -t db ." };
-        dictionary_["please check disk"] = PhraseEntry{"wmic logicaldisk get size,freespace,caption", "df -h" };
+        dictionary_["please check disk"] = PhraseEntry{kDiskSpaceWin, "df -h" };
         dictionary_["save changes as wip"] = PhraseEntry{"git commit -m \"wip\"", "git commit -m \"wip\"" };
         dictionary_["duplicate index.js dist to {}"] = PhraseEntry{"copy index.js dist", "cp index.js dist" };
         dictionary_["nuke dist"] = PhraseEntry{"del /f /q dist", "rm -rf dist" };

@@ -501,8 +501,7 @@ WINDOWS_OVERRIDES = {
 
     # ── Advanced monitoring (Windows) ──
     r"(?:monitor|watch)\s+(?:cpu|system)\s+(?:usage\s+)?(?:in\s+)?(?:real[- ]?time|live)": 'powershell -NoProfile -Command "while($true){Get-Process|Sort CPU -Desc|Select -First 5 Name,CPU,@{N=''MB'';E={[math]::Round($_.WS/1MB)}};Start-Sleep 2;Clear-Host}"',
-    r"(?:show|find)\s+(?:process(?:es)?\s+)?(?:using|on)\s+port\s+(\d+)": "netstat -ano | findstr :{0}",
-    r"(?:show)\s+(?:top|highest)\s+(\d+)\s+(?:cpu|memory|ram)\s+(?:consuming\s+)?processes?": 'powershell -NoProfile -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First {0} Name, CPU, @{N=''RAM_MB'';E={[math]::Round($_.WorkingSet/1MB,1)}}"',
+    r"(?:show)\s+(?:top|highest)\s+(\d+)\s+(?:cpu|memory|ram)\s+(?:consuming\s+)?processes?": 'powershell -NoProfile -Command "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First {0} Name, Id, @{N=\'Memory(MB)\';E={[math]::Round($_.WorkingSet64/1MB, 2)}}, @{N=\'CPU(s)\';E={[math]::Round($_.CPU, 2)}} | Format-Table -AutoSize"',
     r"(?:monitor|watch)\s+(?:disk\s+)?(?:io|i/o)\s+(?:in\s+)?(?:real[- ]?time|live)?": 'powershell -NoProfile -Command "Get-Counter ''\\PhysicalDisk(*)\\Disk Reads/sec'',''\\PhysicalDisk(*)\\Disk Writes/sec'' -SampleInterval 1 -MaxSamples 5"',
     r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:days?)": 'powershell -NoProfile -Command "Get-ChildItem -Recurse | Where-Object {$_.LastWriteTime -gt (Get-Date).AddDays(-{0})} | Select-Object FullName, LastWriteTime"',
     r"(?:show|find)\s+(?:files?\s+)?(?:modified|changed)\s+(?:in\s+)?(?:the\s+)?(?:last\s+)?(\d+)\s+(?:hours?)": 'powershell -NoProfile -Command "Get-ChildItem -Recurse | Where-Object {$_.LastWriteTime -gt (Get-Date).AddHours(-{0})} | Select-Object FullName, LastWriteTime"',
@@ -741,12 +740,12 @@ class Translator:
         # 4. Try 100% Native Autonomous Neural Core (EmbeddingGemma 2)
         # Handles compound multi-step operations, slot extraction, and cross-platform synthesis
         native_match = self._try_native_engine(user_input_clean)
-        if native_match and native_match.confidence >= 0.70:
+        if native_match and native_match.confidence >= 0.55:
             return native_match
 
         # 4.5. Try 2554+ Offline Phrase Dictionary (TF-IDF Cosine Matcher) as fallback
         phrase_match = self._try_phrase_dictionary(user_input_clean)
-        if phrase_match:
+        if phrase_match and phrase_match.confidence >= 0.70:
             return phrase_match
 
         # 4.6. If native match has lower confidence, still use if available over generic fallback
@@ -800,7 +799,7 @@ class Translator:
                 self._phrase_dict = PhraseDictionary()
                 self._phrase_dict.load()
 
-            match = self._phrase_dict.translate(user_input, threshold=0.45)
+            match = self._phrase_dict.translate(user_input, threshold=0.70)
             if match and match.get("command"):
                 return TranslationResult(
                     command=match["command"],
@@ -893,11 +892,12 @@ class Translator:
             command = tpl
             if "{" in command and "}" in command and m.groups():
                 try:
-                    if re.search(r"\{\d+\}", command):
-                        # Safety gate: reject if any captured group contains shell metacharacters
-                        if any(self._has_unsafe_local_chars(g) for g in m.groups() if g):
-                            return None
-                        command = command.format(*m.groups())
+                    # Safety gate: reject if any captured group contains shell metacharacters
+                    if any(self._has_unsafe_local_chars(g) for g in m.groups() if g):
+                        return None
+                    for i, g in enumerate(m.groups()):
+                        if g is not None:
+                            command = command.replace(f"{{{i}}}", str(g))
                 except Exception:
                     pass
             command = re.sub(r'\s+', ' ', command).strip()

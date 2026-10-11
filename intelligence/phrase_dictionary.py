@@ -137,6 +137,13 @@ class PhraseDictionary:
         if best_score < threshold or best_idx < 0:
             return None
 
+        # Guard against false positives: require meaningful token overlap
+        matched_tokens = set(_tokenize(self._phrases[best_idx][0]))
+        query_token_set = set(toks)
+        overlap = len(query_token_set & matched_tokens)
+        if len(query_token_set) > 1 and (overlap / len(query_token_set)) < 0.5:
+            return None
+
         eng, cmd = _resolve_platform_cmd(self._phrases[best_idx])
         return {
             "command": cmd,

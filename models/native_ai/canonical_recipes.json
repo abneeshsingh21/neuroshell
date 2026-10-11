@@ -224,40 +224,40 @@
     "category": "PROCESS",
     "canonical_nl": "show top 5 memory consuming processes",
     "default_cmd": "ps aux --sort=-%mem | head -n 6",
-    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 -Property Name,Id,WorkingSet64",
+    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 Name, Id, @{N='Memory(MB)';E={[math]::Round($_.WorkingSet64/1MB, 2)}} | Format-Table -AutoSize",
     "cmd_exe": "tasklist /fi \"memusage gt 100000\"",
     "is_destructive": false,
-    "explanation": "Sorts all active processes by resident memory footprint and displays top 5."
+    "explanation": "Sorts all active processes by resident memory footprint and displays top 5 in formatted MB."
   },
   {
     "action_id": "proc_top_cpu",
     "category": "PROCESS",
     "canonical_nl": "show top 5 cpu consuming processes",
     "default_cmd": "ps aux --sort=-%cpu | head -n 6",
-    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -Property Name,Id,CPU",
+    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 Name, Id, @{N='CPU(s)';E={[math]::Round($_.CPU, 2)}} | Format-Table -AutoSize",
     "cmd_exe": "tasklist",
     "is_destructive": false,
-    "explanation": "Lists processes sorted in descending order of CPU load percentage."
+    "explanation": "Lists top 5 processes sorted in descending order of CPU load."
   },
   {
     "action_id": "sys_free_disk_space",
     "category": "SYSTEM",
     "canonical_nl": "check free disk space on all mounted drives in human readable format",
     "default_cmd": "df -h",
-    "powershell_cmd": "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used,@{Name='Size';Expression={$_.Free + $_.Used}}",
-    "cmd_exe": "wmic logicaldisk get caption,freespace,size",
+    "powershell_cmd": "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize",
+    "cmd_exe": "powershell -NoProfile -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize\"",
     "is_destructive": false,
-    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes."
+    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes in human-readable GB table."
   },
   {
     "action_id": "sys_memory_usage",
     "category": "SYSTEM",
     "canonical_nl": "show current ram memory usage in human readable format",
     "default_cmd": "free -h",
-    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{Name='TotalGB';Expression={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}},@{Name='FreeGB';Expression={[math]::Round($_.FreePhysicalMemory/1MB,2)}}",
+    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{N='Total(GB)';E={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}}, @{N='Free(GB)';E={[math]::Round($_.FreePhysicalMemory/1MB,2)}}, @{N='Used(GB)';E={[math]::Round(($_.TotalVisibleMemorySize - $_.FreePhysicalMemory)/1MB,2)}} | Format-Table -AutoSize",
     "cmd_exe": "systeminfo | findstr /C:\"Total Physical Memory\" /C:\"Available Physical Memory\"",
     "is_destructive": false,
-    "explanation": "Displays total, used, free, and cached system RAM in gigabytes/megabytes."
+    "explanation": "Displays total, used, free, and cached system RAM in gigabytes table."
   },
   {
     "action_id": "fs_find_delete_logs_older_30d",
@@ -274,7 +274,7 @@
     "category": "FILESYSTEM",
     "canonical_nl": "find all files larger than 100MB and sort by size",
     "default_cmd": "find . -type f -size +100M -exec ls -lh {} + | sort -k5 -rh",
-    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name,Length",
+    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name, @{N='Size(MB)';E={[math]::Round($_.Length/1MB, 2)}} | Format-Table -AutoSize",
     "cmd_exe": "forfiles /S /M * /C \"cmd /c if @fsize GEQ 104857600 echo @path @fsize\"",
     "is_destructive": false,
     "explanation": "Scans directory tree for files exceeding 100 megabytes and sorts them descending."

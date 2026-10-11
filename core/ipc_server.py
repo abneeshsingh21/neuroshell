@@ -609,6 +609,8 @@ if __name__ == "__main__":
     from main import NeuroShell
 
     app = NeuroShell()
+    if hasattr(app, "wait_for_modules"):
+        app.wait_for_modules(timeout=15.0)
     server = NamedPipeServer(app)
     server.start()
     try:

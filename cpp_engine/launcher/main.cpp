@@ -93,7 +93,7 @@ namespace fs = std::filesystem;
 #define C_MAGENTA "\033[38;2;192;132;252m"
 #define C_GREEN   "\033[38;2;74;222;128m"
 #define C_YELLOW  "\033[38;2;251;191;36m"
-#define C_RED     "\033[38;2;248;113;113m"
+#define C_RED     "\033[91m\033[38;2;248;113;113m"
 #define C_BG_RED  "\033[48;2;239;68;68;38;2;255;255;255m"
 #define C_MUTED   "\033[38;2;100;116;139m"
 #define C_WHITE   "\033[38;2;241;245;249m"
@@ -231,6 +231,14 @@ public:
             GetConsoleMode(hIn, &origInMode);
             DWORD dwInMode = origInMode | ENABLE_VIRTUAL_TERMINAL_INPUT;
             SetConsoleMode(hIn, dwInMode);
+        }
+
+        HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+        if (hErr != INVALID_HANDLE_VALUE) {
+            DWORD origErrMode = 0;
+            if (GetConsoleMode(hErr, &origErrMode)) {
+                SetConsoleMode(hErr, origErrMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
         }
 #else
         struct sigaction sa;
@@ -1159,30 +1167,54 @@ public:
         // ever reach the viewport (previously output was displayed raw and
         // only the recorded copy was masked).
         auto emit = [&lineFilter](std::string& pending, const char* data, size_t len,
-                                  std::string& rolling, std::mutex& lock, size_t maxCapture) {
+                                  std::string& rolling, std::mutex& lock, size_t maxCapture, bool isStderr = false) {
             pending.append(data, len);
             size_t nl;
             while ((nl = pending.find('\n')) != std::string::npos) {
                 std::string line = pending.substr(0, nl + 1);
                 pending.erase(0, nl + 1);
                 if (lineFilter) line = lineFilter(line);
-                std::cout << line << std::flush;
-                std::lock_guard<std::mutex> lk(lock);
-                rolling += line;
-                if (rolling.size() > maxCapture * 2) {
-                    rolling.erase(0, rolling.size() - maxCapture);
+                {
+                    std::lock_guard<std::mutex> lk(lock);
+                    if (isStderr) {
+                        std::string text = line;
+                        std::string eol = "";
+                        while (!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
+                            eol = text.back() + eol;
+                            text.pop_back();
+                        }
+                        std::cout << C_RED << text << C_RESET << eol << std::flush;
+                    } else {
+                        std::cout << line << std::flush;
+                    }
+                    rolling += line;
+                    if (rolling.size() > maxCapture * 2) {
+                        rolling.erase(0, rolling.size() - maxCapture);
+                    }
                 }
             }
         };
         auto flushPending = [&lineFilter](std::string& pending, std::string& rolling,
-                                          std::mutex& lock, size_t maxCapture) {
+                                          std::mutex& lock, size_t maxCapture, bool isStderr = false) {
             if (pending.empty()) return;
             std::string line = lineFilter ? lineFilter(pending) : pending;
-            std::cout << line << std::flush;
-            std::lock_guard<std::mutex> lk(lock);
-            rolling += line;
-            if (rolling.size() > maxCapture * 2) {
-                rolling.erase(0, rolling.size() - maxCapture);
+            {
+                std::lock_guard<std::mutex> lk(lock);
+                if (isStderr) {
+                    std::string text = line;
+                    std::string eol = "";
+                    while (!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
+                        eol = text.back() + eol;
+                        text.pop_back();
+                    }
+                    std::cout << C_RED << text << C_RESET << eol << std::flush;
+                } else {
+                    std::cout << line << std::flush;
+                }
+                rolling += line;
+                if (rolling.size() > maxCapture * 2) {
+                    rolling.erase(0, rolling.size() - maxCapture);
+                }
             }
             pending.clear();
         };
@@ -1226,20 +1258,30 @@ public:
         sa.bInheritHandle = TRUE;
         sa.lpSecurityDescriptor = NULL;
 
-        HANDLE hReadPipe, hWritePipe;
-        if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+        HANDLE hOutRead = NULL, hOutWrite = NULL;
+        if (!CreatePipe(&hOutRead, &hOutWrite, &sa, 0)) {
             res.exitCode = system(command.c_str());
             if (hJob) CloseHandle(hJob);
             return res;
         }
-        SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(hOutRead, HANDLE_FLAG_INHERIT, 0);
+
+        HANDLE hErrRead = NULL, hErrWrite = NULL;
+        if (!CreatePipe(&hErrRead, &hErrWrite, &sa, 0)) {
+            CloseHandle(hOutRead);
+            CloseHandle(hOutWrite);
+            res.exitCode = system(command.c_str());
+            if (hJob) CloseHandle(hJob);
+            return res;
+        }
+        SetHandleInformation(hErrRead, HANDLE_FLAG_INHERIT, 0);
 
         STARTUPINFOA si;
         PROCESS_INFORMATION pi;
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
-        si.hStdError = hWritePipe;
-        si.hStdOutput = hWritePipe;
+        si.hStdOutput = hOutWrite;
+        si.hStdError = hErrWrite;
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
         si.dwFlags |= STARTF_USESTDHANDLES;
         ZeroMemory(&pi, sizeof(pi));
@@ -1269,10 +1311,12 @@ public:
         cmdBuf.push_back('\0');
 
         BOOL success = CreateProcessA(NULL, cmdBuf.data(), NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
-        CloseHandle(hWritePipe);
+        CloseHandle(hOutWrite);
+        CloseHandle(hErrWrite);
 
         if (!success) {
-            CloseHandle(hReadPipe);
+            CloseHandle(hOutRead);
+            CloseHandle(hErrRead);
             if (hJob) CloseHandle(hJob);
             res.exitCode = system(cmdLine.c_str());
             return res;
@@ -1285,14 +1329,24 @@ public:
         std::mutex outLock;
         const size_t MAX_CAPTURE = 65536;
 
-        std::thread reader([&]() {
+        std::thread outReader([&]() {
             char buffer[4096];
             DWORD bytesRead = 0;
             std::string pending;
-            while (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-                emit(pending, buffer, bytesRead, rollingOutput, outLock, MAX_CAPTURE);
+            while (ReadFile(hOutRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                emit(pending, buffer, bytesRead, rollingOutput, outLock, MAX_CAPTURE, false);
             }
-            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE);
+            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE, false);
+        });
+
+        std::thread errReader([&]() {
+            char buffer[4096];
+            DWORD bytesRead = 0;
+            std::string pending;
+            while (ReadFile(hErrRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                emit(pending, buffer, bytesRead, rollingOutput, outLock, MAX_CAPTURE, true);
+            }
+            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE, true);
         });
 
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -1300,7 +1354,8 @@ public:
         GetExitCodeProcess(pi.hProcess, &dwExit);
         res.exitCode = static_cast<int>(dwExit);
 
-        if (reader.joinable()) reader.join();
+        if (outReader.joinable()) outReader.join();
+        if (errReader.joinable()) errReader.join();
 
         {
             std::lock_guard<std::mutex> lock(outLock);
@@ -1309,33 +1364,43 @@ public:
 
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-        CloseHandle(hReadPipe);
+        CloseHandle(hOutRead);
+        CloseHandle(hErrRead);
         if (hJob) CloseHandle(hJob);
 #else
-        int pipefds[2];
-        if (pipe(pipefds) == -1) {
+        int outpipe[2];
+        if (pipe(outpipe) == -1) {
+            res.exitCode = system(command.c_str());
+            return res;
+        }
+        int errpipe[2];
+        if (pipe(errpipe) == -1) {
+            close(outpipe[0]);
+            close(outpipe[1]);
             res.exitCode = system(command.c_str());
             return res;
         }
 
         pid_t pid = fork();
         if (pid < 0) {
-            close(pipefds[0]);
-            close(pipefds[1]);
+            close(outpipe[0]);
+            close(outpipe[1]);
+            close(errpipe[0]);
+            close(errpipe[1]);
             res.exitCode = system(command.c_str());
             return res;
         }
 
         if (pid == 0) {
             setpgid(0, 0); // Isolate child in new process group
-            close(pipefds[0]);
-            dup2(pipefds[1], STDOUT_FILENO);
-            dup2(pipefds[1], STDERR_FILENO);
-            close(pipefds[1]);
+            close(outpipe[0]);
+            close(errpipe[0]);
+            dup2(outpipe[1], STDOUT_FILENO);
+            dup2(errpipe[1], STDERR_FILENO);
+            close(outpipe[1]);
+            close(errpipe[1]);
 
             // Phase 8: kernel confinement (Landlock + seccomp + NNP).
-            // Applied AFTER the pipes are wired, BEFORE exec. Fail-closed:
-            // if the sandbox cannot be established, refuse to run.
             if (sandbox && sandbox->enabled) {
                 int sbrc = sandbox->ApplyInChild();
                 if (sbrc != neuroshell::SBX_OK) _exit(90 + sbrc);
@@ -1347,23 +1412,32 @@ public:
             _exit(127);
         }
 
-        close(pipefds[1]);
+        close(outpipe[1]);
+        close(errpipe[1]);
         std::string rollingOutput = "";
         std::mutex outLock;
         const size_t MAX_CAPTURE = 65536;
 
-        // Register the child as the active foreground job so a Ctrl+C typed
-        // while it runs can be delivered to its process group (SIGINT relay).
         g_foreground_pgid.store(pid, std::memory_order_relaxed);
 
-        std::thread reader([&]() {
+        std::thread outReader([&]() {
             char buffer[4096];
             ssize_t n = 0;
             std::string pending;
-            while ((n = read(pipefds[0], buffer, sizeof(buffer) - 1)) > 0) {
-                emit(pending, buffer, (size_t)n, rollingOutput, outLock, MAX_CAPTURE);
+            while ((n = read(outpipe[0], buffer, sizeof(buffer) - 1)) > 0) {
+                emit(pending, buffer, (size_t)n, rollingOutput, outLock, MAX_CAPTURE, false);
             }
-            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE);
+            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE, false);
+        });
+
+        std::thread errReader([&]() {
+            char buffer[4096];
+            ssize_t n = 0;
+            std::string pending;
+            while ((n = read(errpipe[0], buffer, sizeof(buffer) - 1)) > 0) {
+                emit(pending, buffer, (size_t)n, rollingOutput, outLock, MAX_CAPTURE, true);
+            }
+            flushPending(pending, rollingOutput, outLock, MAX_CAPTURE, true);
         });
 
         int status = 0;
@@ -1373,8 +1447,10 @@ public:
         else if (WIFSIGNALED(status)) res.exitCode = 128 + WTERMSIG(status);
         else res.exitCode = 1;
 
-        if (reader.joinable()) reader.join();
-        close(pipefds[0]);
+        if (outReader.joinable()) outReader.join();
+        if (errReader.joinable()) errReader.join();
+        close(outpipe[0]);
+        close(errpipe[0]);
 
         {
             std::lock_guard<std::mutex> lock(outLock);
@@ -2417,10 +2493,74 @@ public:
     }
 
     // ═══════════════════════════════════════════════════════
-    // Natural Language & Slash Command Handlers
+    // Natural Language & Shell Query Discriminator
     // ═══════════════════════════════════════════════════════
 
+    static bool IsExplicitShellCommand(const std::string& input) {
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t s = lower.find_first_not_of(" \t\r\n");
+        if (s == std::string::npos) return false;
+        lower = lower.substr(s);
+
+        // 1. Single token with no spaces: commands like "cmd_that_does_not_exist_123", "ls", "dir", "cls", "pwd"
+        if (lower.find(' ') == std::string::npos && lower.find('\t') == std::string::npos) {
+            return true;
+        }
+
+        // 2. PowerShell cmdlets (Verb-Noun) e.g., Get-Process, Set-Item, Invoke-WebRequest, etc.
+        const std::vector<std::string> psVerbs = {
+            "get-", "set-", "invoke-", "test-", "start-", "stop-", "restart-",
+            "new-", "remove-", "compress-", "expand-", "select-", "where-", "format-",
+            "out-", "convertto-", "convertfrom-", "enable-", "disable-", "install-", "update-",
+            "write-", "clear-", "add-", "copy-", "move-", "rename-", "resolve-", "split-"
+        };
+        for (const auto& verb : psVerbs) {
+            if (lower.rfind(verb, 0) == 0 || lower.find(" " + verb) != std::string::npos || lower.find("| " + verb) != std::string::npos) {
+                return true;
+            }
+        }
+
+        // 3. Shell pipes, redirection, chaining, or PowerShell variables
+        if (lower.find('|') != std::string::npos ||
+            lower.find(';') != std::string::npos ||
+            lower.find('>') != std::string::npos ||
+            lower.find('<') != std::string::npos ||
+            lower.find("&&") != std::string::npos ||
+            lower.find("||") != std::string::npos ||
+            lower.find("$_") != std::string::npos ||
+            (lower.size() > 1 && lower[0] == '$') ||
+            (lower.size() > 1 && lower[0] == '(')) {
+            return true;
+        }
+
+        // 4. Commands with CLI flags: contains " --", " -", or " /"
+        if (lower.find(" --") != std::string::npos ||
+            lower.find(" -") != std::string::npos ||
+            lower.find(" /") != std::string::npos) {
+            return true;
+        }
+
+        // 5. Standard CLI developer tools invoked with subcommands (e.g. git commit, npm install)
+        std::istringstream iss(lower);
+        std::string firstWord;
+        iss >> firstWord;
+        const std::vector<std::string> tools = {
+            "git", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "python", "python3",
+            "node", "cargo", "rustc", "go", "gcc", "g++", "clang", "make", "cmake", "ctest",
+            "curl", "wget", "tar", "zip", "unzip", "ssh", "scp", "rsync", "ffmpeg",
+            "powershell", "pwsh", "cmd", "bash", "zsh", "sh"
+        };
+        for (const auto& t : tools) {
+            if (firstWord == t) return true;
+        }
+
+        return false;
+    }
+
     static bool IsNaturalLanguageQuery(const std::string& input) {
+        if (IsExplicitShellCommand(input)) return false;
+
         std::string lower = input;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         size_t s = lower.find_first_not_of(" \t\r\n");
@@ -2435,27 +2575,6 @@ public:
         int wordCount = 1;
         while (iss >> word) wordCount++;
 
-        // Known developer tools and shell primitives should run directly
-        const std::vector<std::string> cliTools = {
-            "git", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "python", "python3",
-            "node", "cargo", "rustc", "go", "gcc", "g++", "clang", "make", "cmake", "ctest",
-            "dir", "ls", "cd", "cls", "clear", "echo", "type", "cat", "more", "less",
-            "grep", "findstr", "curl", "wget", "tar", "zip", "unzip", "ssh", "scp",
-            "netstat", "ipconfig", "ifconfig", "ping", "tracert", "traceroute", "route",
-            "ps", "tasklist", "taskkill", "kill", "systeminfo", "hostname", "whoami",
-            "powershell", "pwsh", "cmd", "bash", "zsh", "sh"
-        };
-        for (const auto& cli : cliTools) {
-            if (firstWord == cli) {
-                if (lower.find("--") != std::string::npos || lower.find(" -") != std::string::npos || lower.find(" /") != std::string::npos) {
-                    return false;
-                }
-                if (wordCount <= 3 && (firstWord == "git" || firstWord == "docker" || firstWord == "cargo" || firstWord == "npm" || firstWord == "cd" || firstWord == "dir" || firstWord == "ls")) {
-                    return false;
-                }
-            }
-        }
-
         // Natural language action verbs & inquiry starters
         const std::vector<std::string> nlStarters = {
             "check", "find", "search", "list", "show", "get", "view", "display",
@@ -2463,7 +2582,8 @@ public:
             "start", "stop", "restart", "terminate", "compress", "extract", "unzip",
             "backup", "monitor", "test", "measure", "clone", "push", "pull", "commit",
             "count", "calculate", "tell", "give", "can", "how", "what", "where", "why",
-            "who", "please", "help", "explain", "inspect", "analyze", "scan"
+            "who", "please", "help", "explain", "inspect", "analyze", "scan",
+            "wifi", "my", "free", "kill", "open", "fetch", "download", "disk", "ram", "memory"
         };
         for (const auto& starter : nlStarters) {
             if (firstWord == starter && wordCount >= 2) return true;
@@ -2472,13 +2592,15 @@ public:
         // Common multi-word phrase indicators
         const std::vector<std::string> nlIndicators = {
             " on all ", " in human ", " for all ", " of all ", " with size ", " across all ",
-            " that are ", " which are ", " how to ", " how do i ", " readable format"
+            " that are ", " which are ", " how to ", " how do i ", " readable format",
+            " password for ", " public ip", " open ports", " running processes", " disk space",
+            " memory usage", " ram usage", " port "
         };
         for (const auto& ind : nlIndicators) {
             if (lower.find(ind) != std::string::npos) return true;
         }
 
-        if (wordCount >= 4 && lower.find('|') == std::string::npos && lower.find(';') == std::string::npos && lower.find('&') == std::string::npos) {
+        if (wordCount >= 3) {
             return true;
         }
 
@@ -3408,7 +3530,7 @@ public:
     // Non-Blocking Asynchronous Process Executor
     // ═══════════════════════════════════════════════════════
 
-    void ExecuteCommand(const std::string& input) {
+    void ExecuteCommand(const std::string& input, bool isInteractive = true) {
         if (input.empty()) return;
 
         AppendHistory(input);
@@ -4055,19 +4177,22 @@ public:
         }
 
         // 5. Natural Language Command Translation
-        std::string transformed = TranslateNaturalLanguage(effectiveInput);
+        std::string transformed = "";
         std::string commandToRun = effectiveInput;
         bool wasAiTranslated = false;
 
-        if (!transformed.empty()) {
-            std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << effectiveInput << "'..." << C_RESET << "\n";
-            std::cout << "  " << C_GREEN << "✔ Transformed → " << C_BOLD << C_WHITE << transformed << C_RESET << "\n\n";
-            commandToRun = transformed;
-            wasAiTranslated = true;
-        } else if (IsNaturalLanguageQuery(effectiveInput)) {
-            std::cout << "  " << C_YELLOW << "💡 Recognized natural language query: '" << effectiveInput << "'." << C_RESET << "\n";
-            std::cout << "  " << C_MUTED << "On-device Neural Core could not resolve this intent. Please try rephrasing." << C_RESET << "\n\n";
-            return;
+        if (IsNaturalLanguageQuery(effectiveInput)) {
+            transformed = TranslateNaturalLanguage(effectiveInput);
+            if (!transformed.empty()) {
+                std::cout << "  " << C_MAGENTA << "⌬ Translating: " << C_WHITE << "'" << effectiveInput << "'..." << C_RESET << "\n";
+                std::cout << "  " << C_GREEN << "✔ Transformed → " << C_BOLD << C_WHITE << transformed << C_RESET << "\n\n";
+                commandToRun = transformed;
+                wasAiTranslated = true;
+            } else {
+                std::cout << "  " << C_YELLOW << "💡 Recognized natural language query: '" << effectiveInput << "'." << C_RESET << "\n";
+                std::cout << "  " << C_MUTED << "On-device Neural Core could not resolve this intent. Please try rephrasing." << C_RESET << "\n\n";
+                return;
+            }
         }
 
         // 5.5. Blast-Radius Preview (Phase 4, v5.12): before anything
@@ -4145,10 +4270,12 @@ public:
             if (errRep.hasError && !errRep.autoFixCmd.empty()) {
                 errorShield.RenderErrorCard(errRep);
 
-                KeyEvent keyEv = terminal.ReadKey();
-                if (keyEv.ch == 'y' || keyEv.ch == 'Y') {
-                    std::cout << "  " << C_GREEN << "⚡ Applying Auto-Fix: " << C_BOLD << C_WHITE << errRep.autoFixCmd << C_RESET << "\n\n";
-                    ExecuteCommand(errRep.autoFixCmd);
+                if (isInteractive) {
+                    KeyEvent keyEv = terminal.ReadKey();
+                    if (keyEv.ch == 'y' || keyEv.ch == 'Y') {
+                        std::cout << "  " << C_GREEN << "⚡ Applying Auto-Fix: " << C_BOLD << C_WHITE << errRep.autoFixCmd << C_RESET << "\n\n";
+                        ExecuteCommand(errRep.autoFixCmd, isInteractive);
+                    }
                 }
             }
         }
@@ -4246,6 +4373,16 @@ int main(int argc, char* argv[]) {
         if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
             std::cout << "NeuroShell v" << NEUROSHELL_VERSION << " (Enterprise Cross-Platform Edition)\n";
             std::cout << "Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.\n";
+            return 0;
+        }
+        if ((arg1 == "-c" || arg1 == "--command" || arg1 == "/c") && argc >= 3) {
+            std::string cmd = argv[2];
+            for (int i = 3; i < argc; ++i) {
+                cmd += " ";
+                cmd += argv[i];
+            }
+            EnterpriseTerminalHost host;
+            host.ExecuteCommand(cmd, false);
             return 0;
         }
         if (arg1 == "update" || arg1 == "--update") {
