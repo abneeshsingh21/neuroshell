@@ -1100,6 +1100,51 @@ public:
         return false;
     }
 
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+    static bool ShouldUsePowerShell(const std::string& cmd) {
+        std::string lower = cmd;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t s = lower.find_first_not_of(" \t\r\n");
+        if (s != std::string::npos) lower = lower.substr(s);
+        if (lower.empty()) return false;
+
+        // Explicit PowerShell / pwsh invocation
+        if (lower.rfind("powershell", 0) == 0 || lower.rfind("pwsh", 0) == 0) return true;
+
+        // Parenthesized expressions or PowerShell variables ($)
+        if (lower[0] == '(' || lower[0] == '$') return true;
+
+        // PowerShell methods / variables / pipe constructs
+        if (lower.find(".trim()") != std::string::npos ||
+            lower.find("$_") != std::string::npos ||
+            lower.find("| where") != std::string::npos ||
+            lower.find("| select") != std::string::npos ||
+            lower.find("| foreach") != std::string::npos ||
+            lower.find("| stop-") != std::string::npos) {
+            return true;
+        }
+
+        // Standard PowerShell verb-noun cmdlets
+        const std::vector<std::string> psVerbs = {
+            "get-", "set-", "invoke-", "test-", "start-", "stop-", "restart-",
+            "new-", "remove-", "compress-", "expand-", "select-", "where-", "format-",
+            "out-", "convertto-", "convertfrom-", "enable-", "disable-", "install-", "update-"
+        };
+        for (const auto& verb : psVerbs) {
+            if (lower.find(verb) != std::string::npos) return true;
+        }
+
+        // Compound statements separated by semicolon (cmd.exe fails on ';'; PowerShell handles it cleanly)
+        if (lower.find(';') != std::string::npos) {
+            if (lower.rfind("set ", 0) != 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+#endif
+
     using LineFilter = std::function<std::string(const std::string&)>;
 
     // Phase 8 (v5.16): optional kernel confinement. When `sandbox` is
@@ -1199,7 +1244,27 @@ public:
         si.dwFlags |= STARTF_USESTDHANDLES;
         ZeroMemory(&pi, sizeof(pi));
 
-        std::string cmdLine = "cmd.exe /c " + command;
+        std::string cmdLine;
+        std::string trimmedCmd = command;
+        size_t firstChar = trimmedCmd.find_first_not_of(" \t\r\n");
+        if (firstChar != std::string::npos) trimmedCmd = trimmedCmd.substr(firstChar);
+
+        if (ShouldUsePowerShell(trimmedCmd)) {
+            if (trimmedCmd.rfind("powershell", 0) == 0 || trimmedCmd.rfind("pwsh", 0) == 0) {
+                cmdLine = trimmedCmd;
+            } else {
+                std::string escaped;
+                escaped.reserve(trimmedCmd.size() + 16);
+                for (char c : trimmedCmd) {
+                    if (c == '"') escaped += "\\\"";
+                    else escaped += c;
+                }
+                cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"" + escaped + "\"";
+            }
+        } else {
+            cmdLine = "cmd.exe /c " + command;
+        }
+
         std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
         cmdBuf.push_back('\0');
 
@@ -1209,7 +1274,7 @@ public:
         if (!success) {
             CloseHandle(hReadPipe);
             if (hJob) CloseHandle(hJob);
-            res.exitCode = system(command.c_str());
+            res.exitCode = system(cmdLine.c_str());
             return res;
         }
 
@@ -3979,9 +4044,11 @@ public:
                           << preparedSbx.landlock_abi << ") — prefix '!' to escalate"
                           << C_RESET << "\n";
             } else {
+#if !defined(_WIN32)
                 std::cout << "  " << C_YELLOW << "⛨ kernel sandbox unavailable on this "
                           << "system — running unconfined (blast-radius heuristics "
                           << "still active)." << C_RESET << "\n";
+#endif
             }
         }
 

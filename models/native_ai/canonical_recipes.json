@@ -313,9 +313,9 @@
     "action_id": "net_get_public_ip",
     "category": "NETWORK",
     "canonical_nl": "show my public ip address",
-    "default_cmd": "curl -s https://ifconfig.me",
-    "powershell_cmd": "(Invoke-RestMethod -Uri https://ifconfig.me).Trim()",
-    "cmd_exe": "curl -s https://ifconfig.me",
+    "default_cmd": "curl -s https://api.ipify.org",
+    "powershell_cmd": "(Invoke-RestMethod -Uri https://api.ipify.org).Trim()",
+    "cmd_exe": "curl -s https://api.ipify.org",
     "is_destructive": false,
     "explanation": "Queries public IP echo endpoint via curl to retrieve WAN address."
   },
