@@ -1990,16 +1990,7 @@ class NeuroShell:
           6. Folder / file resolution     (open downloads folder)
           7. Fallback shell execution
         """
-        # ── 1. Try the full SmartOpenEngine (includes clone, power, apps, URLs) ──
-        # Pass the full original input — SmartOpenEngine handles all prefixes
-        # (open, clone, launch, power words) internally.
-        result = self.smart_open.try_resolve(target)
-        if result:
-            self.ui.print_info(f"  💡 {result.explanation}")
-            self._handle_shell_command(result.command, self.tracer.start_trace())
-            return
-
-        # ── 2. Check if target is a real file or directory on disk ──
+        # ── 1. If target is a real file or directory on disk, open directly ──
         if os.path.exists(target):
             try:
                 os.startfile(target)  # Windows-native, no console flash
@@ -2008,7 +1999,7 @@ class NeuroShell:
             except Exception:
                 pass
 
-        # ── 3. Fall back to dynamic AI translator ──
+        # ── 2. Primary: Route via dynamic AI translator ──
         if hasattr(self, "translator") and self.translator:
             trans = self.translator.translate(target)
             if trans and trans.command:
@@ -2016,6 +2007,13 @@ class NeuroShell:
                 if self.ui.confirm("Execute?"):
                     self._handle_shell_command(trans.command, self.tracer.start_trace())
                 return
+
+        # ── 3. Offline fallback: Try SmartOpenEngine ──
+        result = self.smart_open.try_resolve(target)
+        if result:
+            self.ui.print_info(f"  💡 {result.explanation}")
+            self._handle_shell_command(result.command, self.tracer.start_trace())
+            return
 
         self.ui.print_error(f"  ❌ Could not resolve '{target}'.")
 

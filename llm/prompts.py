@@ -49,6 +49,26 @@ CONTEXT:
 {context}
 
 FEW-SHOT EXAMPLES:
+User: "show mine github profile"
+Thought: User wants to open their GitHub profile in a browser. On Windows use `start "" "https://github.com"`, on macOS `open`, on Linux `xdg-open`.
+Answer: {{"command": "start \"\" \"https://github.com\"", "confidence": 0.95, "explanation": "Open GitHub homepage/profile in default web browser", "is_destructive": false, "alternatives": ["gh browse"]}}
+
+User: "run my python script app.py"
+Thought: User wants to execute a python file using the python runtime.
+Answer: {{"command": "python app.py", "confidence": 0.98, "explanation": "Execute Python script app.py", "is_destructive": false, "alternatives": []}}
+
+User: "push this project to github"
+Thought: User wants to push current git branch commits to remote repository.
+Answer: {{"command": "git push", "confidence": 0.95, "explanation": "Push current branch commits to remote repository", "is_destructive": false, "alternatives": ["git push origin HEAD"]}}
+
+User: "download file https://example.com/data.csv to my desktop"
+Thought: On Windows use PowerShell Invoke-WebRequest, on Linux/macOS use curl or wget.
+Answer: {{"command": "PowerShell -Command \"Invoke-WebRequest -Uri 'https://example.com/data.csv' -OutFile \\\"$env:USERPROFILE\\Desktop\\data.csv\\\"\"", "confidence": 0.9, "explanation": "Download data.csv to Desktop", "is_destructive": false, "alternatives": ["curl -o ~/Desktop/data.csv https://example.com/data.csv"]}}
+
+User: "compile main.cpp with c++20"
+Thought: User wants to compile a C++ source file using C++20 standard.
+Answer: {{"command": "g++ -std=c++20 main.cpp -o main", "confidence": 0.95, "explanation": "Compile main.cpp using g++ with C++20 standard", "is_destructive": false, "alternatives": ["clang++ -std=c++20 main.cpp -o main"]}}
+
 User: "show me all files bigger than 100mb"
 Thought: User wants to find large files. On Linux, use `find` with `-size`. On Windows, use PowerShell.
 Answer: {{"command": "find . -size +100M -type f", "confidence": 0.9, "explanation": "Find all files larger than 100MB recursively", "is_destructive": false, "alternatives": ["du -sh * | sort -rh | head"]}}

@@ -570,11 +570,19 @@ class LLMClient:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
 
+            extra_body: dict[str, Any] = {}
+            if "gpt-oss" in self.groq_model or "qwen" in self.groq_model:
+                extra_body["reasoning_effort"] = "low"
+                extra_body["reasoning_format"] = "hidden"
+
+            max_tokens_val = max(getattr(self.config, "max_tokens", 512) or 512, 1500)
+
             response = self._groq_client.chat.completions.create(
                 model=self.groq_model,
                 messages=messages,
                 temperature=temperature or self.config.temperature,
-                max_tokens=self.config.max_tokens,
+                max_tokens=max_tokens_val,
+                extra_body=extra_body if extra_body else None,
             )
 
             latency = (time.time() - start) * 1000
@@ -613,12 +621,20 @@ class LLMClient:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
 
+            extra_body: dict[str, Any] = {}
+            if "gpt-oss" in self.groq_model or "qwen" in self.groq_model:
+                extra_body["reasoning_effort"] = "low"
+                extra_body["reasoning_format"] = "hidden"
+
+            max_tokens_val = max(getattr(self.config, "max_tokens", 512) or 512, 1500)
+
             stream = self._groq_client.chat.completions.create(
                 model=self.groq_model,
                 messages=messages,
                 temperature=temperature or self.config.temperature,
-                max_tokens=self.config.max_tokens,
+                max_tokens=max_tokens_val,
                 stream=True,
+                extra_body=extra_body if extra_body else None,
             )
 
             for chunk in stream:
@@ -663,11 +679,19 @@ class LLMClient:
                 messages.append({"role": "system", "content": system_prompt})
             messages.extend([m.to_dict() for m in self._conversation])
 
+            extra_body: dict[str, Any] = {}
+            if "gpt-oss" in self.groq_model or "qwen" in self.groq_model:
+                extra_body["reasoning_effort"] = "low"
+                extra_body["reasoning_format"] = "hidden"
+
+            max_tokens_val = max(getattr(self.config, "max_tokens", 512) or 512, 1500)
+
             response = self._groq_client.chat.completions.create(
                 model=self.groq_model,
                 messages=messages,
                 temperature=temperature or self.config.temperature,
-                max_tokens=self.config.max_tokens,
+                max_tokens=max_tokens_val,
+                extra_body=extra_body if extra_body else None,
             )
 
             latency = (time.time() - start) * 1000
@@ -1095,45 +1119,93 @@ class LLMClient:
 
     def _extract_json(self, text: str) -> dict | None:
         """Robust JSON extraction from LLM output."""
+        if not text:
+            return None
         text = text.strip()
 
-        # Strip <think>...</think> reasoning tags from qwen3
+        # Strip <think>...</think> reasoning tags
         if '<think>' in text:
             import re
             text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
-        # Direct parse
+        # 1. Direct parse
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
 
-        # Handle markdown code fences
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])  # type: ignore[index]
+        # 2. Extract markdown code fence (```json ... ``` or ``` ... ```)
+        import re
+        fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text, re.IGNORECASE)
+        if fence_match:
+            candidate = fence_match.group(1).strip()
             try:
-                return json.loads(text.strip())
+                return json.loads(candidate)
             except json.JSONDecodeError:
                 pass
 
-        # Find JSON objects and arrays
-        for start_char, end_char in [("{", "}"), ("[", "]")]:
-            start = text.find(start_char)
-            end = text.rfind(end_char)
-            if start != -1 and end != -1 and end > start:
+        # 3. Find outer JSON object { ... }
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = text[start:end + 1]
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                # Remove trailing commas
+                fixed = re.sub(r',\s*([}\]])', r'\1', candidate)
                 try:
-                    return json.loads(text[start:end + 1])  # type: ignore[index]
+                    return json.loads(fixed)
                 except json.JSONDecodeError:
-                    # Try fixing common issues
-                    candidate = text[start:end + 1]  # type: ignore[index]
-                    # Remove trailing commas
-                    import re
-                    candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
-                    try:
-                        return json.loads(candidate)
-                    except json.JSONDecodeError:
-                        continue
+                    pass
+
+        # 4. Resilient repair of truncated JSON (unclosed braces/quotes)
+        if start != -1:
+            truncated = text[start:]
+            # If quotes are unclosed, close the quote
+            quotes_count = truncated.count('"') - truncated.count(r'\"')
+            if quotes_count % 2 != 0:
+                truncated += '"'
+            # Close missing closing braces
+            open_braces = truncated.count("{") - truncated.count("}")
+            if open_braces > 0:
+                truncated += "}" * open_braces
+            try:
+                return json.loads(truncated)
+            except json.JSONDecodeError:
+                pass
+
+        # 5. Fallback regex extraction for command
+        cmd_match = re.search(r'"command"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+        if not cmd_match:
+            cmd_match = re.search(r"'command'\s*:\s*'((?:[^'\\]|\\.)*)'", text)
+        if cmd_match:
+            try:
+                cmd = cmd_match.group(1).encode('utf-8').decode('unicode_escape')
+            except Exception:
+                cmd = cmd_match.group(1)
+            conf = 0.85
+            conf_match = re.search(r'"confidence"\s*:\s*([0-9.]+)', text)
+            if conf_match:
+                try:
+                    conf = float(conf_match.group(1))
+                except ValueError:
+                    pass
+            exp = ""
+            exp_match = re.search(r'"explanation"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+            if exp_match:
+                try:
+                    exp = exp_match.group(1).encode('utf-8').decode('unicode_escape')
+                except Exception:
+                    exp = exp_match.group(1)
+            return {
+                "command": cmd,
+                "confidence": conf,
+                "explanation": exp or "Synthesized by AI Model",
+                "is_destructive": False,
+                "alternatives": [],
+            }
+
         return None
 
     def _cache_key(self, prompt: str, system_prompt: str, temperature: float | None) -> str:

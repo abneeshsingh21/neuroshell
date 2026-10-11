@@ -474,10 +474,10 @@ class NamedPipeServer:
                     "is_destructive": getattr(translation, "is_destructive", False),
                 }
             return {
-                "command": query,
-                "explanation": "Direct shell passthrough",
+                "command": "",
+                "explanation": getattr(translation, "explanation", "Could not translate natural language query"),
                 "risk_level": "SAFE",
-                "confidence": 1.0,
+                "confidence": 0.0,
             }
 
         elif method == "slash":

@@ -726,16 +726,11 @@ class Translator:
         if cached:
             return cached
 
-        # 3. Route explicit desktop app / URL / folder open intents
-        smart = self._try_smart_open(user_input_clean)
-        if smart and smart.confidence >= 0.90:
-            return smart
-
-        # 4. Multi-step detection
+        # 3. Multi-step detection
         if self._is_multi_step(user_input_clean):
             return self._translate_multi_step(user_input_clean, entities)
 
-        # 5. AI MODEL TRANSLATION (Primary Intelligence)
+        # 4. AI MODEL TRANSLATION (Primary Intelligence)
         # Dynamically synthesizes tailored commands based on context, OS, language, and tools
         llm_result = None
         if hasattr(self, "llm") and self.llm:
@@ -744,26 +739,30 @@ class Translator:
                 if llm_result and llm_result.command and llm_result.confidence > 0.0:
                     return llm_result
             except Exception as e:
-                # Log debug and continue to offline fallbacks
                 pass
 
-        # 6. Offline / Fallback Layers (Only if AI Model is unreachable / offline)
-        # 6.1. High-confidence Native Neural Core (EmbeddingGemma 2 vector match)
+        # 5. Offline / Fallback Layers (Only if AI Model is unreachable or offline)
+        # 5.1 Route explicit desktop app / URL / folder open intents
+        smart = self._try_smart_open(user_input_clean)
+        if smart and smart.confidence >= 0.90:
+            return smart
+
+        # 5.2 High-confidence Native Neural Core (EmbeddingGemma 2 vector match)
         native_match = self._try_native_engine(user_input_clean)
         if native_match and native_match.confidence >= 0.75:
             return native_match
 
-        # 6.2. Local dynamic patterns (only exact syntax)
+        # 5.3 Local dynamic patterns (only exact syntax)
         local = self._try_local_patterns(user_input_clean)
         if local:
             return local
 
-        # 6.3. Offline Phrase Dictionary (last-resort offline fallback with high threshold)
+        # 5.4 Offline Phrase Dictionary (last-resort offline fallback with high threshold)
         phrase_match = self._try_phrase_dictionary(user_input_clean)
         if phrase_match and phrase_match.confidence >= 0.85:
             return phrase_match
 
-        # 6.4. Return LLM result if available even with lower confidence
+        # 5.5 Return LLM result if available even with lower confidence
         if llm_result:
             return llm_result
 

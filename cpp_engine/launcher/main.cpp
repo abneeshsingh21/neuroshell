@@ -2494,6 +2494,53 @@ public:
     // Natural Language & Shell Query Discriminator
     // ═══════════════════════════════════════════════════════
 
+    static bool IsBinaryOnPathOrCwd(const std::string& name) {
+        if (name.empty()) return false;
+        static const std::unordered_set<std::string> nlWords = {
+            "show", "open", "run", "start", "find", "check", "tell", "list",
+            "download", "push", "pull", "compile", "make", "create", "delete",
+            "remove", "kill", "how", "what", "where", "why", "who", "please",
+            "help", "explain", "inspect", "analyze", "scan", "view", "display",
+            "give", "fetch", "clone", "compress", "extract", "test", "write",
+            "set", "get", "put", "post", "search", "browse", "navigate"
+        };
+        if (nlWords.count(name)) return false;
+
+        std::error_code ec;
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        if (fs::exists(name, ec) || fs::exists(name + ".exe", ec) ||
+            fs::exists(name + ".cmd", ec) || fs::exists(name + ".bat", ec)) {
+            return true;
+        }
+        const char* pathEnv = getenv("PATH");
+        if (pathEnv) {
+            std::stringstream ss(pathEnv);
+            std::string item;
+            while (std::getline(ss, item, ';')) {
+                if (item.empty()) continue;
+                fs::path p(item);
+                if (fs::exists(p / (name + ".exe"), ec) || fs::exists(p / (name + ".cmd"), ec) ||
+                    fs::exists(p / (name + ".bat"), ec) || fs::exists(p / name, ec)) {
+                    return true;
+                }
+            }
+        }
+#else
+        if (fs::exists(name, ec) || fs::exists("./" + name, ec)) return true;
+        const char* pathEnv = getenv("PATH");
+        if (pathEnv) {
+            std::stringstream ss(pathEnv);
+            std::string item;
+            while (std::getline(ss, item, ':')) {
+                if (item.empty()) continue;
+                fs::path p(item);
+                if (fs::exists(p / name, ec)) return true;
+            }
+        }
+#endif
+        return false;
+    }
+
     static bool IsExplicitShellCommand(const std::string& input) {
         std::string lower = input;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -2539,15 +2586,19 @@ public:
             return true;
         }
 
-        // 5. Standard CLI developer tools invoked with subcommands (e.g. git commit, npm install)
+        // 5. Binary or script dynamically verified on PATH or in current directory
         std::istringstream iss(lower);
         std::string firstWord;
         iss >> firstWord;
+        if (IsBinaryOnPathOrCwd(firstWord)) {
+            return true;
+        }
+
         const std::vector<std::string> tools = {
             "git", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "python", "python3",
             "node", "cargo", "rustc", "go", "gcc", "g++", "clang", "make", "cmake", "ctest",
             "curl", "wget", "tar", "zip", "unzip", "ssh", "scp", "rsync", "ffmpeg",
-            "powershell", "pwsh", "cmd", "bash", "zsh", "sh",
+            "powershell", "pwsh", "cmd", "bash", "zsh", "sh", "java", "javac", "php", "ruby",
             "pytest", "npx", "bun", "deno", "dotnet", "mvn", "gradle", "flutter", "gh", "winget"
         };
         for (const auto& t : tools) {
@@ -3935,7 +3986,9 @@ public:
                 commandToRun = transformed;
                 wasAiTranslated = true;
             } else {
-                commandToRun = effectiveInput;
+                std::cout << "  " << C_YELLOW << "⚠ AI Model could not resolve this intent into a shell command." << C_RESET << "\n";
+                std::cout << "  " << C_MUTED << "Tip: Try rephrasing or verify model status using /status." << C_RESET << "\n\n";
+                return;
             }
         }
 
