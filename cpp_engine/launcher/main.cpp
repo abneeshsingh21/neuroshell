@@ -2420,6 +2420,71 @@ public:
     // Natural Language & Slash Command Handlers
     // ═══════════════════════════════════════════════════════
 
+    static bool IsNaturalLanguageQuery(const std::string& input) {
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t s = lower.find_first_not_of(" \t\r\n");
+        if (s == std::string::npos) return false;
+        lower = lower.substr(s);
+
+        // Tokenize words
+        std::istringstream iss(lower);
+        std::string firstWord;
+        iss >> firstWord;
+        std::string word;
+        int wordCount = 1;
+        while (iss >> word) wordCount++;
+
+        // Known developer tools and shell primitives should run directly
+        const std::vector<std::string> cliTools = {
+            "git", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "python", "python3",
+            "node", "cargo", "rustc", "go", "gcc", "g++", "clang", "make", "cmake", "ctest",
+            "dir", "ls", "cd", "cls", "clear", "echo", "type", "cat", "more", "less",
+            "grep", "findstr", "curl", "wget", "tar", "zip", "unzip", "ssh", "scp",
+            "netstat", "ipconfig", "ifconfig", "ping", "tracert", "traceroute", "route",
+            "ps", "tasklist", "taskkill", "kill", "systeminfo", "hostname", "whoami",
+            "powershell", "pwsh", "cmd", "bash", "zsh", "sh"
+        };
+        for (const auto& cli : cliTools) {
+            if (firstWord == cli) {
+                if (lower.find("--") != std::string::npos || lower.find(" -") != std::string::npos || lower.find(" /") != std::string::npos) {
+                    return false;
+                }
+                if (wordCount <= 3 && (firstWord == "git" || firstWord == "docker" || firstWord == "cargo" || firstWord == "npm" || firstWord == "cd" || firstWord == "dir" || firstWord == "ls")) {
+                    return false;
+                }
+            }
+        }
+
+        // Natural language action verbs & inquiry starters
+        const std::vector<std::string> nlStarters = {
+            "check", "find", "search", "list", "show", "get", "view", "display",
+            "clean", "cleanup", "remove", "delete", "create", "make", "build", "run",
+            "start", "stop", "restart", "terminate", "compress", "extract", "unzip",
+            "backup", "monitor", "test", "measure", "clone", "push", "pull", "commit",
+            "count", "calculate", "tell", "give", "can", "how", "what", "where", "why",
+            "who", "please", "help", "explain", "inspect", "analyze", "scan"
+        };
+        for (const auto& starter : nlStarters) {
+            if (firstWord == starter && wordCount >= 2) return true;
+        }
+
+        // Common multi-word phrase indicators
+        const std::vector<std::string> nlIndicators = {
+            " on all ", " in human ", " for all ", " of all ", " with size ", " across all ",
+            " that are ", " which are ", " how to ", " how do i ", " readable format"
+        };
+        for (const auto& ind : nlIndicators) {
+            if (lower.find(ind) != std::string::npos) return true;
+        }
+
+        if (wordCount >= 4 && lower.find('|') == std::string::npos && lower.find(';') == std::string::npos && lower.find('&') == std::string::npos) {
+            return true;
+        }
+
+        return false;
+    }
+
     std::string TranslateNaturalLanguage(const std::string& input) {
         std::string lower = input;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -2616,7 +2681,11 @@ public:
 #endif
         }
 
-        // 8. Query Python Intelligence IPC Daemon (Multi-LLM Router + 2630+ Phrase Dictionary + 4-Layer Safety Shield)
+        // 8. Query Python Intelligence IPC Daemon (Autonomous Native Neural Core - EmbeddingGemma 2)
+        if (!ipcClient.EnsureConnected()) {
+            NeuroShell::Daemon::DaemonManager::EnsureDaemonRunningSync(ipcClient, 4);
+        }
+
         NeuroShell::IPC::TranslationResult trans = ipcClient.Translate(input, fs::current_path().string());
         if (trans.success && !trans.command.empty() && trans.command != input) {
             return trans.command;
@@ -3995,25 +4064,10 @@ public:
             std::cout << "  " << C_GREEN << "✔ Transformed → " << C_BOLD << C_WHITE << transformed << C_RESET << "\n\n";
             commandToRun = transformed;
             wasAiTranslated = true;
-        } else {
-            // Check if input looks like an unmapped natural language query
-            std::string lowerTrim = effectiveInput;
-            std::transform(lowerTrim.begin(), lowerTrim.end(), lowerTrim.begin(), ::tolower);
-            const std::vector<std::string> nlPrefixes = {
-                "show ", "how to ", "what is ", "where is ", "how do i ", "tell me ", "give me ", "can you "
-            };
-            bool isNL = false;
-            for (const auto& pfx : nlPrefixes) {
-                if (lowerTrim.rfind(pfx, 0) == 0) {
-                    isNL = true;
-                    break;
-                }
-            }
-            if (isNL) {
-                std::cout << "  " << C_YELLOW << "💡 Recognized natural language query: '" << input << "'." << C_RESET << "\n";
-                std::cout << "  " << C_MUTED << "No offline mapping matched. Configure an AI provider using /api-key for open-ended translation." << C_RESET << "\n\n";
-                return;
-            }
+        } else if (IsNaturalLanguageQuery(effectiveInput)) {
+            std::cout << "  " << C_YELLOW << "💡 Recognized natural language query: '" << effectiveInput << "'." << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "On-device Neural Core could not resolve this intent. Please try rephrasing." << C_RESET << "\n\n";
+            return;
         }
 
         // 5.5. Blast-Radius Preview (Phase 4, v5.12): before anything
