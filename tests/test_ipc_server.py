@@ -15,6 +15,7 @@ class DummyAssessment:
     class DummyLevel:
         value = "SAFE"
     level = DummyLevel()
+    risk_level = DummyLevel()
 
 
 class DummyTranslation:
@@ -37,6 +38,7 @@ def test_ipc_server_translate():
     mock_shell = MagicMock()
     mock_shell.tracer.start_trace.return_value = "trace-123"
     mock_shell.translator.translate.return_value = DummyTranslation()
+    mock_shell.safety.check.return_value = DummyAssessment()
     mock_shell.safety.assess.return_value = DummyAssessment()
 
     server = NamedPipeServer(mock_shell)
@@ -135,4 +137,30 @@ def test_ipc_server_ai_pipe():
     assert resp["jsonrpc"] == "2.0"
     assert "response" in resp["result"]
     assert resp["result"]["directive"] == "@ai"
+
+
+def test_ipc_server_real_native_ai_docker_prune():
+    """Verifies real NamedPipeServer dispatches to live NativeEngine with EmbeddingGemma 2."""
+    from main import NeuroShell
+
+    app = NeuroShell()
+    server = NamedPipeServer(app)
+    req = {
+        "jsonrpc": "2.0",
+        "method": "translate",
+        "params": {
+            "query": "clean up all stopped docker containers and unused images",
+            "cwd": "."
+        },
+        "id": 999
+    }
+    resp = server._handle_request(req)
+    assert resp is not None
+    assert "result" in resp
+    res = resp["result"]
+    assert "docker container prune -f" in res["command"]
+    assert "docker image prune -a -f" in res["command"]
+    assert res["confidence"] >= 0.90
+    assert res["risk_level"] in ("HIGH", "DANGEROUS", "CRITICAL", "DESTRUCTIVE")
+
 

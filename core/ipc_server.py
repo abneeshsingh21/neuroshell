@@ -442,18 +442,27 @@ class NamedPipeServer:
 
     def _dispatch_method(self, method: str, params: dict) -> Any:
         """Route to NeuroShell sub-engines."""
+        if hasattr(self.shell, "wait_for_modules"):
+            self.shell.wait_for_modules(timeout=10.0)
+
         if method == "translate":
             query = params.get("query", "")
             translation = self.shell.translator.translate(query)
             if translation and translation.command:
-                safety_fn = getattr(self.shell.safety, "assess", getattr(self.shell.safety, "check", None))
+                safety_fn = getattr(self.shell.safety, "check", getattr(self.shell.safety, "assess", None))
                 assessment = safety_fn(translation.command) if safety_fn else None
-                risk = getattr(getattr(assessment, "level", assessment), "value", str(assessment))
+                risk = "SAFE"
+                if assessment is not None and hasattr(assessment, "risk_level"):
+                    risk = getattr(assessment.risk_level, "value", "SAFE")
+                if getattr(translation, "is_destructive", False) and risk == "SAFE":
+                    risk = "DESTRUCTIVE"
+
                 return {
                     "command": translation.command,
                     "explanation": translation.explanation,
                     "risk_level": risk,
                     "confidence": translation.confidence,
+                    "is_destructive": getattr(translation, "is_destructive", False),
                 }
             return {
                 "command": query,
