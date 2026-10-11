@@ -8,8 +8,10 @@ advanced smart-open resolution (folders, apps, URLs, system shortcuts).
 """
 
 import os
+import platform
 import re
 import shlex
+import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -993,6 +995,16 @@ class Translator:
             (r"(?:clone|git\s+clone)\s+([\w.-]+/[\w.-]+)", lambda g: self._build_cmd(["git", "clone", f"https://github.com/{g[0]}.git"])),
             # GitHub clone with full URL
             (r"(?:clone|git\s+clone)\s+(https?://\S+)", lambda g: self._build_cmd(["git", "clone", g[0]])),
+            # GitHub profile dynamic resolution
+            (r"(?:show|open|view|display)\s+(?:mine|my)\s+github\s+profile\s*$", lambda g: self._build_github_profile_cmd(is_windows)),
+            # GitHub repos listing
+            (r"(?:show|list|view|display)\s+(?:all\s+)?(?:mine|my|github)\s+repos(?:itories)?\s*$", lambda g: self._build_github_repos_cmd(is_windows)),
+            # GitHub PRs
+            (r"(?:show|list|view)\s+(?:mine|my)\s+(?:prs|pull\s+requests)\s*$", lambda g: "gh pr list" if self._has_gh() else None),
+            # GitHub Issues
+            (r"(?:show|list|view)\s+(?:mine|my)\s+issues\s*$", lambda g: "gh issue list" if self._has_gh() else None),
+            # Install GitHub CLI
+            (r"(?:install|setup|get)\s+(?:the\s+)?(?:github\s+cli|gh\s+cli|gh)\s*$", lambda g: self._get_gh_install_cmd()),
         ]
 
         for pattern, builder in patterns:
@@ -1013,6 +1025,52 @@ class Translator:
                 return re.sub(r'\s+', ' ', command).strip()
 
         return None
+
+    @staticmethod
+    def _has_gh() -> bool:
+        try:
+            from operations.github_access import get_cached_github_identity
+            return get_cached_github_identity().cli_installed
+        except Exception:
+            return bool(shutil.which("gh"))
+
+    @staticmethod
+    def _build_github_profile_cmd(is_windows: bool) -> str:
+        try:
+            from operations.github_access import get_cached_github_identity
+            gh_id = get_cached_github_identity()
+            url = gh_id.profile_url or "https://github.com"
+        except Exception:
+            url = "https://github.com"
+
+        if is_windows:
+            return f'start "" "{url}"'
+        elif platform.system() == "Darwin":
+            return f'open "{url}"'
+        else:
+            return f'xdg-open "{url}"'
+
+    @staticmethod
+    def _build_github_repos_cmd(is_windows: bool) -> str:
+        try:
+            from operations.github_access import get_cached_github_identity
+            gh_id = get_cached_github_identity()
+            if gh_id.cli_installed:
+                return "gh repo list --limit 15"
+            elif gh_id.profile_url:
+                url = f"{gh_id.profile_url}?tab=repositories"
+                return f'start "" "{url}"' if is_windows else f'open "{url}"'
+        except Exception:
+            pass
+        return "gh repo list --limit 15"
+
+    @staticmethod
+    def _get_gh_install_cmd() -> str:
+        try:
+            from operations.github_access import get_github_install_command
+            return get_github_install_command()
+        except Exception:
+            return "winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements"
 
     def _build_windows_folder_copy_command(self, source_name: str, source_base: str, dest_base: str) -> str | None:
         """Build a safe Windows folder copy command for resolved source/destination roots."""

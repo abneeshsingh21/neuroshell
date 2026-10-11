@@ -1291,6 +1291,29 @@ public:
         size_t firstChar = trimmedCmd.find_first_not_of(" \t\r\n");
         if (firstChar != std::string::npos) trimmedCmd = trimmedCmd.substr(firstChar);
 
+        // Windows URL & start command sanitization:
+        // In cmd.exe, `&` is a command separator. If `start` opens a URL containing `&` without quotes,
+        // cmd.exe splits it into multiple commands. Furthermore, `start "url"` treats url as window title!
+        // Normalize any `start <url>` to `start "" "<url>"`.
+        std::string lowerCmd = trimmedCmd;
+        std::transform(lowerCmd.begin(), lowerCmd.end(), lowerCmd.begin(), ::tolower);
+        if (lowerCmd.rfind("start ", 0) == 0) {
+            std::string arg = trimmedCmd.substr(6);
+            size_t as = arg.find_first_not_of(" \t");
+            if (as != std::string::npos) arg = arg.substr(as);
+            std::string lowerArg = arg;
+            std::transform(lowerArg.begin(), lowerArg.end(), lowerArg.begin(), ::tolower);
+
+            // Case A: start http://... or start https://... (unquoted)
+            if (lowerArg.rfind("http://", 0) == 0 || lowerArg.rfind("https://", 0) == 0) {
+                trimmedCmd = "start \"\" \"" + arg + "\"";
+            }
+            // Case B: start "http://..." (missing empty title; cmd.exe treats quoted target as title)
+            else if (lowerArg.rfind("\"http://", 0) == 0 || lowerArg.rfind("\"https://", 0) == 0) {
+                trimmedCmd = "start \"\" " + arg;
+            }
+        }
+
         if (ShouldUsePowerShell(trimmedCmd)) {
             if (trimmedCmd.rfind("powershell", 0) == 0 || trimmedCmd.rfind("pwsh", 0) == 0) {
                 cmdLine = trimmedCmd;
@@ -1304,7 +1327,7 @@ public:
                 cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"" + escaped + "\"";
             }
         } else {
-            cmdLine = "cmd.exe /c " + command;
+            cmdLine = "cmd.exe /c " + trimmedCmd;
         }
 
         std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
@@ -2497,7 +2520,7 @@ public:
     static bool IsBinaryOnPathOrCwd(const std::string& name) {
         if (name.empty()) return false;
         static const std::unordered_set<std::string> nlWords = {
-            "show", "open", "run", "start", "find", "check", "tell", "list",
+            "show", "open", "run", "find", "check", "tell", "list",
             "download", "push", "pull", "compile", "make", "create", "delete",
             "remove", "kill", "how", "what", "where", "why", "who", "please",
             "help", "explain", "inspect", "analyze", "scan", "view", "display",
@@ -2553,6 +2576,25 @@ public:
             return true;
         }
 
+        // 1.5. Explicit "start" command handling (Windows internal built-in)
+        if (lower.rfind("start ", 0) == 0) {
+            std::string rest = lower.substr(6);
+            size_t rs = rest.find_first_not_of(" \t");
+            if (rs != std::string::npos) rest = rest.substr(rs);
+            // Quotes "", flags /, URLs http://, https://, protocol handlers
+            if (rest.rfind("\"\"", 0) == 0 || rest.rfind("\"", 0) == 0 ||
+                rest.rfind("/", 0) == 0 || rest.rfind("http://", 0) == 0 ||
+                rest.rfind("https://", 0) == 0 || rest.rfind("ms-", 0) == 0) {
+                return true;
+            }
+            std::istringstream restIss(rest);
+            std::string targetApp;
+            restIss >> targetApp;
+            if (IsBinaryOnPathOrCwd(targetApp)) {
+                return true;
+            }
+        }
+
         // 2. PowerShell cmdlets (Verb-Noun) e.g., Get-Process, Set-Item, Invoke-WebRequest, etc.
         const std::vector<std::string> psVerbs = {
             "get-", "set-", "invoke-", "test-", "start-", "stop-", "restart-",
@@ -2586,23 +2628,52 @@ public:
             return true;
         }
 
-        // 5. Binary or script dynamically verified on PATH or in current directory
         std::istringstream iss(lower);
         std::string firstWord;
         iss >> firstWord;
-        if (IsBinaryOnPathOrCwd(firstWord)) {
+
+        // 4.5. Built-in shell commands (CMD, PowerShell, and POSIX)
+        static const std::unordered_set<std::string> shellBuiltins = {
+            "start", "dir", "echo", "type", "cls", "cd", "chdir", "copy", "move", "ren",
+            "rename", "del", "erase", "md", "mkdir", "rd", "rmdir", "explorer", "whoami",
+            "where", "attrib", "tasklist", "taskkill", "netstat", "ipconfig", "systeminfo",
+            "findstr", "tree", "chcp", "color", "title", "pause", "path", "set", "setx",
+            "assoc", "ftype", "ver", "vol", "robocopy", "reg", "sc", "wmic", "gh", "winget",
+            "ls", "cat", "grep", "pwd", "rm", "cp", "mv", "touch", "chmod", "chown",
+            "export", "source", "kill", "ps", "top", "df", "du", "head", "tail", "less",
+            "more", "which", "open", "xdg-open", "clear", "env", "uptime", "date"
+        };
+        if (shellBuiltins.count(firstWord)) {
+            static const std::unordered_set<std::string> nlSecondWords = {
+                "the", "a", "an", "my", "mine", "our", "your", "this", "all"
+            };
+            std::string secondWord;
+            iss >> secondWord;
+            if (!secondWord.empty() && nlSecondWords.count(secondWord)) {
+                // E.g. "show the files" or "open my profile" vs "echo the message"
+                if (firstWord != "echo" && firstWord != "start" && firstWord != "explorer") {
+                    return false;
+                }
+            }
             return true;
         }
 
+        // 5. Common developer and system CLI tools
         const std::vector<std::string> tools = {
             "git", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "python", "python3",
             "node", "cargo", "rustc", "go", "gcc", "g++", "clang", "make", "cmake", "ctest",
             "curl", "wget", "tar", "zip", "unzip", "ssh", "scp", "rsync", "ffmpeg",
             "powershell", "pwsh", "cmd", "bash", "zsh", "sh", "java", "javac", "php", "ruby",
-            "pytest", "npx", "bun", "deno", "dotnet", "mvn", "gradle", "flutter", "gh", "winget"
+            "pytest", "npx", "bun", "deno", "dotnet", "mvn", "gradle", "flutter", "gh", "winget",
+            "brew", "apt", "apt-get", "dnf", "pacman"
         };
         for (const auto& t : tools) {
             if (firstWord == t) return true;
+        }
+
+        // 6. Binary or script dynamically verified on PATH or in current directory
+        if (IsBinaryOnPathOrCwd(firstWord)) {
+            return true;
         }
 
         return false;
@@ -2832,7 +2903,15 @@ public:
 
         auto ghRes = neuroshell::safe_exec::RunCapture(ghArgv);
         if (!ghRes.spawned) {
-            std::cout << "  " << C_RED << "❌ GitHub CLI (gh) not found. Install from https://cli.github.com/" << C_RESET << "\n\n";
+            std::cout << "  " << C_RED << "❌ GitHub CLI (gh) not found on this device." << C_RESET << "\n";
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+            std::cout << "  " << C_YELLOW << "Install command: " << C_WHITE << "winget install --id GitHub.cli" << C_RESET << "\n";
+#elif defined(__APPLE__)
+            std::cout << "  " << C_YELLOW << "Install command: " << C_WHITE << "brew install gh" << C_RESET << "\n";
+#else
+            std::cout << "  " << C_YELLOW << "Install command: " << C_WHITE << "sudo apt install gh" << C_RESET << "\n";
+#endif
+            std::cout << "  " << C_CYAN << "Tip: Type '/gh install' to install automatically." << C_RESET << "\n\n";
             return;
         }
         std::string jsonStr = ghRes.output;
@@ -2924,6 +3003,111 @@ public:
 
         std::cout << "  " << C_CYAN << "╰────┴──────────────────────────────────────┴────────────┴────────────┴──────────────────────────────────────────╯" << C_RESET << "\n";
         std::cout << "  " << C_MUTED << "Total Repositories: " << C_BOLD << C_WHITE << g_cached_repos.size() << C_RESET << C_MUTED << "  • Type " << C_YELLOW << "read <#>" << C_RESET << C_MUTED << ", " << C_YELLOW << "audit <#>" << C_RESET << C_MUTED << ", " << C_YELLOW << "tree <#>" << C_RESET << C_MUTED << ", or " << C_YELLOW << "clone <#>" << C_RESET << "\n\n";
+    }
+
+    void HandleGitHubCommand(const std::string& input) {
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t s = lower.find_first_not_of(" \t");
+        if (s != std::string::npos) lower = lower.substr(s);
+
+        std::string sub = "";
+        if (lower.rfind("/gh", 0) == 0) sub = lower.substr(3);
+        else if (lower.rfind("/github", 0) == 0) sub = lower.substr(7);
+        else if (lower.rfind("gh", 0) == 0) sub = lower.substr(2);
+        size_t subS = sub.find_first_not_of(" \t");
+        if (subS != std::string::npos) sub = sub.substr(subS);
+
+        if (sub.empty() || sub == "status") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 GitHub CLI Status & Connectivity" << C_RESET << "\n\n";
+            auto verRes = neuroshell::safe_exec::RunCapture({"gh", "--version"});
+            if (!verRes.spawned) {
+                std::cout << "  " << C_RED << "❌ GitHub CLI (gh) is not installed on this device." << C_RESET << "\n\n";
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+                std::cout << "  " << C_YELLOW << "Install command: " << C_WHITE << "winget install --id GitHub.cli" << C_RESET << "\n";
+#elif defined(__APPLE__)
+                std::cout << "  " << C_YELLOW << "Install command: " << C_WHITE << "brew install gh" << C_RESET << "\n";
+#else
+                std::cout << "  " << C_YELLOW << "Install command: " << C_WHITE << "sudo apt install gh" << C_RESET << "\n";
+#endif
+                std::cout << "  " << C_CYAN << "Tip: Type '/gh install' to install automatically." << C_RESET << "\n\n";
+                return;
+            }
+            std::string verLine = verRes.output.substr(0, verRes.output.find('\n'));
+            std::cout << "  " << C_GREEN << "✔ " << verLine << C_RESET << "\n\n";
+
+            std::cout << "  " << C_MUTED << "Checking authentication..." << C_RESET << "\n";
+            auto authRes = neuroshell::safe_exec::RunCapture({"gh", "auth", "status", "-h", "github.com"});
+            if (authRes.exit_code == 0) {
+                std::cout << "  " << C_GREEN << "✔ Authenticated with GitHub" << C_RESET << "\n";
+                auto userRes = neuroshell::safe_exec::RunCapture({"gh", "api", "user", "--jq", "{login: .login, html_url: .html_url, name: .name}"});
+                if (userRes.exit_code == 0 && !userRes.output.empty()) {
+                    std::cout << "  " << C_WHITE << userRes.output << C_RESET << "\n";
+                }
+            } else {
+                std::cout << "  " << C_YELLOW << "⚠ Not authenticated. Run 'gh auth login' or '/gh login' to connect your account." << C_RESET << "\n";
+            }
+            std::cout << "\n";
+            return;
+        }
+
+        if (sub == "install") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Installing GitHub CLI..." << C_RESET << "\n\n";
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+            std::string instCmd = "winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements";
+#elif defined(__APPLE__)
+            std::string instCmd = "brew install gh";
+#else
+            std::string instCmd = "sudo apt update && sudo apt install -y gh";
+#endif
+            std::cout << "  " << C_MUTED << "Executing: " << instCmd << C_RESET << "\n\n";
+            PlatformProcessRunner::Execute(instCmd);
+            std::cout << "\n  " << C_GREEN << "✔ Installation process complete. Type '/gh status' to verify." << C_RESET << "\n\n";
+            return;
+        }
+
+        if (sub == "login") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Connecting GitHub Account..." << C_RESET << "\n\n";
+            PlatformProcessRunner::Execute("gh auth login");
+            return;
+        }
+
+        if (sub == "repos" || sub == "repo") {
+            HandleReposCommand("");
+            return;
+        }
+
+        if (sub == "prs" || sub == "pr") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Fetching Open Pull Requests..." << C_RESET << "\n\n";
+            PlatformProcessRunner::Execute("gh pr list");
+            return;
+        }
+
+        if (sub == "issues" || sub == "issue") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Fetching Open Issues..." << C_RESET << "\n\n";
+            PlatformProcessRunner::Execute("gh issue list");
+            return;
+        }
+
+        if (sub == "profile") {
+            auto userRes = neuroshell::safe_exec::RunCapture({"gh", "api", "user", "--jq", ".html_url"});
+            std::string url = "https://github.com";
+            if (userRes.exit_code == 0 && !userRes.output.empty()) {
+                size_t nl = userRes.output.find_first_of("\r\n");
+                url = userRes.output.substr(0, nl != std::string::npos ? nl : userRes.output.size());
+            }
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🐙 Opening GitHub Profile: " << url << C_RESET << "\n\n";
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+            PlatformProcessRunner::Execute("start \"\" \"" + url + "\"");
+#elif defined(__APPLE__)
+            PlatformProcessRunner::Execute("open \"" + url + "\"");
+#else
+            PlatformProcessRunner::Execute("xdg-open \"" + url + "\"");
+#endif
+            return;
+        }
+
+        PlatformProcessRunner::Execute("gh " + sub);
     }
 
     void HandleReadCommand(const std::string& rawTarget) {
@@ -3361,6 +3545,9 @@ public:
         else if (lower == "/repos" || lower == "repos" || lower == "my repos") {
             HandleReposCommand();
         }
+        else if (lower == "/gh" || lower == "/github" || lower.rfind("/gh ", 0) == 0 || lower.rfind("/github ", 0) == 0) {
+            HandleGitHubCommand(input);
+        }
         else {
             std::cout << C_MUTED << "  ℹ️ Executed slash command: " << input << C_RESET << "\n\n";
         }
@@ -3575,6 +3762,14 @@ public:
         // Explicit slash command for repository viewer
         if (lowerTrim == "/repos" || lowerTrim == "/repositories") {
             HandleReposCommand();
+            return;
+        }
+        if (lowerTrim == "/gh" || lowerTrim == "/github" || lowerTrim.rfind("/gh ", 0) == 0 || lowerTrim.rfind("/github ", 0) == 0) {
+            HandleGitHubCommand(input);
+            return;
+        }
+        if (lowerTrim == "install gh" || lowerTrim == "install github cli") {
+            HandleGitHubCommand("/gh install");
             return;
         }
         if (lowerTrim.rfind("repos ", 0) == 0) {

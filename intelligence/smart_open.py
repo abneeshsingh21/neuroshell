@@ -122,9 +122,6 @@ LINUX_APP_REGISTRY: dict[str, tuple[str, str]] = {
 
 SITE_MAP: dict[str, str] = {
     "github": "https://github.com",
-    "github profile": "https://github.com",
-    "my github": "https://github.com",
-    "my github profile": "https://github.com",
     "google": "https://google.com",
     "youtube": "https://youtube.com",
     "stackoverflow": "https://stackoverflow.com",
@@ -566,6 +563,61 @@ class SmartOpenEngine:
                 target_type="url",
                 confidence=0.95,
             )
+
+        # Dynamic GitHub profile and repositories resolution
+        if target_lower in ("github profile", "my github profile", "mine github profile", "my github", "mine github", "my profile on github"):
+            try:
+                from operations.github_access import get_cached_github_identity
+                gh_id = get_cached_github_identity()
+                url = gh_id.profile_url or "https://github.com"
+                cmd = self._url_open_cmd(url)
+                username_label = f" for @{gh_id.username}" if gh_id.username else ""
+                return OpenResult(
+                    command=cmd,
+                    explanation=f"Open GitHub profile{username_label} in default browser",
+                    target_type="url",
+                    confidence=0.98,
+                    alternatives=["gh browse"] if gh_id.cli_installed else [],
+                )
+            except Exception:
+                pass
+
+        if target_lower in ("github repos", "my github repos", "mine github repos", "my repos", "mine repos", "github repositories", "my repositories"):
+            try:
+                from operations.github_access import get_cached_github_identity
+                gh_id = get_cached_github_identity()
+                if gh_id.cli_installed:
+                    return OpenResult(
+                        command="gh repo list --limit 15",
+                        explanation=f"List repositories for @{gh_id.username or 'authenticated user'} using GitHub CLI",
+                        target_type="cli",
+                        confidence=0.98,
+                        alternatives=[self._url_open_cmd(f"{gh_id.profile_url}?tab=repositories")] if gh_id.profile_url else [],
+                    )
+                elif gh_id.profile_url:
+                    url = f"{gh_id.profile_url}?tab=repositories"
+                    return OpenResult(
+                        command=self._url_open_cmd(url),
+                        explanation=f"Open GitHub repositories for @{gh_id.username}: {url}",
+                        target_type="url",
+                        confidence=0.95,
+                        alternatives=[gh_id.install_command],
+                    )
+            except Exception:
+                pass
+
+        if target_lower in ("install github cli", "install gh", "install gh cli", "install github"):
+            try:
+                from operations.github_access import get_github_install_command
+                inst_cmd = get_github_install_command()
+                return OpenResult(
+                    command=inst_cmd,
+                    explanation="Install GitHub CLI (gh) via system package manager",
+                    target_type="cli",
+                    confidence=0.98,
+                )
+            except Exception:
+                pass
 
         # Site name inference
         if target_lower in SITE_MAP:

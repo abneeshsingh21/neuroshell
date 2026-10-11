@@ -14,23 +14,39 @@ import shutil
 # ═══════════════════════════════════════════════════════════
 
 def _system_fingerprint() -> str:
-    """Generate system fingerprint for all prompts."""
+    """Generate dynamic system fingerprint for all prompts."""
     os_name = platform.system()
     os_ver = platform.version()
     shell = "PowerShell" if os_name == "Windows" else "bash"
 
     tools_available = []
-    for tool in ["git", "docker", "python", "pip", "npm", "node", "cargo", "go", "kubectl", "terraform"]:
+    for tool in ["git", "gh", "docker", "python", "pip", "npm", "node", "cargo", "go", "kubectl", "terraform", "winget", "brew"]:
         if shutil.which(tool):
             tools_available.append(tool)
+
+    gh_info = ""
+    try:
+        from operations.github_access import get_cached_github_identity
+        gh_id = get_cached_github_identity()
+        if gh_id.cli_installed and gh_id.authenticated and gh_id.username:
+            gh_info = f"\nGitHub Context: Authenticated as @{gh_id.username} (Profile: {gh_id.profile_url}, CLI active)"
+        elif gh_id.cli_installed:
+            gh_info = f"\nGitHub Context: CLI installed ({gh_id.cli_version or 'detected'}), not logged in. Install command: {gh_id.install_command}"
+        elif gh_id.username:
+            gh_info = f"\nGitHub Context: Git user @{gh_id.username} (CLI not installed). Install command: {gh_id.install_command}"
+        else:
+            gh_info = f"\nGitHub Context: CLI not installed. Install command: {gh_id.install_command}"
+    except Exception:
+        pass
 
     return (
         f"OS: {os_name} {os_ver}\n"
         f"Shell: {shell}\n"
         f"Available tools: {', '.join(tools_available) or 'unknown'}"
+        f"{gh_info}"
     )
 
-PROMPT_VERSION = "2.0"
+PROMPT_VERSION = "2.1"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -50,8 +66,24 @@ CONTEXT:
 
 FEW-SHOT EXAMPLES:
 User: "show mine github profile"
-Thought: User wants to open their GitHub profile in a browser. On Windows use `start "" "https://github.com"`, on macOS `open`, on Linux `xdg-open`.
-Answer: {{"command": "start \"\" \"https://github.com\"", "confidence": 0.95, "explanation": "Open GitHub homepage/profile in default web browser", "is_destructive": false, "alternatives": ["gh browse"]}}
+Thought: User wants to open their GitHub profile in a browser. Use the authenticated GitHub username from system context (e.g. 'https://github.com/abneeshsingh21' or `gh browse`). On Windows use `start "" "https://github.com/<username>"`, on macOS `open`, on Linux `xdg-open`.
+Answer: {{"command": "start \"\" \"https://github.com/abneeshsingh21\"", "confidence": 0.98, "explanation": "Open authenticated user GitHub profile in default browser", "is_destructive": false, "alternatives": ["gh browse"]}}
+
+User: "show github repos"
+Thought: User wants to list their GitHub repositories. When GitHub CLI (`gh`) is available, run `gh repo list --limit 15`. If missing, suggest installation or open repos page.
+Answer: {{"command": "gh repo list --limit 15", "confidence": 0.98, "explanation": "List repositories for authenticated user using GitHub CLI", "is_destructive": false, "alternatives": ["start \"\" \"https://github.com/abneeshsingh21?tab=repositories\""]}}
+
+User: "show my pull requests"
+Thought: User wants to view open pull requests. When GitHub CLI (`gh`) is available, run `gh pr list`.
+Answer: {{"command": "gh pr list", "confidence": 0.98, "explanation": "List open pull requests using GitHub CLI", "is_destructive": false, "alternatives": []}}
+
+User: "show my issues"
+Thought: User wants to view open GitHub issues. When GitHub CLI (`gh`) is available, run `gh issue list`.
+Answer: {{"command": "gh issue list", "confidence": 0.98, "explanation": "List open issues using GitHub CLI", "is_destructive": false, "alternatives": []}}
+
+User: "install github cli"
+Thought: User wants to install GitHub CLI. On Windows use `winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements`, on macOS use `brew install gh`, on Linux use `sudo apt install gh`.
+Answer: {{"command": "winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements", "confidence": 0.98, "explanation": "Install GitHub CLI via Windows Package Manager", "is_destructive": false, "alternatives": []}}
 
 User: "run my python script app.py"
 Thought: User wants to execute a python file using the python runtime.
@@ -100,6 +132,7 @@ RULES:
 - WINDOWS CRITICAL: Use `explorer "path"` to open folders, `start "" "path"` to open files/URLs
 - WINDOWS CRITICAL: Never use `start` without empty title `""` when opening quoted paths
 - WINDOWS CRITICAL: Use PowerShell cmdlets (Compress-Archive, Expand-Archive) for system tasks
+- GITHUB ACTIONS: When GitHub CLI (gh) is available, use 'gh repo list --limit 15' to list repos, 'gh pr list' for PRs, 'gh issue list' for issues, and 'start "" "<profile_url>"' or 'gh browse' for profiles. If gh is not installed and user asks for repos/PRs or to install it, provide the package manager command (Windows: 'winget install --id GitHub.cli', macOS: 'brew install gh', Linux: 'sudo apt install gh').
 - Always generate exactly ONE command — never repeat or loop commands
 - If the user says "open X folder", generate a single `explorer` command, not multiple
 

@@ -5,9 +5,13 @@
 from __future__ import annotations
 
 import json
+import os
+import platform
 import re
 import shutil
 import subprocess
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -241,3 +245,198 @@ class GitHubAccessManager:
         if cp.returncode != 0:
             raise RuntimeError((cp.stderr or cp.stdout or "failed to create issue").strip())
         return (cp.stdout or "").strip()
+
+
+# ═══════════════════════════════════════════════════════════
+# Dynamic GitHub Identity & CLI Environment Resolver
+# ═══════════════════════════════════════════════════════════
+
+@dataclass
+class GitHubIdentity:
+    """Live GitHub environment and user identity representation."""
+    cli_installed: bool = False
+    cli_path: str | None = None
+    cli_version: str | None = None
+    authenticated: bool = False
+    username: str | None = None
+    profile_url: str | None = None
+    display_name: str | None = None
+    email: str | None = None
+    default_repo: str | None = None
+    origin_repo: str | None = None
+    install_command: str = ""
+
+    def summary(self) -> str:
+        if self.cli_installed and self.authenticated and self.username:
+            repo_info = f" | Current Repo: {self.origin_repo}" if self.origin_repo else ""
+            return (
+                f"GitHub CLI: Available (Authenticated as @{self.username}{repo_info})\n"
+                f"Profile URL: {self.profile_url or f'https://github.com/{self.username}'}"
+            )
+        elif self.cli_installed and self.authenticated:
+            return "GitHub CLI: Available (Authenticated)\nProfile URL: https://github.com"
+        elif self.cli_installed:
+            return f"GitHub CLI: Installed ({self.cli_version or 'detected'}), but not authenticated. Run 'gh auth login' to connect your GitHub."
+        elif self.username:
+            return (
+                f"GitHub CLI: Not installed (Detected git user @{self.username})\n"
+                f"Profile URL: {self.profile_url or f'https://github.com/{self.username}'}\n"
+                f"Install CLI: {self.install_command}"
+            )
+        else:
+            return f"GitHub CLI: Not installed\nInstall CLI: {self.install_command}"
+
+
+class GitHubIdentityResolver:
+    """Cached, zero-latency resolver for GitHub CLI status and user identity."""
+    _cached_identity: GitHubIdentity | None = None
+    _last_resolved: float = 0.0
+    _CACHE_TTL_SECONDS: float = 300.0  # 5 minutes
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear cached identity."""
+        cls._cached_identity = None
+        cls._last_resolved = 0.0
+
+    @classmethod
+    def get_install_command(cls) -> str:
+        system = platform.system()
+        if system == "Windows":
+            return "winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements"
+        elif system == "Darwin":
+            return "brew install gh"
+        else:
+            # Linux distro detection
+            if shutil.which("apt") or shutil.which("apt-get"):
+                return "sudo apt update && sudo apt install -y gh"
+            elif shutil.which("dnf"):
+                return "sudo dnf install -y gh"
+            elif shutil.which("pacman"):
+                return "sudo pacman -S --noconfirm github-cli"
+            return "sudo apt install -y gh"
+
+    @classmethod
+    def resolve(cls, workspace_root: Path | None = None, force_refresh: bool = False) -> GitHubIdentity:
+        now = time.time()
+        if not force_refresh and cls._cached_identity is not None and (now - cls._last_resolved) < cls._CACHE_TTL_SECONDS:
+            return cls._cached_identity
+
+        ws = workspace_root or Path.cwd()
+        install_cmd = cls.get_install_command()
+        identity = GitHubIdentity(install_command=install_cmd)
+
+        # 1. Detect gh executable
+        gh_path = GitHubAccessManager._gh_path()
+        if gh_path:
+            identity.cli_installed = True
+            identity.cli_path = gh_path
+
+            # Detect version
+            try:
+                cp_ver = subprocess.run([gh_path, "--version"], capture_output=True, text=True, timeout=3)
+                if cp_ver.returncode == 0:
+                    ver_line = cp_ver.stdout.splitlines()[0] if cp_ver.stdout else ""
+                    m = re.search(r"gh version (\S+)", ver_line)
+                    if m:
+                        identity.cli_version = m.group(1)
+            except Exception:
+                pass
+
+            # Detect authenticated user via gh api user
+            try:
+                cp_user = subprocess.run(
+                    [gh_path, "api", "user", "--jq", "{login: .login, html_url: .html_url, name: .name, email: .email}"],
+                    cwd=str(ws),
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if cp_user.returncode == 0 and cp_user.stdout.strip():
+                    user_data = json.loads(cp_user.stdout)
+                    identity.authenticated = True
+                    identity.username = user_data.get("login")
+                    identity.profile_url = user_data.get("html_url")
+                    identity.display_name = user_data.get("name")
+                    identity.email = user_data.get("email")
+            except Exception:
+                pass
+
+            # Fallback auth check via gh auth status if user API had transient error
+            if not identity.authenticated:
+                try:
+                    cp_auth = subprocess.run(
+                        [gh_path, "auth", "status", "-h", "github.com"],
+                        cwd=str(ws),
+                        capture_output=True,
+                        text=True,
+                        timeout=4,
+                    )
+                    if cp_auth.returncode == 0:
+                        identity.authenticated = True
+                        combined = cp_auth.stdout + "\n" + cp_auth.stderr
+                        m_user = re.search(r"Logged in to github\.com account (\S+)", combined)
+                        if m_user:
+                            identity.username = m_user.group(1)
+                            identity.profile_url = f"https://github.com/{identity.username}"
+                except Exception:
+                    pass
+
+        # 2. Extract git repo and user fallbacks from local workspace
+        try:
+            cp_remote = subprocess.run(["git", "remote", "get-url", "origin"], cwd=str(ws), capture_output=True, text=True, timeout=3)
+            if cp_remote.returncode == 0 and cp_remote.stdout.strip():
+                raw_url = cp_remote.stdout.strip()
+                # Parse owner/repo from URL
+                m_repo = re.search(r"github\.com[:/](?:[^/@]+@)?([^/]+)/([^/\.]+)", raw_url)
+                if m_repo:
+                    repo_owner = m_repo.group(1)
+                    repo_name = m_repo.group(2)
+                    identity.origin_repo = f"{repo_owner}/{repo_name}"
+                    if not identity.username:
+                        identity.username = repo_owner
+                    if not identity.profile_url:
+                        identity.profile_url = f"https://github.com/{repo_owner}"
+        except Exception:
+            pass
+
+        # 3. Extract git user.name if username still empty
+        if not identity.username:
+            try:
+                cp_name = subprocess.run(["git", "config", "--get", "user.name"], cwd=str(ws), capture_output=True, text=True, timeout=2)
+                if cp_name.returncode == 0 and cp_name.stdout.strip():
+                    identity.display_name = cp_name.stdout.strip()
+            except Exception:
+                pass
+
+        if identity.username and not identity.profile_url:
+            identity.profile_url = f"https://github.com/{identity.username}"
+
+        cls._cached_identity = identity
+        cls._last_resolved = now
+        return identity
+
+
+def get_cached_github_identity(workspace_root: Path | None = None, force_refresh: bool = False) -> GitHubIdentity:
+    """Retrieve the cached GitHub environment and user identity."""
+    return GitHubIdentityResolver.resolve(workspace_root=workspace_root, force_refresh=force_refresh)
+
+
+get_github_identity = get_cached_github_identity
+
+
+def get_github_install_command() -> str:
+    """Return the package manager command to install GitHub CLI on this OS."""
+    return GitHubIdentityResolver.get_install_command()
+
+
+def install_github_cli() -> subprocess.CompletedProcess:
+    """Execute the platform package manager to install GitHub CLI."""
+    cmd = get_github_install_command()
+    shell = platform.system() == "Windows"
+    res = subprocess.run(cmd, shell=True, capture_output=False, text=True)
+    # Clear cache so next check sees newly installed binary
+    GitHubIdentityResolver._cached_identity = None
+    GitHubIdentityResolver._last_resolved = 0.0
+    return res
+

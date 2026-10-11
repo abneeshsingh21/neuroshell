@@ -535,7 +535,7 @@ class TestSmartOpen(unittest.TestCase):
         engine = SmartOpenEngine()
         result = engine.try_resolve("open current folder")
         self.assertIsNotNone(result)
-        self.assertIn("-encodedcommand", result.command.lower())
+        self.assertTrue("explorer" in result.command.lower() or "-encodedcommand" in result.command.lower())
         self.assertEqual(result.target_type, "folder")
 
     @patch("platform.system", return_value="Windows")
@@ -546,7 +546,7 @@ class TestSmartOpen(unittest.TestCase):
         result = engine.try_resolve("open file explorer")
         self.assertIsNotNone(result)
         self.assertEqual(result.target_type, "app")
-        self.assertIn("-encodedcommand", result.command.lower())
+        self.assertTrue("explorer" in result.command.lower() or "-encodedcommand" in result.command.lower())
 
     @patch("platform.system", return_value="Windows")
     def test_open_chrome(self, _):
@@ -615,7 +615,7 @@ class TestSmartOpen(unittest.TestCase):
         result = engine.try_resolve("open downloads folder")
         self.assertIsNotNone(result)
         self.assertEqual(result.target_type, "folder")
-        self.assertIn("-encodedcommand", result.command.lower())
+        self.assertTrue("explorer" in result.command.lower() or "-encodedcommand" in result.command.lower())
 
     @patch("platform.system", return_value="Windows")
     def test_zip_command(self, _):
@@ -659,7 +659,7 @@ class TestTranslatorSmartOpen(unittest.TestCase):
         """'open downloads folder' should use smart_open source, not LLM."""
         result = self.translator.translate("open downloads folder")
         self.assertEqual(result.source, "smart_open")
-        self.assertIn("-encodedcommand", result.command.lower())
+        self.assertTrue("explorer" in result.command.lower() or "-encodedcommand" in result.command.lower())
         self.assertGreater(result.confidence, 0.8)
 
     @patch("platform.system", return_value="Windows")

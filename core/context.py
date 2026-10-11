@@ -303,11 +303,36 @@ class ContextManager:
         if notable:
             parts.append(f"Files: {', '.join(notable)}")
 
+        # GitHub Identity & CLI
+        try:
+            from operations.github_access import get_cached_github_identity
+            gh_id = get_cached_github_identity(Path(ctx.cwd) if ctx.cwd else None)
+            if gh_id.cli_installed and gh_id.authenticated and gh_id.username:
+                parts.append(f"GitHub: @{gh_id.username} (CLI ready: gh)")
+            elif gh_id.username:
+                parts.append(f"GitHub: @{gh_id.username} (CLI not installed)")
+        except Exception:
+            pass
+
         return " | ".join(parts)
 
     def get_prompt_context(self, cwd: str | None = None) -> dict:
         """Get structured context optimized for LLM prompt injection."""
         ctx = self.get_context(cwd)
+        gh_dict: dict[str, Any] = {}
+        try:
+            from operations.github_access import get_cached_github_identity
+            gh_id = get_cached_github_identity(Path(ctx.cwd) if ctx.cwd else None)
+            gh_dict = {
+                "cli_installed": gh_id.cli_installed,
+                "authenticated": gh_id.authenticated,
+                "username": gh_id.username,
+                "profile_url": gh_id.profile_url,
+                "install_command": gh_id.install_command,
+            }
+        except Exception:
+            pass
+
         return {
             "os": ctx.os_name,
             "shell": ctx.shell,
@@ -320,6 +345,7 @@ class ContextManager:
             "tools": ctx.available_tools[:20],
             "online": ctx.network.is_online,
             "key_files": ctx.files_in_cwd[:20],
+            "github": gh_dict,
         }
 
     def _is_cache_stale(self) -> bool:
