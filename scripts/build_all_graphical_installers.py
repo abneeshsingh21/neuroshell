@@ -108,12 +108,12 @@ chmod +x "$DIR/neuroshell" 2>/dev/null
 exec "$DIR/neuroshell" "$@"
 """.replace("\r\n", "\n").encode("utf-8")
 
-    install_script_content = """#!/usr/bin/env bash
+    install_script_content = f"""#!/usr/bin/env bash
 # Global Installer for macOS / Linux
 # Copyright (c) 2024-2026 Abneesh Singh. All rights reserved.
 
 set -e
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 TARGET_DIR="/usr/local/bin"
 APP_DIR="/usr/local/share/neuroshell"
 
@@ -168,7 +168,7 @@ echo "   Run 'neuroshell' in any terminal to start."
                 tf.add(p, arcname=d, filter=exclude_pycache)
 
         bundled_files = [
-            "main.py", "config.py", "neuroshell_cli.py",
+            "main.py", "config.py", "neuroshell_cli.py", "__version__.py",
             "pyproject.toml", "requirements.txt", "LICENSE", "README.md"
         ]
         for f in bundled_files:

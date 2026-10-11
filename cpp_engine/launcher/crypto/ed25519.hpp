@@ -378,15 +378,19 @@ inline void reduce64(u8* r) { // r: 64 bytes in, 32-byte scalar mod L out
 }
 
 // RFC 8032 §5.1.7 malleability check: reject S >= L so every message has a
-// single accepted signature encoding. (TweetNaCl itself omits this.)
+// single accepted signature encoding. Evaluated over all 32 limbs to avoid timing side-channels.
 inline bool scalar_below_L(const u8 s[32]) {
     const i64* L = order_L();
+    int result = 0; // -1 for s < L, 1 for s > L, 0 for s == L
     for (int i = 31; i >= 0; --i) {
-        i64 sv = static_cast<i64>(s[i]);
-        if (sv < L[i]) return true;
-        if (sv > L[i]) return false;
+        int sv = static_cast<int>(s[i]);
+        int lv = static_cast<int>(L[i]);
+        int diff = sv - lv;
+        int is_unset = (result == 0);
+        if (is_unset && diff < 0) result = -1;
+        else if (is_unset && diff > 0) result = 1;
     }
-    return false; // s == L
+    return result < 0;
 }
 
 } // namespace ed25519_detail

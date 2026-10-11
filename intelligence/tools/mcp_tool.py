@@ -92,8 +92,8 @@ class MCPTool(BaseTool):
             else:
                 res = {"error": "Invalid action"}
 
-            if "error" in res:
-                yield {"type": "error", "message": res["error"]}
+            if isinstance(res, dict) and "error" in res:
+                yield {"type": "error", "message": str(res["error"])}
             else:
                 yield {"type": "result", "data": res}
         except Exception as e:

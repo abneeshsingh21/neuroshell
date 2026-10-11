@@ -47,7 +47,6 @@ _PATTERNS = [
     # ── Python Errors ───────────────────────────────
     {
         "regex": r"No module named ['\"](\w[\w\.]*)['\"]",
-        "extract": 1,
         "fix_fn": lambda m, cmd: FixResult(
             fix_command=f"pip install {m.group(1).split('.')[0]}",
             explanation=f"Python package '{m.group(1)}' is not installed",
@@ -564,15 +563,20 @@ class ErrorFixer:
                     ),
                 )
 
+        try:
+            conf = min(max(float(result.get("confidence", 0.5)), 0.0), 1.0)
+        except (ValueError, TypeError):
+            conf = 0.5
+
         return FixResult(
             fix_command=result.get("fix_command", ""),
             explanation=result.get("explanation", ""),
-            confidence=float(result.get("confidence", 0.5)),
+            confidence=conf,
             alternative_fixes=result.get("alternative_fixes", []),
             root_cause=result.get("root_cause", ""),
             provenance=ProvenanceTag(
                 source=ProvenanceSource.LLM,
-                confidence=float(result.get("confidence", 0.5)),
+                confidence=conf,
                 detail="LLM-generated fix",
                 latency_ms=latency,
             ),

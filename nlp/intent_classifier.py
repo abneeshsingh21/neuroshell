@@ -79,6 +79,12 @@ def _safe_model_load(path: Path):
                 "Delete %s to retrain.", path
             )
             return None  # Caller will retrain
+    else:
+        # Legacy model file without sidecar: generate sidecar on load
+        try:
+            hash_path.write_text(_compute_file_hash(path), encoding="utf-8")
+        except OSError:
+            pass
 
     if HAS_JOBLIB:
         load_fn = joblib.load

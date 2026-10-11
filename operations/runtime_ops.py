@@ -81,3 +81,28 @@ class RuntimeSLOMonitor:
             alerts.append({"severity": "critical", "code": "SLO_BUDGET_EXHAUSTED", "message": "Availability error budget exhausted"})
 
         return alerts
+
+
+def run_local_command(cmd: str, timeout_s: int = 30) -> str:
+    """Execute a local shell command safely and return output."""
+    import subprocess
+    import sys
+
+    # Cross-platform normalization for tree command
+    if cmd.strip().lower() == "tree /f" and sys.platform != "win32":
+        cmd = "tree"
+
+    try:
+        res = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return res.stdout if res.returncode == 0 else (res.stderr or f"Exit code {res.returncode}")
+    except Exception as e:
+        return f"Failed to execute command '{cmd}': {e}"
+

@@ -274,7 +274,29 @@ class SafetyChecker:
             return SafetyResult(risk_level=RiskLevel.SAFE, reason="Whitelisted command")
 
         norm_cmd = self._normalize_for_safety(command)
+        if "\x00" in command or "\x00" in norm_cmd:
+            result = SafetyResult(
+                risk_level=RiskLevel.BLOCKED,
+                reason="🚫 BLOCKED: Embedded null byte detected in command string",
+                is_reversible=False,
+                needs_confirmation=True,
+                affected=self._estimate_scope(command),
+            )
+            self._log_audit(command, result)
+            return result
+
         cmds_to_test = [command] if norm_cmd == command else [command, norm_cmd]
+
+        # Recursive check for composite / chained command segments
+        chain_segments = [s.strip() for s in re.split(r'\|\||&&|;|\||\n', norm_cmd) if s.strip()]
+        if len(chain_segments) > 1:
+            for seg in chain_segments:
+                if seg != command and seg != norm_cmd:
+                    seg_res = self.check(seg)
+                    if seg_res.risk_level in (RiskLevel.BLOCKED, RiskLevel.DANGER):
+                        seg_res.reason = f"Chain segment risk ({seg[:30]}): {seg_res.reason}"
+                        self._log_audit(command, seg_res)
+                        return seg_res
 
         # Layer 1: BLOCKED patterns
         for c in cmds_to_test:
@@ -295,32 +317,35 @@ class SafetyChecker:
         chain_risks = self._analyze_chain(command)
 
         # Layer 1 continued: DANGER patterns
-        for pattern, reason in self.DANGER_PATTERNS:
-            if re.search(pattern, command, re.IGNORECASE):
-                scope = self._estimate_scope(command)
-                dry_run = self._suggest_dry_run(command)
-                suggestions = self._suggest_safer(command)
+        for c in cmds_to_test:
+            for pattern, reason in self.DANGER_PATTERNS:
+                if re.search(pattern, c, re.IGNORECASE):
+                    scope = self._estimate_scope(command)
+                    dry_run = self._suggest_dry_run(command)
+                    suggestions = self._suggest_safer(command)
 
-                result = SafetyResult(
-                    risk_level=RiskLevel.DANGER,
-                    reason=f"⛔ {reason}",
-                    affected=scope,
-                    is_reversible=False,
-                    needs_confirmation=True,
-                    chain_risks=chain_risks,
-                    suggestions=suggestions,
-                    dry_run_available=bool(dry_run),
-                    dry_run_command=dry_run,
-                )
-                result = self._apply_policy_overrides(command, result)
-                self._log_audit(command, result)
-                return result
+                    result = SafetyResult(
+                        risk_level=RiskLevel.DANGER,
+                        reason=f"⛔ {reason}",
+                        affected=scope,
+                        is_reversible=False,
+                        needs_confirmation=True,
+                        chain_risks=chain_risks,
+                        suggestions=suggestions,
+                        dry_run_available=bool(dry_run),
+                        dry_run_command=dry_run,
+                    )
+                    result = self._apply_policy_overrides(command, result)
+                    self._log_audit(command, result)
+                    return result
 
         # Layer 1 continued: CAUTION patterns
         caution_reasons = []
-        for pattern, reason in self.CAUTION_PATTERNS:
-            if re.search(pattern, command, re.IGNORECASE):
-                caution_reasons.append(reason)
+        for c in cmds_to_test:
+            for pattern, reason in self.CAUTION_PATTERNS:
+                if re.search(pattern, c, re.IGNORECASE):
+                    if reason not in caution_reasons:
+                        caution_reasons.append(reason)
 
         if caution_reasons or chain_risks:
             scope = self._estimate_scope(command)
@@ -373,8 +398,8 @@ class SafetyChecker:
         """Analyze piped and chained commands for hidden risks."""
         risks = []
 
-        # Split by pipes, &&, ;
-        segments = re.split(r'\||\&\&|;', command)
+        # Split by pipes, &&, ||, ;, \n
+        segments = re.split(r'\|\||&&|;|\||\n', command)
         if len(segments) <= 1:
             return risks
 

@@ -199,6 +199,7 @@ class ShellExecutor:
         self._dir_stack: list[str] = []
 
         # Background jobs
+        self._jobs_lock = threading.Lock()
         self._bg_jobs: dict[str, BackgroundJob] = {}
         self._job_counter = 0
 
@@ -459,7 +460,14 @@ class ShellExecutor:
                     pass
 
             if self._system == "Windows":
-                process.terminate()
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                        capture_output=True,
+                        check=False,
+                    )
+                except Exception:
+                    process.terminate()
             else:
                 try:
                     pgid = os.getpgid(process.pid)
@@ -477,7 +485,14 @@ class ShellExecutor:
                     except (ProcessLookupError, OSError):
                         process.kill()
                 else:
-                    process.kill()
+                    try:
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                            capture_output=True,
+                            check=False,
+                        )
+                    except Exception:
+                        process.kill()
                 process.wait(timeout=2)
         except (ProcessLookupError, OSError):
             pass
@@ -551,7 +566,8 @@ class ShellExecutor:
                 process=process,
                 start_time=start_time,
             )
-            self._bg_jobs[job_id] = job
+            with self._jobs_lock:
+                self._bg_jobs[job_id] = job
 
             # Collect output with bounded 10,000-line rolling buffer to prevent memory leaks
             def _drain(stream, buf):
@@ -585,11 +601,13 @@ class ShellExecutor:
     def list_jobs(self) -> list[dict]:
         """List all background jobs."""
         self._cleanup_finished_jobs()
-        return [job.to_dict() for job in self._bg_jobs.values()]
+        with self._jobs_lock:
+            return [job.to_dict() for job in list(self._bg_jobs.values())]
 
     def kill_job(self, job_id: str) -> bool:
         """Kill a background job."""
-        job = self._bg_jobs.get(job_id)
+        with self._jobs_lock:
+            job = self._bg_jobs.get(job_id)
         if job and job.is_running:
             self._terminate_process(job.process)
             return True
@@ -597,9 +615,10 @@ class ShellExecutor:
 
     def get_job_output(self, job_id: str) -> str | None:
         """Get output from a background job."""
-        job = self._bg_jobs.get(job_id)
-        if job:
-            return "".join(job.output_lines)
+        with self._jobs_lock:
+            job = self._bg_jobs.get(job_id)
+            if job:
+                return "".join(list(job.output_lines))
         return None
 
     # Finished jobs are kept this long so the user can still read their output
@@ -609,20 +628,21 @@ class ShellExecutor:
         """Remove finished jobs from tracking and release their pipe FDs."""
         now = time.time()
         to_remove = []
-        for jid, job in self._bg_jobs.items():
-            if not job.is_running and (now - job.start_time) > self._JOB_RETAIN_S:
-                to_remove.append(jid)
-        for jid in to_remove:
-            job = self._bg_jobs.pop(jid, None)
-            if job is None:
-                continue
-            # Close pipes so we don't leak file descriptors
-            for stream in (job.process.stdout, job.process.stderr, job.process.stdin):
-                try:
-                    if stream is not None:
-                        stream.close()
-                except (OSError, ValueError):
-                    pass
+        with self._jobs_lock:
+            for jid, job in list(self._bg_jobs.items()):
+                if not job.is_running and (now - job.start_time) > self._JOB_RETAIN_S:
+                    to_remove.append(jid)
+            for jid in to_remove:
+                job = self._bg_jobs.pop(jid, None)
+                if job is None:
+                    continue
+                # Close pipes so we don't leak file descriptors
+                for stream in (job.process.stdout, job.process.stderr, job.process.stdin):
+                    try:
+                        if stream is not None:
+                            stream.close()
+                    except (OSError, ValueError):
+                        pass
 
     # ── Builtins & Directory Management ────────────────────
 

@@ -82,6 +82,8 @@ class HistoryStore:
         self.db_path = db_path or DB_FILE
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
+        self._all_conns: set[sqlite3.Connection] = set()
+        self._conns_lock = threading.Lock()
         self._init_db()
 
     @property
@@ -102,6 +104,8 @@ class HistoryStore:
             conn.execute("PRAGMA temp_store=MEMORY")
             conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
             self._local.conn = conn
+            with self._conns_lock:
+                self._all_conns.add(conn)
         return self._local.conn
 
     def _init_db(self):
@@ -727,24 +731,26 @@ class HistoryStore:
         """Import commands from JSON. Returns number of records imported."""
         data = json.loads(Path(filepath).read_text(encoding="utf-8"))
         count = 0
-        for item in data:
-            record = CommandRecord(
-                command=item.get("command", ""),
-                exit_code=item.get("exit_code", 0),
-                stdout_preview=item.get("stdout_preview", ""),
-                stderr_preview=item.get("stderr_preview", ""),
-                cwd=item.get("cwd", ""),
-                shell=item.get("shell", ""),
-                duration_ms=item.get("duration_ms", 0),
-                timestamp=item.get("timestamp", time.time()),
-                session_id=item.get("session_id", ""),
-                intent=item.get("intent", ""),
-                source=item.get("source", "imported"),
-                was_ai_translated=item.get("was_ai_translated", False),
-                original_nl=item.get("original_nl", ""),
-            )
-            self.add_command(record)
-            count += 1
+        conn = self._get_conn()
+        with conn:
+            for item in data:
+                record = CommandRecord(
+                    command=item.get("command", ""),
+                    exit_code=item.get("exit_code", 0),
+                    stdout_preview=item.get("stdout_preview", ""),
+                    stderr_preview=item.get("stderr_preview", ""),
+                    cwd=item.get("cwd", ""),
+                    shell=item.get("shell", ""),
+                    duration_ms=item.get("duration_ms", 0),
+                    timestamp=item.get("timestamp", time.time()),
+                    session_id=item.get("session_id", ""),
+                    intent=item.get("intent", ""),
+                    source=item.get("source", "imported"),
+                    was_ai_translated=item.get("was_ai_translated", False),
+                    original_nl=item.get("original_nl", ""),
+                )
+                self.add_command(record)
+                count += 1
         return count
 
     def export_text(self, filepath: Path, limit: int = None) -> int:
@@ -886,7 +892,13 @@ class HistoryStore:
         }
 
     def close(self):
-        """Close database connection."""
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        """Close database connection across all threads."""
+        with self._conns_lock:
+            for c in list(self._all_conns):
+                try:
+                    c.close()
+                except Exception:
+                    pass
+            self._all_conns.clear()
+        if hasattr(self._local, "conn"):
+            self._local.conn = None

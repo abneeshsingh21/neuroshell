@@ -241,8 +241,8 @@ class RemoteExecutor:
             raw_out, raw_err = proc.stdout, proc.stderr
         except subprocess.TimeoutExpired as exc:
             res.error = f"remote command timed out after {self.command_timeout}s"
-            raw_out = (exc.stdout or b"")
-            raw_err = (exc.stderr or b"")
+            raw_out = (exc.stdout or "")
+            raw_err = (exc.stderr or "")
             if isinstance(raw_out, bytes):
                 raw_out = raw_out.decode("utf-8", "replace")
             if isinstance(raw_err, bytes):

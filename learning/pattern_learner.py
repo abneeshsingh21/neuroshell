@@ -34,6 +34,11 @@ class PatternLearner:
         if len(recent) < 5:
             return
 
+        # Reset counters to prevent unbounded duplication on repeated session learning calls
+        self._sequence_counts.clear()
+        self._dir_commands.clear()
+        self._time_commands.clear()
+
         # Learn command sequences (bigrams) in chronological order
         ts0 = getattr(recent[0], "timestamp", None)
         ts1 = getattr(recent[-1], "timestamp", None)

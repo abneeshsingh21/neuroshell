@@ -50,14 +50,24 @@ class AutoDreamDaemon:
             if idle_time < self.idle_threshold_seconds:
                 continue
 
-            # System is idle! Let's check the queue.
+            # System is idle! Check queue line count before rotating to prevent disk churn
+            try:
+                if not self.queue_file.exists() or self.queue_file.stat().st_size == 0:
+                    continue
+                with open(self.queue_file, encoding="utf-8") as f:
+                    line_count = sum(1 for line in f if line.strip())
+                if line_count < self.min_queue_size:
+                    continue
+            except Exception:
+                continue
+
             queue, proc_file = self._rotate_and_read_queue()
             if len(queue) >= self.min_queue_size:
                 if self.ui_callback:
                     self.ui_callback("AutoDream initialized: consolidating memory...")
                 self._process_queue(queue, proc_file)
             elif proc_file:
-                # If not enough items to process, rename back or keep for next batch
+                # If not enough items to process, restore them
                 try:
                     with open(self.queue_file, "a", encoding="utf-8") as f:
                         for item in queue:
@@ -78,9 +88,16 @@ class AutoDreamDaemon:
             return [], None
 
         try:
+            items = []
             with open(proc_file, encoding="utf-8") as f:
-                lines = f.readlines()
-            items = [json.loads(line) for line in lines if line.strip()]
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    try:
+                        items.append(json.loads(line_str))
+                    except json.JSONDecodeError:
+                        continue
             return items, proc_file
         except Exception:
             try:
@@ -131,6 +148,13 @@ class AutoDreamDaemon:
         except Exception as e:
             if self.ui_callback:
                 self.ui_callback(f"AutoDream processing error: {e}")
+            # Requeue turns to prevent permanent data loss
+            try:
+                with open(self.queue_file, "a", encoding="utf-8") as f:
+                    for item in queue:
+                        f.write(json.dumps(item) + "\n")
+            except Exception:
+                pass
         finally:
             if proc_file:
                 try:

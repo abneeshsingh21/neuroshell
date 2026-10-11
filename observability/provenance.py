@@ -19,6 +19,8 @@ class ProvenanceSource(Enum):
     DEPENDENCY = "DEP"    # From dependency resolver
     NLP = "NLP"           # From NLP classifier/extractor
     FALLBACK = "FALLBACK" # From graceful degradation fallback
+    LOCAL = "LOCAL"       # From local offline phrase dictionary
+    DICTIONARY = "DICT"   # From fast offline vector/keyword dictionary
 
 
 @dataclass
@@ -50,6 +52,8 @@ class ProvenanceTag:
                 return "Medium confidence (AI)"
             else:
                 return "Low confidence (AI guess)"
+        elif self.source in (ProvenanceSource.LOCAL, ProvenanceSource.DICTIONARY):
+            return "Local dictionary (sub-0.5ms)"
         elif self.source == ProvenanceSource.DEPENDENCY:
             return "System check"
         elif self.source == ProvenanceSource.NLP:

@@ -82,7 +82,9 @@ public:
         std::vector<BYTE> attrList(bytesRequired);
         PPROC_THREAD_ATTRIBUTE_LIST pAttrList = reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(attrList.data());
         if (!InitializeProcThreadAttributeList(pAttrList, 1, 0, &bytesRequired)) {
-            ClosePseudoConsole(hPC);
+            ClosePseudoConsole(hPC); hPC = INVALID_HANDLE_VALUE;
+            CloseHandle(hPipeInWrite); hPipeInWrite = INVALID_HANDLE_VALUE;
+            CloseHandle(hPipeOutRead); hPipeOutRead = INVALID_HANDLE_VALUE;
             return false;
         }
 
@@ -91,7 +93,9 @@ public:
                 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
                 hPC, sizeof(HPCON), NULL, NULL)) {
             DeleteProcThreadAttributeList(pAttrList);
-            ClosePseudoConsole(hPC);
+            ClosePseudoConsole(hPC); hPC = INVALID_HANDLE_VALUE;
+            CloseHandle(hPipeInWrite); hPipeInWrite = INVALID_HANDLE_VALUE;
+            CloseHandle(hPipeOutRead); hPipeOutRead = INVALID_HANDLE_VALUE;
             return false;
         }
 
@@ -112,7 +116,9 @@ public:
         DeleteProcThreadAttributeList(pAttrList);
 
         if (!success) {
-            ClosePseudoConsole(hPC);
+            ClosePseudoConsole(hPC); hPC = INVALID_HANDLE_VALUE;
+            CloseHandle(hPipeInWrite); hPipeInWrite = INVALID_HANDLE_VALUE;
+            CloseHandle(hPipeOutRead); hPipeOutRead = INVALID_HANDLE_VALUE;
             return false;
         }
 
@@ -262,8 +268,8 @@ public:
         isRunning = false;
 #if defined(_WIN32)
         if (hPipeInWrite != INVALID_HANDLE_VALUE) { CloseHandle(hPipeInWrite); hPipeInWrite = INVALID_HANDLE_VALUE; }
-        if (hPipeOutRead != INVALID_HANDLE_VALUE) { CloseHandle(hPipeOutRead); hPipeOutRead = INVALID_HANDLE_VALUE; }
         if (hPC != INVALID_HANDLE_VALUE) { ClosePseudoConsole(hPC); hPC = INVALID_HANDLE_VALUE; }
+        if (hPipeOutRead != INVALID_HANDLE_VALUE) { CloseHandle(hPipeOutRead); hPipeOutRead = INVALID_HANDLE_VALUE; }
 #else
         if (masterFd >= 0) { close(masterFd); masterFd = -1; }
 #endif

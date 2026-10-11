@@ -332,6 +332,9 @@ public:
             if (c == '\\') c = '/';
             else c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
         }
+        if (norm.rfind("//?/", 0) == 0) norm = norm.substr(4);
+        else if (norm.rfind("/?/", 0) == 0) norm = norm.substr(3);
+
         while (norm.size() > 1 && norm.back() == '/') norm.pop_back();
         if (norm == "/" || norm == "c:" || (norm.size() == 2 && norm[1] == ':')) return true;
         for (const char* c : kCritical) {
@@ -380,8 +383,10 @@ private:
     }
 
     static std::string ExpandTilde(const std::string& s) {
-        if (s == "~" || s.rfind("~/", 0) == 0) {
-            if (const char* home = std::getenv("HOME"))
+        if (s == "~" || s.rfind("~/", 0) == 0 || s.rfind("~\\", 0) == 0) {
+            const char* home = std::getenv("HOME");
+            if (!home) home = std::getenv("USERPROFILE");
+            if (home)
                 return std::string(home) + s.substr(1);
         }
         return s;

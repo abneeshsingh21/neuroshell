@@ -101,6 +101,11 @@ class SHMClientBridge:
             self._is_connected = True
         except Exception:
             self._is_connected = False
+            if self._buf is not None:
+                try:
+                    self._buf.close()
+                except Exception:
+                    pass
             self._buf = None
 
     def _validate_header(self) -> bool:
@@ -271,3 +276,12 @@ class SHMClientBridge:
                 pass
             self._buf = None
         self._is_connected = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()

@@ -138,7 +138,7 @@ class PluginSystem:
             elif entry.is_dir() and (entry / "__init__.py").exists():
                 found.append(entry.name)
 
-        return found
+        return sorted(dict.fromkeys(found))
 
     def load(self, name: str) -> bool:
         """Load a plugin by name."""
@@ -178,6 +178,9 @@ class PluginSystem:
 
         try:
             spec = importlib.util.spec_from_file_location(f"neuroshell_plugin_{name}", file_path)
+            if spec is None or spec.loader is None:
+                self._logger.error("plugin_spec_failed", name=name)
+                return False
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
@@ -298,7 +301,7 @@ class PluginSystem:
                 self._logger.error("hook_error", hook=hook_name, error=str(e))
         return results
 
-    def execute_command(self, name: str, command: str, args: list[str] = None) -> str | None:
+    def execute_command(self, name: str, command: str, args: list[str] | None = None) -> str | None:
         """Execute a plugin command."""
         plugin = self._plugins.get(name)
         if not plugin or not plugin.enabled:
@@ -359,5 +362,9 @@ class PluginSystem:
 
     def _belongs_to(self, callback: Callable, plugin_name: str) -> bool:
         """Check if a callback belongs to a plugin module."""
+        plugin = self._plugins.get(plugin_name)
+        if plugin:
+            mod_name = getattr(plugin.module, "__name__", "")
+            return getattr(callback, "__module__", "") == mod_name
         module = getattr(callback, "__module__", "")
-        return plugin_name in module
+        return module == f"neuroshell_plugin_{plugin_name}"

@@ -371,8 +371,35 @@ public:
         if (ch == 16) { ev.code = KeyCode::Ctrl_P; return ev; }
         if (ch == 18) { ev.code = KeyCode::Ctrl_R; return ev; }
         if (ch == 20) { ev.code = KeyCode::Ctrl_T; return ev; }
-        if (ch == 23) { ev.code = KeyCode::Ctrl_W; return ev; }
-        if (ch == 27) { ev.code = KeyCode::Escape; return ev; }
+        if (ch == 27) {
+            if (_kbhit()) {
+                int c2 = _getch();
+                if (c2 == '[') {
+                    if (_kbhit()) {
+                        int c3 = _getch();
+                        if (c3 == 'A') { ev.code = KeyCode::Up; return ev; }
+                        if (c3 == 'B') { ev.code = KeyCode::Down; return ev; }
+                        if (c3 == 'C') { ev.code = KeyCode::Right; return ev; }
+                        if (c3 == 'D') { ev.code = KeyCode::Left; return ev; }
+                        if (c3 == 'H') { ev.code = KeyCode::Home; return ev; }
+                        if (c3 == 'F') { ev.code = KeyCode::End; return ev; }
+                        if (c3 >= '1' && c3 <= '4') {
+                            if (_kbhit()) {
+                                int c4 = _getch();
+                                if (c4 == '~') {
+                                    if (c3 == '1') ev.code = KeyCode::Home;
+                                    else if (c3 == '3') ev.code = KeyCode::Delete;
+                                    else if (c3 == '4') ev.code = KeyCode::End;
+                                    return ev;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ev.code = KeyCode::Escape;
+            return ev;
+        }
 
         if (ch == 0 || ch == 0xE0 || ch == 224) {
             int code = _getch();
@@ -4052,7 +4079,7 @@ LONG WINAPI NeuroShellWin32CrashFilter(EXCEPTION_POINTERS* ep) {
 
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut != INVALID_HANDLE_VALUE) {
-        const char msg[] = "\r\n\033[1;31m[!] NeuroShell Fatal Exception Intercepted. State restored.\033[0m\r\n\033[?25h";
+        const char msg[] = "\r\n\033[?2004l\033[?25h\033[0m\r\n\033[1;31m[!] NeuroShell Fatal Exception Intercepted. State restored.\033[0m\r\n";
         DWORD written = 0;
         WriteFile(hOut, msg, (DWORD)strlen(msg), &written, NULL);
     }
@@ -4075,7 +4102,7 @@ void NeuroShellPosixSignalHandler(int sig, siginfo_t* info, void* /*ucontext*/) 
         close(fd);
     }
 
-    const char msg[] = "\r\n\033[1;31m[!] NeuroShell Fatal Signal Intercepted. State restored.\033[0m\r\n\033[?25h";
+    const char msg[] = "\r\n\033[?2004l\033[?25h\033[0m\r\n\033[1;31m[!] NeuroShell Fatal Signal Intercepted. State restored.\033[0m\r\n";
     ssize_t wr2 = write(STDERR_FILENO, msg, strlen(msg));
     (void)wr2;
     _exit(128 + sig);

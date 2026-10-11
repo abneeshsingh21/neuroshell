@@ -344,9 +344,15 @@ class MCPServer:
     _proto_out = None
 
     def _send(self, obj: dict) -> None:
-        out = self._proto_out or sys.stdout
-        out.write(json.dumps(obj, ensure_ascii=False) + "\n")
-        out.flush()
+        payload = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+        out_buf = getattr(self._proto_out, "buffer", None) or getattr(sys.stdout, "buffer", None)
+        if out_buf:
+            out_buf.write(payload)
+            out_buf.flush()
+        else:
+            out = self._proto_out or sys.stdout
+            out.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            out.flush()
 
     # ── JSON-RPC dispatch ──────────────────────────────────
 
@@ -357,7 +363,11 @@ class MCPServer:
 
         method = msg.get("method")
         msg_id = msg.get("id")
-        params = msg.get("params") or {}
+        raw_params = msg.get("params")
+        if raw_params is not None and not isinstance(raw_params, dict):
+            return {"jsonrpc": "2.0", "id": msg_id,
+                    "error": {"code": -32602, "message": "Invalid params: object expected"}}
+        params = raw_params or {}
         is_notification = "id" not in msg
 
         if not isinstance(method, str):

@@ -5,7 +5,18 @@ NeuroShell Predictor
 Markov chain next-command prediction for ghost-text suggestions.
 """
 
+import re
 from collections import defaultdict
+
+_SECRET_PATTERN = re.compile(
+    r'(?i)(bearer\s+[a-z0-9_\.\-]+|password[=\s]\S+|api[_\-]?key[=\s]\S+|token[=\s]\S+)'
+)
+
+
+def _sanitize_for_prediction(cmd: str) -> str:
+    if not cmd:
+        return ""
+    return _SECRET_PATTERN.sub("[REDACTED]", cmd)
 
 
 class Predictor:
@@ -31,10 +42,11 @@ class Predictor:
             chronological = list(recent)
 
         for i in range(len(chronological) - 1):
-            current = chronological[i].command
-            next_cmd = chronological[i + 1].command
-            self._transitions[current][next_cmd] += 1
-            self._total[current] += 1
+            current = _sanitize_for_prediction(chronological[i].command)
+            next_cmd = _sanitize_for_prediction(chronological[i + 1].command)
+            if current and next_cmd:
+                self._transitions[current][next_cmd] += 1
+                self._total[current] += 1
 
         self._trained = True
 

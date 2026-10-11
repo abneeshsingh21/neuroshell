@@ -6,7 +6,11 @@ TOML config with environment variable overrides, encrypted secrets,
 hot-reload, validation, and profile support.
 """
 
-__version__ = "5.0.0"
+try:
+    from __version__ import __version__, __version_info__
+except ImportError:
+    __version__ = "5.18.0"
+    __version_info__ = (5, 18, 0)
 
 import base64
 import hashlib

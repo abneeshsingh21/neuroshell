@@ -313,6 +313,7 @@ inline sock_filter BpfJump(uint16_t code, uint32_t k, uint8_t jt, uint8_t jf) {
 
 inline std::vector<sock_filter> BuildSeccompProgram() {
     std::vector<sock_filter> f;
+    if (NEUROSHELL_SECCOMP_ARCH == 0) return f;
     const std::vector<int> denied = SandboxDeniedSyscalls();
     const size_t n = denied.size();
 
@@ -418,11 +419,12 @@ struct PreparedSandbox {
                 pb.parent_fd = open(path.c_str(), O_PATH | O_CLOEXEC);
                 if (pb.parent_fd < 0) continue;
                 struct stat st;
-                if (fstat(pb.parent_fd, &st) == 0 && S_ISDIR(st.st_mode)) {
-                    pb.allowed_access = LandlockFsRead() | LandlockFsWrite(landlock_abi);
-                } else {
-                    pb.allowed_access = LandlockFsWriteFileOnly(landlock_abi);
+                if (fstat(pb.parent_fd, &st) != 0 || !S_ISDIR(st.st_mode)) {
+                    // Linux Landlock LANDLOCK_RULE_PATH_BENEATH only accepts directory fds
+                    close(pb.parent_fd);
+                    continue;
                 }
+                pb.allowed_access = LandlockFsRead() | LandlockFsWrite(landlock_abi);
                 long r = sandbox_sys::landlock_add_rule(
                     ruleset_fd, LANDLOCK_RULE_PATH_BENEATH, &pb, 0);
                 close(pb.parent_fd);

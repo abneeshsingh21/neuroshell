@@ -167,6 +167,8 @@ def select_menu(
     """
     if not options:
         return None
+    if not sys.stdin.isatty() and not os.environ.get("PYTEST_CURRENT_TEST"):
+        return max(0, min(default_index, len(options) - 1))
 
     # Normalize options
     items = []

@@ -14,6 +14,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
+    from fastapi import WebSocketDisconnect
+except ImportError:
+    class WebSocketDisconnect(Exception):
+        pass
+
+try:
+    from fastapi import Request
+except ImportError:
+    Request = None
+
+try:
     import psutil
 except ImportError:
     psutil = None
@@ -258,8 +269,15 @@ async def sysmon_endpoint(websocket: WebSocket):
             pass
 
 @app.get("/api/dashboard")
-async def dashboard_api():
+async def dashboard_api(request: Request = None):
     """Return static dashboard state."""
+    if request is not None and hasattr(request, "headers"):
+        token = request.headers.get("X-API-Key")
+        if not token and "Authorization" in request.headers:
+            auth_val = request.headers["Authorization"]
+            token = auth_val[7:].strip() if auth_val.lower().startswith("bearer ") else auth_val.strip()
+        if not _token_is_valid(token):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     cwd = os.getcwd()
     return {
         "session_id": "WS-Active",
@@ -309,8 +327,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text(msg)
             except asyncio.CancelledError:
                 break
+            except (WebSocketDisconnect, RuntimeError):
+                break
             except Exception as e:
                 logging.error(f"emit_loop error: {e}")
+                break
 
     emit_task = asyncio.create_task(emit_loop())
 

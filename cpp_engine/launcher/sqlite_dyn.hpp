@@ -166,29 +166,55 @@ public:
 
     bool prepare(sqlite3* db, const std::string& sql) {
         finalize();
+        if (!api().loaded || !db) return false;
         return api().prepare_v2(db, sql.c_str(), static_cast<int>(sql.size()), &stmt_, nullptr) == OK;
     }
 
     bool bind(int idx, const std::string& v) {
+        if (!api().loaded || !stmt_) return false;
         return api().bind_text(stmt_, idx, v.data(), static_cast<int>(v.size()), TRANSIENT) == OK;
     }
-    bool bind(int idx, int64_t v) { return api().bind_int64(stmt_, idx, v) == OK; }
-    bool bind(int idx, double v) { return api().bind_double(stmt_, idx, v) == OK; }
-    bool bind(int idx, int v) { return api().bind_int(stmt_, idx, v) == OK; }
+    bool bind(int idx, int64_t v) {
+        if (!api().loaded || !stmt_) return false;
+        return api().bind_int64(stmt_, idx, v) == OK;
+    }
+    bool bind(int idx, double v) {
+        if (!api().loaded || !stmt_) return false;
+        return api().bind_double(stmt_, idx, v) == OK;
+    }
+    bool bind(int idx, int v) {
+        if (!api().loaded || !stmt_) return false;
+        return api().bind_int(stmt_, idx, v) == OK;
+    }
 
-    int step() { return stmt_ ? api().step(stmt_) : DONE; }
+    int step() {
+        if (!api().loaded || !stmt_) return DONE;
+        return api().step(stmt_);
+    }
 
     std::string text(int col) const {
+        if (!api().loaded || !stmt_) return "";
         const unsigned char* p = api().column_text(stmt_, col);
         return p ? reinterpret_cast<const char*>(p) : "";
     }
-    int64_t i64(int col) const { return api().column_int64(stmt_, col); }
-    double f64(int col) const { return api().column_double(stmt_, col); }
-    int i32(int col) const { return api().column_int(stmt_, col); }
+    int64_t i64(int col) const {
+        if (!api().loaded || !stmt_) return 0;
+        return api().column_int64(stmt_, col);
+    }
+    double f64(int col) const {
+        if (!api().loaded || !stmt_) return 0.0;
+        return api().column_double(stmt_, col);
+    }
+    int i32(int col) const {
+        if (!api().loaded || !stmt_) return 0;
+        return api().column_int(stmt_, col);
+    }
 
     void finalize() {
         if (stmt_) {
-            api().finalize(stmt_);
+            if (api().loaded && api().finalize) {
+                api().finalize(stmt_);
+            }
             stmt_ = nullptr;
         }
     }

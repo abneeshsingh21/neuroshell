@@ -111,14 +111,20 @@ class Explainer:
 
     def explain_flag(self, command: str, flag: str) -> FlagExplanation | None:
         """Explain a specific flag."""
-        base_cmd = command.strip().split()[0].lower()
+        parts = command.strip().split()
+        if not parts:
+            return None
+        base_cmd = parts[0].lower()
         entry = _DB.get(base_cmd)
         if entry and flag in entry[1]:
             return FlagExplanation(flag=flag, meaning=entry[1][flag], is_dangerous=flag in DANGEROUS_FLAGS)
         return None
 
     def get_examples(self, command: str) -> list[str]:
-        base_cmd = command.strip().split()[0].lower()
+        parts = command.strip().split()
+        if not parts:
+            return []
+        base_cmd = parts[0].lower()
         entry = _DB.get(base_cmd)
         return list(entry[3]) if entry else []
 
@@ -191,6 +197,11 @@ class Explainer:
                 source="llm_failed", man_excerpt=man_excerpt,
                 provenance=ProvenanceTag(source=ProvenanceSource.FALLBACK, confidence=0.0, latency_ms=latency),
             )
+
+        if isinstance(result, list):
+            result = next((item for item in result if isinstance(item, dict)), {})
+        if not isinstance(result, dict):
+            result = {}
 
         return ExplainResult(
             summary=result.get("summary", ""), breakdown=result.get("breakdown", []),

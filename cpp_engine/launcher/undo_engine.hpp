@@ -41,7 +41,15 @@
 #include <system_error>
 #include <chrono>
 
-#if defined(__linux__)
+#if defined(_WIN32)
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #ifndef NOMINMAX
+    #define NOMINMAX
+  #endif
+  #include <windows.h>
+#elif defined(__linux__)
   #include <fcntl.h>
   #include <unistd.h>
   #include <sys/ioctl.h>
@@ -306,12 +314,28 @@ public:
                 if (ec) { r.error = "restore failed: " + orig.string(); return r; }
                 r.files_restored += 1;
             } else if (e.type == 'd') {
-                ufs::remove_all(orig, ec); // replace whatever partially remains
+                ufs::path bak;
+                bool had_orig = ufs::exists(orig, ec);
+                if (had_orig) {
+                    bak = orig.parent_path() / (orig.filename().string() + ".undo_bak_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+                    ufs::rename(orig, bak, ec);
+                    if (ec) {
+                        ec.clear();
+                        ufs::remove_all(orig, ec);
+                    }
+                }
                 ufs::create_directories(orig, ec);
                 uint64_t n = 0;
                 if (!RestoreTree(snap, orig, n)) {
+                    if (had_orig && !bak.empty() && ufs::exists(bak, ec)) {
+                        ufs::remove_all(orig, ec);
+                        ufs::rename(bak, orig, ec);
+                    }
                     r.error = "restore failed: " + orig.string();
                     return r;
+                }
+                if (had_orig && !bak.empty() && ufs::exists(bak, ec)) {
+                    ufs::remove_all(bak, ec);
                 }
                 r.files_restored += n;
             } else {
@@ -410,7 +434,8 @@ private:
     }
 
     bool SnapshotTree(const ufs::path& src, const ufs::path& dst,
-                      uint64_t& copied_bytes, uint64_t& inodes) {
+                      uint64_t& copied_bytes, uint64_t& inodes, int depth = 0) {
+        if (depth > 64) return false;
         std::error_code ec;
         ufs::create_directories(dst, ec);
         if (ec) return false;
@@ -419,12 +444,21 @@ private:
             ufs::path child = dst / e.path().filename();
             auto st = e.symlink_status(ec);
             if (ec) return false;
+#if defined(_WIN32)
+            DWORD attrs = ::GetFileAttributesW(e.path().c_str());
+            if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_REPARSE_POINT)) {
+                if (++inodes > max_snapshot_inodes) return false;
+                ufs::copy_symlink(e.path(), child, ec);
+                if (ec) ec.clear();
+                continue;
+            }
+#endif
             if (ufs::is_symlink(st)) {
                 if (++inodes > max_snapshot_inodes) return false;
                 ufs::copy_symlink(e.path(), child, ec);
                 if (ec) return false;
             } else if (ufs::is_directory(st)) {
-                if (!SnapshotTree(e.path(), child, copied_bytes, inodes)) return false;
+                if (!SnapshotTree(e.path(), child, copied_bytes, inodes, depth + 1)) return false;
             } else if (ufs::is_regular_file(st)) {
                 if (!SnapshotFile(e.path(), child, copied_bytes, inodes)) return false;
             }
@@ -442,7 +476,8 @@ private:
         return true;
     }
 
-    static bool RestoreTree(const ufs::path& snap, const ufs::path& orig, uint64_t& files) {
+    static bool RestoreTree(const ufs::path& snap, const ufs::path& orig, uint64_t& files, int depth = 0) {
+        if (depth > 64) return false;
         std::error_code ec;
         for (const auto& e : ufs::directory_iterator(snap, ec)) {
             ufs::path child = orig / e.path().filename();
@@ -455,7 +490,7 @@ private:
             } else if (ufs::is_directory(st)) {
                 ufs::create_directories(child, ec);
                 if (ec) return false;
-                if (!RestoreTree(e.path(), child, files)) return false;
+                if (!RestoreTree(e.path(), child, files, depth + 1)) return false;
             } else if (ufs::is_regular_file(st)) {
                 if (!RestoreFile(e.path(), child)) return false;
                 ++files;

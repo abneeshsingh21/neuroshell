@@ -76,6 +76,7 @@ struct BigNum {
             }
             size_t k = i + b.limb.size();
             while (carry) {
+                if (k >= r.limb.size()) r.limb.push_back(0);
                 uint64_t cur = static_cast<uint64_t>(r.limb[k]) + carry;
                 r.limb[k] = static_cast<uint32_t>(cur);
                 carry = cur >> 32;

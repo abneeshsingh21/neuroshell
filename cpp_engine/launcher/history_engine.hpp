@@ -194,11 +194,17 @@ public:
             "        ORDER BY c2.timestamp DESC LIMIT 1) AS recent_cwd "
             "FROM commands c ";
         bool used_fts = false;
+        std::string fts_arg;
         if (!query.empty()) {
             if (fts_ok_) {
-                sql += "JOIN commands_fts f ON c.id = f.rowid "
-                       "WHERE commands_fts MATCH ?2 ";
-                used_fts = true;
+                fts_arg = FtsPrefixQuery(query);
+                if (!fts_arg.empty()) {
+                    sql += "JOIN commands_fts f ON c.id = f.rowid "
+                           "WHERE commands_fts MATCH ?2 ";
+                    used_fts = true;
+                } else {
+                    sql += "WHERE c.command LIKE ?2 ESCAPE '\\' ";
+                }
             } else {
                 sql += "WHERE c.command LIKE ?2 ESCAPE '\\' ";
             }
@@ -216,7 +222,7 @@ public:
         }
         st.bind(1, current_cwd);
         if (!query.empty()) {
-            st.bind(2, used_fts ? FtsPrefixQuery(query) : LikePattern(query));
+            st.bind(2, used_fts ? fts_arg : LikePattern(query));
         }
 
         return RankRows(st, query, limit);

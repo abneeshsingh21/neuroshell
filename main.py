@@ -497,7 +497,12 @@ class NeuroShell:
         sys.exit(0)
 
     def _stop_background_services(self):
-        """Stop background services (IPC server, AutoDream daemon)."""
+        """Stop background services (executor jobs, IPC server, AutoDream daemon, SQLite store)."""
+        try:
+            if hasattr(self, "executor") and self.executor:
+                self.executor.shutdown()
+        except Exception:
+            pass
         try:
             if hasattr(self, "ipc_server") and self.ipc_server:
                 self.ipc_server.stop()
@@ -506,6 +511,11 @@ class NeuroShell:
         try:
             if hasattr(self, "auto_dream") and self.auto_dream:
                 self.auto_dream.stop()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "history") and self.history:
+                self.history.close()
         except Exception:
             pass
 
@@ -1396,22 +1406,26 @@ class NeuroShell:
 
         # ── Memory/timeline commands ──
         if lower == "timeline" or lower == "memory timeline":
-            if hasattr(self, 'ext_memory'):
+            if getattr(self, "ext_memory", None) is not None:
                 entries = self.ext_memory.get_timeline(20)
                 if entries:
                     self.ui.print_info("  📅 Command Timeline:")
-                    for e in entries:
-                        icon = "✅" if e.success else "❌"
-                        self.ui.print_info(f"    {icon} {e.input_text[:50]} → {e.command[:50]}")
+                    for entry in entries:
+                        icon = "✅" if entry.success else "❌"
+                        self.ui.print_info(f"    {icon} {entry.input_text[:50]} → {entry.command[:50]}")
                 else:
                     self.ui.print_info("  No history yet.")
+            else:
+                self.ui.print_info("  Session memory extension is not active.")
             self.tracer.end_trace(cid)
             return
         if lower == "memory stats":
-            if hasattr(self, 'ext_memory'):
+            if getattr(self, "ext_memory", None) is not None:
                 stats = self.ext_memory.get_stats()
                 for k, v in stats.items():
                     self.ui.print_info(f"    {k}: {v}")
+            else:
+                self.ui.print_info("  Session memory extension is not active.")
             self.tracer.end_trace(cid)
             return
 
@@ -2660,12 +2674,23 @@ class NeuroShell:
         Unified handler for all '/' Slash Commands across NeuroShell.
         Returns True if the command was recognized and handled.
         """
-        if not cid and hasattr(self, "tracer") and self.tracer:
-            cid = self.tracer.start_trace()
         clean = user_input.strip()
         if not clean.startswith("/"):
             return False
 
+        if not cid and hasattr(self, "tracer") and self.tracer:
+            cid = self.tracer.start_trace()
+
+        try:
+            return self._dispatch_slash_command(clean, cid)
+        finally:
+            if cid and hasattr(self, "tracer") and self.tracer:
+                try:
+                    self.tracer.end_trace(cid)
+                except Exception:
+                    pass
+
+    def _dispatch_slash_command(self, clean: str, cid: str = "") -> bool:
         parts = clean[1:].strip().split(None, 1)
         if not parts:
             self._handle_slash_help()
@@ -2999,13 +3024,14 @@ class NeuroShell:
 
     def _handle_slash_backup(self, args: list[str]):
         """Data governance backup, restore, and retention management."""
+        from config import NEUROSHELL_DIR
+
         if not hasattr(self, "data_governance") or not self.data_governance:
             self.ui.print_error("  Data governance manager unavailable.")
             return
 
         sub = args[0].lower() if args else "create"
         if sub == "create":
-            from config import NEUROSHELL_DIR
             stamp = time.strftime("%Y%m%d_%H%M%S")
             target = NEUROSHELL_DIR / "backups" / f"backup_{stamp}.zip"
             try:

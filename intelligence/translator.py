@@ -749,6 +749,8 @@ class Translator:
 
     def _try_phrase_dictionary(self, user_input: str) -> TranslationResult | None:
         """Query the 2,554+ offline phrase TF-IDF vector index (<0.5ms)."""
+        if self._UNSAFE_LOCAL_ARG.search(user_input):
+            return None
         try:
             if not self._phrase_dict:
                 from intelligence.phrase_dictionary import PhraseDictionary
@@ -1054,22 +1056,29 @@ Return JSON:
 
         result = self.llm.generate_json(prompt, "You are a shell command translator. Return JSON only.")
 
-        if not result:
+        if isinstance(result, list):
+            result = next((item for item in result if isinstance(item, dict)), {})
+        if not isinstance(result, dict):
             return self._llm_translate(user_input, entities)
 
         steps_data = result.get("steps", [])
+        if not isinstance(steps_data, list):
+            steps_data = []
         steps = [
             TranslationStep(
-                command=s.get("command", ""),
-                explanation=s.get("explanation", ""),
-                order=s.get("order", i),
-                condition=s.get("condition", "on_success"),
+                command=s.get("command", "") if isinstance(s, dict) else "",
+                explanation=s.get("explanation", "") if isinstance(s, dict) else "",
+                order=s.get("order", i) if isinstance(s, dict) else i,
+                condition=s.get("condition", "on_success") if isinstance(s, dict) else "on_success",
             )
             for i, s in enumerate(steps_data)
         ]
 
         combined = " && ".join(s.command for s in steps if s.command)
-        confidence = float(result.get("confidence", self.CONFIDENCE_MULTI))
+        try:
+            confidence = min(max(float(result.get("confidence", self.CONFIDENCE_MULTI)), 0.0), 1.0)
+        except (ValueError, TypeError):
+            confidence = self.CONFIDENCE_MULTI
 
         input_preview: str = str(user_input)[:50]  # type: ignore[index]
         return TranslationResult(
@@ -1125,11 +1134,21 @@ Return JSON:
                 ),
             )
 
+        if isinstance(result, list):
+            result = next((item for item in result if isinstance(item, dict)), {})
+        if not isinstance(result, dict):
+            result = {}
+
         command = result.get("command", "")
-        confidence = min(float(result.get("confidence", 0.5)), 1.0)
+        try:
+            confidence = min(max(float(result.get("confidence", 0.5)), 0.0), 1.0)
+        except (ValueError, TypeError):
+            confidence = 0.5
         explanation = result.get("explanation", "")
-        is_destructive = result.get("is_destructive", False)
+        is_destructive = bool(result.get("is_destructive", False))
         alternatives = result.get("alternatives", [])
+        if not isinstance(alternatives, list):
+            alternatives = []
 
         # ── Post-LLM Sanitization Gate ──
         sanitized = self._sanitizer.sanitize(command, source="llm")
@@ -1180,7 +1199,7 @@ Return JSON:
                 pass
 
         if self.swarm is None:
-            return self._llm_translate(user_input, self.context)
+            return self._llm_translate(user_input, None)
 
         # Fire Swarm Pipeline
         swarm_res = self.swarm.route_task(user_input)
