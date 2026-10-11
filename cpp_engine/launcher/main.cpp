@@ -553,6 +553,56 @@ public:
         return false;
 #endif
     }
+
+    static fs::path GetNeuroShellRoot() {
+        static fs::path s_root;
+        if (!s_root.empty()) return s_root;
+
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        wchar_t exeBuf[MAX_PATH * 2];
+        DWORD n = GetModuleFileNameW(nullptr, exeBuf, MAX_PATH * 2);
+        if (n > 0) {
+            fs::path candidate = fs::path(exeBuf).parent_path();
+            for (int i = 0; i < 4; ++i) {
+                if (fs::exists(candidate / "core") && (fs::exists(candidate / "ui") || fs::exists(candidate / "intelligence"))) {
+                    s_root = candidate;
+                    return s_root;
+                }
+                if (candidate.has_parent_path() && candidate != candidate.parent_path()) {
+                    candidate = candidate.parent_path();
+                } else {
+                    break;
+                }
+            }
+        }
+#else
+        char exeBuf[PATH_MAX];
+        ssize_t n = readlink("/proc/self/exe", exeBuf, sizeof(exeBuf) - 1);
+        if (n > 0) {
+            exeBuf[n] = '\0';
+            fs::path candidate = fs::path(exeBuf).parent_path();
+            for (int i = 0; i < 4; ++i) {
+                if (fs::exists(candidate / "core") && (fs::exists(candidate / "ui") || fs::exists(candidate / "intelligence"))) {
+                    s_root = candidate;
+                    return s_root;
+                }
+                if (candidate.has_parent_path() && candidate != candidate.parent_path()) {
+                    candidate = candidate.parent_path();
+                } else {
+                    break;
+                }
+            }
+        }
+#endif
+        if (fs::exists("core") && (fs::exists("ui") || fs::exists("intelligence"))) {
+            s_root = fs::current_path();
+        } else if (fs::exists("../core") && (fs::exists("../ui") || fs::exists("../intelligence"))) {
+            s_root = fs::current_path().parent_path();
+        } else {
+            s_root = fs::current_path();
+        }
+        return s_root;
+    }
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -1327,7 +1377,11 @@ public:
                 cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"" + escaped + "\"";
             }
         } else {
-            cmdLine = "cmd.exe /c " + trimmedCmd;
+            if (trimmedCmd.find('"') != std::string::npos) {
+                cmdLine = "cmd.exe /s /c \"" + trimmedCmd + "\"";
+            } else {
+                cmdLine = "cmd.exe /c " + trimmedCmd;
+            }
         }
 
         std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
@@ -3149,13 +3203,30 @@ public:
     }
 
     static std::string GetPythonBinary() {
+        fs::path root = PlatformFS::GetNeuroShellRoot();
 #if defined(NEUROSHELL_PLATFORM_WINDOWS)
-        if (fs::exists(".venv\\Scripts\\python.exe")) return ".venv\\Scripts\\python.exe";
-        if (fs::exists("..\\.venv\\Scripts\\python.exe")) return "..\\.venv\\Scripts\\python.exe";
+        fs::path rootVenv = root / ".venv" / "Scripts" / "python.exe";
+        if (fs::exists(rootVenv)) {
+            return "\"" + rootVenv.string() + "\"";
+        }
+        if (fs::exists(".venv\\Scripts\\python.exe")) {
+            return "\"" + fs::absolute(".venv\\Scripts\\python.exe").string() + "\"";
+        }
+        if (fs::exists("..\\.venv\\Scripts\\python.exe")) {
+            return "\"" + fs::absolute("..\\.venv\\Scripts\\python.exe").string() + "\"";
+        }
         return "python";
 #else
-        if (fs::exists(".venv/bin/python")) return ".venv/bin/python";
-        if (fs::exists("../.venv/bin/python")) return "../.venv/bin/python";
+        fs::path rootVenv = root / ".venv" / "bin" / "python";
+        if (fs::exists(rootVenv)) {
+            return "\"" + rootVenv.string() + "\"";
+        }
+        if (fs::exists(".venv/bin/python")) {
+            return "\"" + fs::absolute(".venv/bin/python").string() + "\"";
+        }
+        if (fs::exists("../.venv/bin/python")) {
+            return "\"" + fs::absolute("../.venv/bin/python").string() + "\"";
+        }
         return "python3";
 #endif
     }
@@ -3187,7 +3258,8 @@ public:
         }
 
         std::string pyBin = GetPythonBinary();
-        std::string cmd = pyBin + " -m operations.downloader " + args;
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "downloader.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
         PlatformProcessRunner::Execute(cmd);
     }
 
@@ -3221,7 +3293,8 @@ public:
         }
 
         std::string pyBin = GetPythonBinary();
-        std::string cmd = pyBin + " -m operations.scraper " + args;
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "scraper.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
         PlatformProcessRunner::Execute(cmd);
     }
 
@@ -3251,7 +3324,8 @@ public:
         }
 
         std::string pyBin = GetPythonBinary();
-        std::string cmd = pyBin + " -m operations.harvester " + args;
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "harvester.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
         PlatformProcessRunner::Execute(cmd);
     }
 
@@ -3268,7 +3342,8 @@ public:
         else args = "";
 
         std::string pyBin = GetPythonBinary();
-        std::string cmd = pyBin + " -m operations.pager " + args;
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "pager.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
         PlatformProcessRunner::Execute(cmd);
     }
 
@@ -3280,19 +3355,24 @@ public:
         ofs.close();
 
         std::string pyBin = GetPythonBinary();
+        fs::path root = PlatformFS::GetNeuroShellRoot();
+        std::string rootStr = root.string();
+        for (char& c : rootStr) { if (c == '\\') c = '/'; }
+
         std::string escapedPath = tempFile.string();
         for (char& c : escapedPath) { if (c == '\\') c = '/'; }
 
         if (directive == "@table") {
-            std::string script = "from ui.table_formatter import AdaptiveTableFormatter; print(AdaptiveTableFormatter().format_tsv(open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(), title='Piped Table Output'))";
+            std::string script = "import sys; sys.path.insert(0, '" + rootStr + "'); from ui.table_formatter import AdaptiveTableFormatter; print(AdaptiveTableFormatter().format_tsv(open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(), title='Piped Table Output'))";
             PlatformProcessRunner::Execute(pyBin + " -c \"" + script + "\"");
         } else if (directive == "@json") {
             std::string script = "import json; data=open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(); print(json.dumps(json.loads(data), indent=2) if data.strip().startswith(('{','[')) else data)";
             PlatformProcessRunner::Execute(pyBin + " -c \"" + script + "\"");
         } else if (directive == "@inspect") {
-            PlatformProcessRunner::Execute(pyBin + " -m operations.pager \"" + escapedPath + "\"");
+            fs::path pagerScript = root / "operations" / "pager.py";
+            PlatformProcessRunner::Execute(pyBin + " \"" + pagerScript.string() + "\" \"" + escapedPath + "\"");
         } else if (directive == "@arrange") {
-            std::string script = "from ui.table_formatter import AutoArranger; print(AutoArranger().arrange(open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(), title='Arranged Output'))";
+            std::string script = "import sys; sys.path.insert(0, '" + rootStr + "'); from ui.table_formatter import AutoArranger; print(AutoArranger().arrange(open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(), title='Arranged Output'))";
             PlatformProcessRunner::Execute(pyBin + " -c \"" + script + "\"");
         }
 
@@ -3339,11 +3419,12 @@ public:
         }
 
         std::string pyBin = GetPythonBinary();
+        fs::path renderScript = PlatformFS::GetNeuroShellRoot() / "ui" / "markdown_renderer.py";
 
         // 1. Is it a local file?
         if (fs::exists(target) && !fs::is_directory(target)) {
             std::cout << "\n  " << C_BOLD << C_CYAN << "📖 Reading Local Document: " << C_BOLD << C_WHITE << target << C_RESET << "\n\n";
-            std::string cmd = pyBin + " -m ui.markdown_renderer \"" + target + "\"";
+            std::string cmd = pyBin + " \"" + renderScript.string() + "\" \"" + target + "\"";
             PlatformProcessRunner::Execute(cmd);
             return;
         }
@@ -3362,10 +3443,7 @@ public:
             ofs << viewRes.output;
             ofs.close();
 
-            std::string escapedPath = tempFile.string();
-            for (char& c : escapedPath) { if (c == '\\') c = '/'; }
-
-            std::string cmd = pyBin + " -m ui.markdown_renderer \"" + escapedPath + "\"";
+            std::string cmd = pyBin + " \"" + renderScript.string() + "\" \"" + tempFile.string() + "\"";
             PlatformProcessRunner::Execute(cmd);
 
             std::error_code ec;
@@ -3673,10 +3751,14 @@ public:
 
         // 7. Universal Smart Open via Python IPC Engine (Dynamic App / Setting / Tool Resolution)
         std::string pyBin = GetPythonBinary();
+        fs::path root = PlatformFS::GetNeuroShellRoot();
+        std::string rootStr = root.string();
+        for (char& c : rootStr) { if (c == '\\') c = '/'; }
+
         std::string escapedTarget = target;
         for (char& c : escapedTarget) { if (c == '"' || c == '\\') c = ' '; }
 
-        std::string runnerCmd = pyBin + " -c \"from intelligence.smart_open import SmartOpenEngine; res = SmartOpenEngine().try_resolve('open " + escapedTarget + "'); print(res.command if res else '')\"";
+        std::string runnerCmd = pyBin + " -c \"import sys; sys.path.insert(0, '" + rootStr + "'); from intelligence.smart_open import SmartOpenEngine; res = SmartOpenEngine().try_resolve('open " + escapedTarget + "'); print(res.command if res else '')\"";
         PlatformProcessRunner::ExecResult smartRes = PlatformProcessRunner::Execute(runnerCmd);
         
         std::string resolvedCmd = smartRes.output;

@@ -19,6 +19,11 @@ import sys
 import time
 from typing import Sequence
 
+# Ensure neuroshell root is on sys.path regardless of execution CWD
+_NEUROSHELL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _NEUROSHELL_ROOT not in sys.path:
+    sys.path.insert(0, _NEUROSHELL_ROOT)
+
 from ui.table_formatter import strip_ansi, visual_len
 
 

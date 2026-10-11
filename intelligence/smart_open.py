@@ -15,6 +15,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Ensure neuroshell root is on sys.path regardless of execution CWD
+_NEUROSHELL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _NEUROSHELL_ROOT not in sys.path:
+    sys.path.insert(0, _NEUROSHELL_ROOT)
+
 # ═══════════════════════════════════════════════════════════
 # Data Models
 # ═══════════════════════════════════════════════════════════
