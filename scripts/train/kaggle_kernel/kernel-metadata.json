@@ -1,0 +1,21 @@
+{
+  "id": "abneeshsingh/neuroshell-embeddinggemma-train",
+  "title": "neuroshell-embeddinggemma-train",
+  "code_file": "train_embeddinggemma.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [
+    "gpu",
+    "nlp"
+  ],
+  "dataset_sources": [
+    "abneeshsingh/neuroshell-command-corpus"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}

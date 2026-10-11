@@ -1,0 +1,362 @@
+[
+  {
+    "action_id": "docker_cleanup_stopped_and_unused_images",
+    "category": "DOCKER",
+    "canonical_nl": "clean up all stopped docker containers and unused images",
+    "default_cmd": "docker container prune -f && docker image prune -a -f",
+    "powershell_cmd": "docker container prune -f; docker image prune -a -f",
+    "cmd_exe": "docker container prune -f && docker image prune -a -f",
+    "is_destructive": true,
+    "explanation": "Prunes all exited/stopped containers and removes unused docker images."
+  },
+  {
+    "action_id": "docker_prune_containers_only",
+    "category": "DOCKER",
+    "canonical_nl": "remove all stopped docker containers",
+    "default_cmd": "docker container prune -f",
+    "powershell_cmd": "docker container prune -f",
+    "cmd_exe": "docker container prune -f",
+    "is_destructive": true,
+    "explanation": "Prunes only stopped and exited docker containers."
+  },
+  {
+    "action_id": "docker_prune_images_only",
+    "category": "DOCKER",
+    "canonical_nl": "remove all unused and dangling docker images",
+    "default_cmd": "docker image prune -a -f",
+    "powershell_cmd": "docker image prune -a -f",
+    "cmd_exe": "docker image prune -a -f",
+    "is_destructive": true,
+    "explanation": "Removes all docker images not referenced by any container."
+  },
+  {
+    "action_id": "docker_prune_system_all",
+    "category": "DOCKER",
+    "canonical_nl": "deep clean all unused docker containers images networks and volumes",
+    "default_cmd": "docker system prune -a --volumes -f",
+    "powershell_cmd": "docker system prune -a --volumes -f",
+    "cmd_exe": "docker system prune -a --volumes -f",
+    "is_destructive": true,
+    "explanation": "Comprehensive docker cleanup removing containers, networks, images, and anonymous volumes."
+  },
+  {
+    "action_id": "docker_stop_all_containers",
+    "category": "DOCKER",
+    "canonical_nl": "stop all running docker containers",
+    "default_cmd": "docker stop $(docker ps -q)",
+    "powershell_cmd": "docker ps -q | ForEach-Object { docker stop $_ }",
+    "cmd_exe": "for /f \"tokens=*\" %i in ('docker ps -q') do docker stop %i",
+    "is_destructive": false,
+    "explanation": "Gracefully halts all active containers."
+  },
+  {
+    "action_id": "docker_run_postgres",
+    "category": "DOCKER",
+    "canonical_nl": "run postgres container in background on port {port}",
+    "default_cmd": "docker run -d --name {name} -p {port}:5432 -e POSTGRES_PASSWORD={password} postgres",
+    "powershell_cmd": "docker run -d --name {name} -p {port}:5432 -e POSTGRES_PASSWORD={password} postgres",
+    "cmd_exe": "docker run -d --name {name} -p {port}:5432 -e POSTGRES_PASSWORD={password} postgres",
+    "is_destructive": false,
+    "explanation": "Runs official PostgreSQL container in detached mode with published port."
+  },
+  {
+    "action_id": "docker_run_redis",
+    "category": "DOCKER",
+    "canonical_nl": "run redis cache in background on port {port}",
+    "default_cmd": "docker run -d --name {name} -p {port}:6379 redis:alpine",
+    "powershell_cmd": "docker run -d --name {name} -p {port}:6379 redis:alpine",
+    "cmd_exe": "docker run -d --name {name} -p {port}:6379 redis:alpine",
+    "is_destructive": false,
+    "explanation": "Runs lightweight Alpine Redis container with port mapping."
+  },
+  {
+    "action_id": "docker_logs_follow",
+    "category": "DOCKER",
+    "canonical_nl": "follow live logs of container {container}",
+    "default_cmd": "docker logs -f {container}",
+    "powershell_cmd": "docker logs -f {container}",
+    "cmd_exe": "docker logs -f {container}",
+    "is_destructive": false,
+    "explanation": "Streams stdout/stderr logs of the target container in real-time."
+  },
+  {
+    "action_id": "docker_exec_shell",
+    "category": "DOCKER",
+    "canonical_nl": "open interactive bash shell inside container {container}",
+    "default_cmd": "docker exec -it {container} /bin/bash",
+    "powershell_cmd": "docker exec -it {container} /bin/bash",
+    "cmd_exe": "docker exec -it {container} /bin/bash",
+    "is_destructive": false,
+    "explanation": "Spawns an interactive pseudo-TTY bash session in the container."
+  },
+  {
+    "action_id": "docker_compose_up_detached",
+    "category": "DOCKER",
+    "canonical_nl": "start all docker compose services in background",
+    "default_cmd": "docker compose up -d",
+    "powershell_cmd": "docker compose up -d",
+    "cmd_exe": "docker compose up -d",
+    "is_destructive": false,
+    "explanation": "Builds, (re)creates, and starts containers defined in docker-compose.yml detached."
+  },
+  {
+    "action_id": "docker_compose_down_volumes",
+    "category": "DOCKER",
+    "canonical_nl": "stop and remove all docker compose services and volumes",
+    "default_cmd": "docker compose down -v",
+    "powershell_cmd": "docker compose down -v",
+    "cmd_exe": "docker compose down -v",
+    "is_destructive": true,
+    "explanation": "Stops containers and removes containers, networks, and named volumes."
+  },
+  {
+    "action_id": "git_undo_last_commit_keep_staged",
+    "category": "GIT",
+    "canonical_nl": "undo last commit and keep my changes staged",
+    "default_cmd": "git reset --soft HEAD~1",
+    "powershell_cmd": "git reset --soft HEAD~1",
+    "cmd_exe": "git reset --soft HEAD~1",
+    "is_destructive": false,
+    "explanation": "Moves HEAD back one commit while leaving the working tree and index intact."
+  },
+  {
+    "action_id": "git_undo_last_commit_unstage",
+    "category": "GIT",
+    "canonical_nl": "undo last commit and unstage changes",
+    "default_cmd": "git reset HEAD~1",
+    "powershell_cmd": "git reset HEAD~1",
+    "cmd_exe": "git reset HEAD~1",
+    "is_destructive": false,
+    "explanation": "Undoes the commit and resets the staging area, preserving files in working directory."
+  },
+  {
+    "action_id": "git_discard_all_local_changes",
+    "category": "GIT",
+    "canonical_nl": "discard all uncommitted changes across working directory",
+    "default_cmd": "git reset --hard HEAD && git clean -fd",
+    "powershell_cmd": "git reset --hard HEAD; git clean -fd",
+    "cmd_exe": "git reset --hard HEAD && git clean -fd",
+    "is_destructive": true,
+    "explanation": "Resets tracked files to HEAD and forcefully deletes all untracked files and folders."
+  },
+  {
+    "action_id": "git_unstage_file",
+    "category": "GIT",
+    "canonical_nl": "unstage file {file}",
+    "default_cmd": "git restore --staged {file}",
+    "powershell_cmd": "git restore --staged {file}",
+    "cmd_exe": "git restore --staged {file}",
+    "is_destructive": false,
+    "explanation": "Removes the specified file from the staging area without modifying file contents."
+  },
+  {
+    "action_id": "git_create_switch_branch",
+    "category": "GIT",
+    "canonical_nl": "create a new branch {branch} and switch to it",
+    "default_cmd": "git checkout -b {branch}",
+    "powershell_cmd": "git checkout -b {branch}",
+    "cmd_exe": "git checkout -b {branch}",
+    "is_destructive": false,
+    "explanation": "Creates a new local branch and checks it out immediately."
+  },
+  {
+    "action_id": "git_show_graph_oneline",
+    "category": "GIT",
+    "canonical_nl": "show git commit history as a clean one-line graph",
+    "default_cmd": "git log --graph --oneline --decorate --all",
+    "powershell_cmd": "git log --graph --oneline --decorate --all",
+    "cmd_exe": "git log --graph --oneline --decorate --all",
+    "is_destructive": false,
+    "explanation": "Displays full visual commit history across all branches in compact single-line format."
+  },
+  {
+    "action_id": "git_push_force_with_lease",
+    "category": "GIT",
+    "canonical_nl": "push current branch with force with lease",
+    "default_cmd": "git push --force-with-lease",
+    "powershell_cmd": "git push --force-with-lease",
+    "cmd_exe": "git push --force-with-lease",
+    "is_destructive": true,
+    "explanation": "Safely updates remote branch only if nobody else pushed in the meantime."
+  },
+  {
+    "action_id": "git_stash_wip",
+    "category": "GIT",
+    "canonical_nl": "stash changes including untracked files with message {msg}",
+    "default_cmd": "git stash push -u -m \"{msg}\"",
+    "powershell_cmd": "git stash push -u -m \"{msg}\"",
+    "cmd_exe": "git stash push -u -m \"{msg}\"",
+    "is_destructive": false,
+    "explanation": "Saves uncommitted and untracked modifications to a labeled stash entry."
+  },
+  {
+    "action_id": "git_stash_pop",
+    "category": "GIT",
+    "canonical_nl": "apply and pop the most recent stash",
+    "default_cmd": "git stash pop",
+    "powershell_cmd": "git stash pop",
+    "cmd_exe": "git stash pop",
+    "is_destructive": false,
+    "explanation": "Reapplies the top stash entry and drops it from the stash stack."
+  },
+  {
+    "action_id": "proc_kill_port",
+    "category": "PROCESS",
+    "canonical_nl": "find what process is using port {port} and kill it",
+    "default_cmd": "fuser -k {port}/tcp",
+    "powershell_cmd": "Get-Process -Id (Get-NetTCPConnection -LocalPort {port}).OwningProcess | Stop-Process -Force",
+    "cmd_exe": "for /f \"tokens=5\" %a in ('netstat -aon ^| find \":{port}\"') do taskkill /F /PID %a",
+    "is_destructive": true,
+    "explanation": "Finds the process holding the target network port and forcefully terminates it."
+  },
+  {
+    "action_id": "proc_find_port",
+    "category": "PROCESS",
+    "canonical_nl": "show process listening on port {port}",
+    "default_cmd": "lsof -i:{port}",
+    "powershell_cmd": "Get-NetTCPConnection -LocalPort {port} | Format-Table -AutoSize",
+    "cmd_exe": "netstat -ano | findstr :{port}",
+    "is_destructive": false,
+    "explanation": "Inspects network sockets to identify the PID and program bound to the port."
+  },
+  {
+    "action_id": "proc_top_memory",
+    "category": "PROCESS",
+    "canonical_nl": "show top 5 memory consuming processes",
+    "default_cmd": "ps aux --sort=-%mem | head -n 6",
+    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 -Property Name,Id,WorkingSet64",
+    "cmd_exe": "tasklist /fi \"memusage gt 100000\"",
+    "is_destructive": false,
+    "explanation": "Sorts all active processes by resident memory footprint and displays top 5."
+  },
+  {
+    "action_id": "proc_top_cpu",
+    "category": "PROCESS",
+    "canonical_nl": "show top 5 cpu consuming processes",
+    "default_cmd": "ps aux --sort=-%cpu | head -n 6",
+    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -Property Name,Id,CPU",
+    "cmd_exe": "tasklist",
+    "is_destructive": false,
+    "explanation": "Lists processes sorted in descending order of CPU load percentage."
+  },
+  {
+    "action_id": "sys_free_disk_space",
+    "category": "SYSTEM",
+    "canonical_nl": "check free disk space on all mounted drives in human readable format",
+    "default_cmd": "df -h",
+    "powershell_cmd": "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used,@{Name='Size';Expression={$_.Free + $_.Used}}",
+    "cmd_exe": "wmic logicaldisk get caption,freespace,size",
+    "is_destructive": false,
+    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes."
+  },
+  {
+    "action_id": "sys_memory_usage",
+    "category": "SYSTEM",
+    "canonical_nl": "show current ram memory usage in human readable format",
+    "default_cmd": "free -h",
+    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{Name='TotalGB';Expression={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}},@{Name='FreeGB';Expression={[math]::Round($_.FreePhysicalMemory/1MB,2)}}",
+    "cmd_exe": "systeminfo | findstr /C:\"Total Physical Memory\" /C:\"Available Physical Memory\"",
+    "is_destructive": false,
+    "explanation": "Displays total, used, free, and cached system RAM in gigabytes/megabytes."
+  },
+  {
+    "action_id": "fs_find_delete_logs_older_30d",
+    "category": "FILESYSTEM",
+    "canonical_nl": "find all log files older than 30 days and delete them",
+    "default_cmd": "find . -name \"*.log\" -mtime +30 -delete",
+    "powershell_cmd": "Get-ChildItem -Recurse -Filter *.log | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force",
+    "cmd_exe": "forfiles /P . /M *.log /D -30 /C \"cmd /c del @path\"",
+    "is_destructive": true,
+    "explanation": "Searches recursively for *.log files with mtime > 30 days and removes them."
+  },
+  {
+    "action_id": "fs_find_large_files",
+    "category": "FILESYSTEM",
+    "canonical_nl": "find all files larger than 100MB and sort by size",
+    "default_cmd": "find . -type f -size +100M -exec ls -lh {} + | sort -k5 -rh",
+    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name,Length",
+    "cmd_exe": "forfiles /S /M * /C \"cmd /c if @fsize GEQ 104857600 echo @path @fsize\"",
+    "is_destructive": false,
+    "explanation": "Scans directory tree for files exceeding 100 megabytes and sorts them descending."
+  },
+  {
+    "action_id": "fs_compress_tar_gz",
+    "category": "FILESYSTEM",
+    "canonical_nl": "compress folder {dir} into archive {out}.tar.gz",
+    "default_cmd": "tar -czvf {out}.tar.gz {dir}",
+    "powershell_cmd": "tar -czvf {out}.tar.gz {dir}",
+    "cmd_exe": "tar -czvf {out}.tar.gz {dir}",
+    "is_destructive": false,
+    "explanation": "Creates a gzip-compressed tar archive from the specified directory."
+  },
+  {
+    "action_id": "fs_compress_zip",
+    "category": "FILESYSTEM",
+    "canonical_nl": "compress folder {dir} into zip archive {out}.zip",
+    "default_cmd": "zip -r {out}.zip {dir}",
+    "powershell_cmd": "Compress-Archive -Path {dir} -DestinationPath {out}.zip -Force",
+    "cmd_exe": "tar -a -c -f {out}.zip {dir}",
+    "is_destructive": false,
+    "explanation": "Recursively archives folder contents into standard ZIP format."
+  },
+  {
+    "action_id": "fs_count_lines_code",
+    "category": "FILESYSTEM",
+    "canonical_nl": "count total lines of code in all {ext} files",
+    "default_cmd": "find . -name \"*.{ext}\" -exec wc -l {} +",
+    "powershell_cmd": "(Get-ChildItem -Recurse -Filter *.{ext} | Get-Content | Measure-Object -Line).Lines",
+    "cmd_exe": "for /f \"tokens=*\" %a in ('dir /s /b *.{ext}') do @type \"%a\" | find /c /v \"\"",
+    "is_destructive": false,
+    "explanation": "Recursively tallies total newline count across all matching source files."
+  },
+  {
+    "action_id": "net_get_public_ip",
+    "category": "NETWORK",
+    "canonical_nl": "show my public ip address",
+    "default_cmd": "curl -s https://ifconfig.me",
+    "powershell_cmd": "(Invoke-RestMethod -Uri https://ifconfig.me).Trim()",
+    "cmd_exe": "curl -s https://ifconfig.me",
+    "is_destructive": false,
+    "explanation": "Queries public IP echo endpoint via curl to retrieve WAN address."
+  },
+  {
+    "action_id": "net_test_port_connectivity",
+    "category": "NETWORK",
+    "canonical_nl": "test if port {port} on host {host} is reachable",
+    "default_cmd": "nc -zv {host} {port}",
+    "powershell_cmd": "Test-NetConnection -ComputerName {host} -Port {port}",
+    "cmd_exe": "curl -v telnet://{host}:{port}",
+    "is_destructive": false,
+    "explanation": "Attempts TCP handshake to verify remote port availability without payload."
+  },
+  {
+    "action_id": "net_flush_dns_cache",
+    "category": "NETWORK",
+    "canonical_nl": "flush local dns resolver cache",
+    "default_cmd": "sudo systemd-resolve --flush-caches",
+    "powershell_cmd": "Clear-DnsClientCache",
+    "cmd_exe": "ipconfig /flushdns",
+    "is_destructive": false,
+    "explanation": "Clears the operating system's local DNS resolver name lookup cache."
+  },
+  {
+    "action_id": "k8s_get_pods_namespace",
+    "category": "K8S",
+    "canonical_nl": "list all pods in namespace {ns}",
+    "default_cmd": "kubectl get pods -n {ns}",
+    "powershell_cmd": "kubectl get pods -n {ns}",
+    "cmd_exe": "kubectl get pods -n {ns}",
+    "is_destructive": false,
+    "explanation": "Retrieves current pods, status, and restarts for the target Kubernetes namespace."
+  },
+  {
+    "action_id": "k8s_restart_deployment",
+    "category": "K8S",
+    "canonical_nl": "restart deployment {deploy} in namespace {ns}",
+    "default_cmd": "kubectl rollout restart deployment/{deploy} -n {ns}",
+    "powershell_cmd": "kubectl rollout restart deployment/{deploy} -n {ns}",
+    "cmd_exe": "kubectl rollout restart deployment/{deploy} -n {ns}",
+    "is_destructive": false,
+    "explanation": "Triggers an orderly rolling restart for pods in the target deployment."
+  }
+]

@@ -25,7 +25,7 @@ class TestConfigSystem(unittest.TestCase):
         """Test default values are sensible."""
         from config import Config
         config = Config()
-        self.assertEqual(config.llm.model, "qwen3:4b")
+        self.assertEqual(config.llm.model, "embeddinggemma-2-270m")
         self.assertTrue(config.safety.enabled)
         self.assertEqual(config.ui.theme, "cyberpunk")
 

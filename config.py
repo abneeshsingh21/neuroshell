@@ -79,9 +79,9 @@ ENV_OVERRIDES = {
 
 @dataclass
 class LLMConfig:
-    """LLM settings supporting multiple providers."""
-    provider: str = "ollama"  # ollama, groq, openai, anthropic, gemini, openrouter
-    model: str = "qwen3:4b"
+    """LLM settings supporting multiple providers with Native On-Device Core as default."""
+    provider: str = "native"  # native (default on-device EmbeddingGemma 2), ollama, groq, openai, anthropic, gemini
+    model: str = "embeddinggemma-2-270m"
     base_url: str = "http://localhost:11434"
     timeout: int = 30
     max_tokens: int = 512

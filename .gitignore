@@ -26,7 +26,9 @@ Thumbs.db
 
 # NeuroShell specific
 *.db
+!models/native_ai/*.db
 *.sqlite3
+*.jsonl
 neuroshell.db
 .env
 *.vsix

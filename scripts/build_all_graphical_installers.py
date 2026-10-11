@@ -50,6 +50,13 @@ if vcvars:
 
 # 1. Windows MSI Installer (WiX Toolset v6)
 print("\n[1/5] Building Windows MSI Installers...")
+
+# 1.1 Stage models/native_ai into dist for MSI harvesting
+models_src = ROOT_DIR / "models"
+if models_src.exists():
+    shutil.copytree(models_src, DIST_DIR / "models", dirs_exist_ok=True)
+    print("  ✓ Staged: models/native_ai into dist/ for installer bundling")
+
 subprocess.run([
     "python", "scripts/build_windows_msi.py",
     "--exe", "dist/NeuroShell.exe",
@@ -68,6 +75,12 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
     zf.write(DIST_DIR / "NeuroShell.exe", "NeuroShell.exe")
     zf.write(ROOT_DIR / "LICENSE", "LICENSE")
     zf.write(ROOT_DIR / "README.md", "README.md")
+    # Bundle models folder
+    if (DIST_DIR / "models").exists():
+        for file_p in (DIST_DIR / "models").rglob("*"):
+            if file_p.is_file():
+                rel_p = file_p.relative_to(DIST_DIR)
+                zf.write(file_p, str(rel_p))
 print(f"  ✓ Created: {zip_path}")
 
 # 3. Helper to build Universal POSIX bundles for macOS & Linux
@@ -160,7 +173,7 @@ echo "   Run 'neuroshell' in any terminal to start."
         bundled_dirs = [
             "core", "intelligence", "nlp", "llm", "operations",
             "resilience", "extensions", "observability", "learning",
-            "ui", "help", "cpp_engine", "deploy", "docs"
+            "ui", "help", "cpp_engine", "deploy", "docs", "models"
         ]
         for d in bundled_dirs:
             p = ROOT_DIR / d
