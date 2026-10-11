@@ -10,6 +10,8 @@ system shortcuts, and file-type search.
 import os
 import platform
 import re
+import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -374,51 +376,51 @@ class SmartOpenEngine:
         if shortcut:
             return shortcut
 
-        # 3. App registry
-        app = self._try_app_registry(target_lower)
-        if app:
-            return app
+        # 2.5 "current folder" / "this folder" / "here" / "."
+        if target_lower in ("current folder", "this folder", "here", "current directory", "this directory", ".", ".."):
+            return self._open_cwd()
 
-        # 4. Explicit URL or site name
+        # 3. Explicit URL or site name
         url = self._try_url(target, target_lower)
         if url:
             return url
 
-        # 5. "latest/newest <filetype>"
-        latest = self._try_latest_file(target, target_lower)
-        if latest:
-            return latest
-
-        # 5.5 "current folder" / "this folder" / "here"
-        if target_lower in ("current folder", "this folder", "here", "current directory", "this directory", "."):
-            return self._open_cwd()
-
-        # 6. Folder detection: "X folder" / "X directory"
+        # 4. Folder detection: "X folder" / "X directory"
         folder_match = self._FOLDER_SUFFIX.match(target)
         if folder_match:
             folder_name = folder_match.group(1).strip()
             return self._resolve_and_open_folder(folder_name)
 
-        # 7. "X in explorer"
+        # 5. Check if target is a known folder name (current dir, home, well-known like downloads, desktop)
+        folder_result = self._try_as_folder(target, target_lower)
+        if folder_result:
+            return folder_result
+
+        # 6. "X in explorer"
         explorer_match = self._IN_EXPLORER.match(target)
         if explorer_match:
             folder_name = explorer_match.group(1).strip()
             return self._resolve_and_open_folder(folder_name)
 
-        # 8. "file X" pattern
+        # 7. Check if target is an existing file
+        if os.path.isfile(target):
+            return self._open_file(target)
+
+        # 8. "latest/newest <filetype>"
+        latest = self._try_latest_file(target, target_lower)
+        if latest:
+            return latest
+
+        # 9. "file X" pattern
         file_match = self._FILE_SUFFIX.match(target)
         if file_match:
             file_name = file_match.group(1).strip()
             return self._open_file(file_name)
 
-        # 9. Check if target is a known folder name (current dir, home, well-known)
-        folder_result = self._try_as_folder(target, target_lower)
-        if folder_result:
-            return folder_result
-
-        # 10. Check if target is an existing file
-        if os.path.isfile(target):
-            return self._open_file(target)
+        # 10. App registry & dynamic system app discovery
+        app = self._try_app_registry(target_lower)
+        if app:
+            return app
 
         # 11. (Moved to 5.5 to prevent "current folder" being caught by 6)
 
@@ -502,17 +504,60 @@ class SmartOpenEngine:
         return None
 
     # ═══════════════════════════════════════════════════════
-    # App Registry
+    # App Registry & Dynamic System Discovery
     # ═══════════════════════════════════════════════════════
 
+    def _clean_app_name(self, target_lower: str) -> str:
+        """Strip generic descriptors to isolate the application identifier."""
+        return re.sub(
+            r"\b(browser|brower|editor|ide|app|application|tool|program|software|client|viewer|utility)\b",
+            "",
+            target_lower,
+            flags=re.IGNORECASE,
+        ).strip()
+
+    def _query_windows_app_paths(self, app_name: str) -> str | None:
+        """Dynamically inspect Windows Registry App Paths (HKLM & HKCU)."""
+        if not self._is_windows:
+            return None
+        try:
+            import winreg
+            keys_to_check = [
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
+            ]
+            candidates = [app_name, f"{app_name}.exe"]
+            for hkey, subkey in keys_to_check:
+                try:
+                    with winreg.OpenKey(hkey, subkey) as root_key:
+                        num_subkeys = winreg.QueryInfoKey(root_key)[0]
+                        for i in range(num_subkeys):
+                            sk_name = winreg.EnumKey(root_key, i)
+                            if any(sk_name.lower().startswith(c.lower()) for c in candidates):
+                                with winreg.OpenKey(root_key, sk_name) as app_key:
+                                    val, _ = winreg.QueryValueEx(app_key, "")
+                                    if val and os.path.exists(val):
+                                        return val
+                except (OSError, PermissionError):
+                    continue
+        except (ImportError, Exception):
+            pass
+        return None
+
     def _try_app_registry(self, target_lower: str) -> OpenResult | None:
-        """Look up app in the registry."""
+        """
+        Dynamically resolves application launches:
+        1. Built-in registry definitions
+        2. Generic descriptor stripping (e.g. 'chrome browser' -> 'chrome')
+        3. System PATH binary lookup
+        4. Windows Registry App Paths discovery
+        5. Zero-hardcoding dynamic process launcher
+        """
+        # 1. Exact match in registry
         if target_lower in self._app_registry:
             cmd, name = self._app_registry[target_lower]
-            # Special sentinel for File Explorer — open CWD but keep target_type='app'
             if cmd == "__EXPLORER_CWD__":
                 result = self._open_cwd()
-                # Override target_type so tests and routing treat this as an app launch
                 return OpenResult(
                     command=result.command,
                     explanation=result.explanation,
@@ -524,12 +569,12 @@ class SmartOpenEngine:
                 command=cmd,
                 explanation=f"Launch {name}",
                 target_type="app",
-                confidence=0.93,
+                confidence=0.94,
             )
-        # Fuzzy: Check if target closely matches a key (avoid 'password' matching 'word')
-        # Only match if the target IS the key (with optional surrounding words like 'app')
-        stripped = re.sub(r'\b(app|application|program)\b', '', target_lower).strip()
-        if stripped in self._app_registry:
+
+        # 2. Clean descriptors (browser, editor, app, etc.)
+        stripped = self._clean_app_name(target_lower)
+        if stripped and stripped in self._app_registry:
             cmd, name = self._app_registry[stripped]
             if cmd == "__EXPLORER_CWD__":
                 result = self._open_cwd()
@@ -544,8 +589,55 @@ class SmartOpenEngine:
                 command=cmd,
                 explanation=f"Launch {name}",
                 target_type="app",
-                confidence=0.88,
+                confidence=0.92,
             )
+
+        # 3. Dynamic search: check if executable exists on PATH
+        candidate = stripped or target_lower
+        binary_path = shutil.which(candidate) or shutil.which(f"{candidate}.exe")
+        if binary_path:
+            cmd = (
+                f'powershell -NoProfile -Command "Start-Process \'{candidate}\'"'
+                if self._is_windows
+                else f'"{binary_path}"'
+            )
+            return OpenResult(
+                command=cmd,
+                explanation=f"Launch {candidate.capitalize()} (found on PATH)",
+                target_type="app",
+                resolved_path=binary_path,
+                confidence=0.94,
+            )
+
+        # 4. Windows App Paths Registry dynamic resolution
+        if self._is_windows and candidate:
+            reg_path = self._query_windows_app_paths(candidate)
+            if reg_path:
+                return OpenResult(
+                    command=f'powershell -NoProfile -Command "Start-Process \'{reg_path}\'"',
+                    explanation=f"Launch {candidate.capitalize()} (registered in Windows App Paths)",
+                    target_type="app",
+                    resolved_path=reg_path,
+                    confidence=0.95,
+                )
+
+        # 5. Zero-Hardcoding Universal Fallback for single-token application names
+        # E.g. 'open cursor', 'open brave', 'open obsidian', 'open blender'
+        if candidate and re.match(r"^[a-zA-Z0-9_\-\.]+$", candidate):
+            if self._is_windows:
+                cmd = f'powershell -NoProfile -Command "Start-Process \'{candidate}\'"'
+            elif platform.system() == "Darwin":
+                cmd = f'open -a "{candidate}"'
+            else:
+                cmd = f'xdg-open "{candidate}"'
+
+            return OpenResult(
+                command=cmd,
+                explanation=f"Launch {candidate.capitalize()} via system process manager",
+                target_type="app",
+                confidence=0.89,
+            )
+
         return None
 
     # ═══════════════════════════════════════════════════════
@@ -631,15 +723,16 @@ class SmartOpenEngine:
                 alternatives=[url],
             )
 
-        # "X.com" pattern
-        if re.match(r"^[\w-]+\.\w{2,}$", target):
-            url = f"https://{target}"
+        # Domain / Port / Path pattern (e.g. google.com, localhost:3000, huggingface.co/models)
+        if re.match(r"^(?:localhost:\d+|[\w.-]+\.[a-zA-Z]{2,}(?:/\S*)?)$", target):
+            scheme = "http" if target.startswith("localhost") else "https"
+            url = f"{scheme}://{target}"
             cmd = self._url_open_cmd(url)
             return OpenResult(
                 command=cmd,
                 explanation=f"Open website: {url}",
                 target_type="url",
-                confidence=0.88,
+                confidence=0.90,
             )
 
         return None

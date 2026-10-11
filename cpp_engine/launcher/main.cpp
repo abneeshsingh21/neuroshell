@@ -2641,7 +2641,7 @@ public:
             "assoc", "ftype", "ver", "vol", "robocopy", "reg", "sc", "wmic", "gh", "winget",
             "ls", "cat", "grep", "pwd", "rm", "cp", "mv", "touch", "chmod", "chown",
             "export", "source", "kill", "ps", "top", "df", "du", "head", "tail", "less",
-            "more", "which", "open", "xdg-open", "clear", "env", "uptime", "date"
+            "more", "which", "xdg-open", "clear", "env", "uptime", "date"
         };
         if (shellBuiltins.count(firstWord)) {
             static const std::unordered_set<std::string> nlSecondWords = {
@@ -3338,31 +3338,38 @@ public:
             }
         }
 
+        std::string pyBin = GetPythonBinary();
+
         // 1. Is it a local file?
         if (fs::exists(target) && !fs::is_directory(target)) {
-            std::cout << "\n  " << C_BOLD << C_CYAN << "📖 Reading Local Document: " << C_BOLD << C_WHITE << target << C_RESET << "\n";
-            std::cout << "  " << C_MUTED << "──────────────────────────────────────────────────────────────────────────" << C_RESET << "\n\n";
-            std::ifstream in(target);
-            std::string line;
-            int lineNum = 1;
-            while (std::getline(in, line)) {
-                char lbuf[16];
-                snprintf(lbuf, sizeof(lbuf), "%3d | ", lineNum++);
-                std::cout << C_MUTED << lbuf << C_RESET << line << "\n";
-            }
-            std::cout << "\n  " << C_MUTED << "──────────────────────────────────────────────────────────────────────────" << C_RESET << "\n\n";
+            std::cout << "\n  " << C_BOLD << C_CYAN << "📖 Reading Local Document: " << C_BOLD << C_WHITE << target << C_RESET << "\n\n";
+            std::string cmd = pyBin + " -m ui.markdown_renderer \"" + target + "\"";
+            PlatformProcessRunner::Execute(cmd);
             return;
         }
 
         // 2. Remote GitHub Repo README
         std::cout << "\n  " << C_BOLD << C_CYAN << "📖 Fetching Remote README for '" << target << "'..." << C_RESET << "\n\n";
         if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
-            std::cout << "  " << C_RED << "\u274c Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+            std::cout << "  " << C_RED << "❌ Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
             return;
         }
         auto viewRes = neuroshell::safe_exec::RunCapture({"gh", "repo", "view", target});
         if (viewRes.spawned && !viewRes.output.empty()) {
-            std::cout << viewRes.output << "\n";
+            fs::path tempFile = PlatformFS::GetHomeDir() / ".neuroshell" / "readme_view.tmp";
+            fs::create_directories(tempFile.parent_path());
+            std::ofstream ofs(tempFile, std::ios::binary);
+            ofs << viewRes.output;
+            ofs.close();
+
+            std::string escapedPath = tempFile.string();
+            for (char& c : escapedPath) { if (c == '\\') c = '/'; }
+
+            std::string cmd = pyBin + " -m ui.markdown_renderer \"" + escapedPath + "\"";
+            PlatformProcessRunner::Execute(cmd);
+
+            std::error_code ec;
+            fs::remove(tempFile, ec);
             return;
         }
 
@@ -3554,27 +3561,163 @@ public:
         }
     }
 
-    void HandleOpenRepoCommand(const std::string& rawTarget) {
-        std::string target = ResolveRepoTarget(rawTarget);
-        if (target.empty()) {
-            std::cout << "\n  " << C_RED << "❌ Please specify a repo to open (e.g. 'open 1' or 'open vercel/next.js')" << C_RESET << "\n\n";
+    void HandleUniversalOpenCommand(const std::string& rawInput) {
+        std::string target = rawInput;
+        size_t s = target.find_first_not_of(" \t\r\n\"'");
+        if (s != std::string::npos) target = target.substr(s);
+        else target = "";
+        size_t e = target.find_last_not_of(" \t\r\n\"'");
+        if (e != std::string::npos) target = target.substr(0, e + 1);
+
+        // 1. Empty / "." / "explorer" / "folder" -> open CWD in explorer
+        if (target.empty() || target == "." || target == "folder" || target == "explorer" || target == "here" || target == "cwd") {
+            std::string cwd = fs::current_path().string();
+            std::cout << "\n  " << C_GREEN << "📂 Opening File Explorer: " << C_BOLD << C_WHITE << cwd << C_RESET << "\n\n";
+#if defined(_WIN32)
+            ShellExecuteA(NULL, "open", cwd.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+            neuroshell::safe_exec::RunStatus({"open", cwd});
+#else
+            neuroshell::safe_exec::RunStatus({"xdg-open", cwd});
+#endif
             return;
         }
 
-        if (!neuroshell::safe_exec::IsValidRepoSlug(target)) {
-            std::cout << "\n  " << C_RED << "❌ Invalid repository identifier: '" << target << "'" << C_RESET << "\n\n";
+        // 2. Numeric repo index (e.g. "open 1")
+        if (!target.empty() && std::all_of(target.begin(), target.end(), ::isdigit)) {
+            int idx = std::stoi(target);
+            if (idx >= 1 && idx <= (int)g_cached_repos.size()) {
+                std::string repoSlug = g_cached_repos[idx - 1].name;
+                std::string url = "https://github.com/" + repoSlug;
+                std::cout << "\n  " << C_GREEN << "🌐 Opening GitHub Repository: " << C_BOLD << C_WHITE << url << C_RESET << "\n\n";
+#if defined(_WIN32)
+                ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+                neuroshell::safe_exec::RunStatus({"open", url});
+#else
+                neuroshell::safe_exec::RunStatus({"xdg-open", url});
+#endif
+                return;
+            }
+        }
+
+        // 3. GitHub repository slug (e.g. "open abneeshsingh21/neuroshell")
+        if (target.find('/') != std::string::npos && target.rfind("http", 0) != 0 && neuroshell::safe_exec::IsValidRepoSlug(target)) {
+            std::string url = "https://github.com/" + target;
+            std::cout << "\n  " << C_GREEN << "🌐 Opening GitHub Repository: " << C_BOLD << C_WHITE << url << C_RESET << "\n\n";
+#if defined(_WIN32)
+            ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+            neuroshell::safe_exec::RunStatus({"open", url});
+#else
+            neuroshell::safe_exec::RunStatus({"xdg-open", url});
+#endif
             return;
         }
-        std::string url = "https://github.com/" + target;
+
+        // 4. URL or Web Domain (e.g. "open https://google.com" or "open google.com")
+        std::string lowerTarget = target;
+        std::transform(lowerTarget.begin(), lowerTarget.end(), lowerTarget.begin(), ::tolower);
+        if (lowerTarget.rfind("http://", 0) == 0 || lowerTarget.rfind("https://", 0) == 0 ||
+            lowerTarget.find(".com") != std::string::npos || lowerTarget.find(".org") != std::string::npos ||
+            lowerTarget.find(".io") != std::string::npos || lowerTarget.find(".net") != std::string::npos ||
+            lowerTarget.find(".dev") != std::string::npos || lowerTarget.find(".ai") != std::string::npos ||
+            lowerTarget.find(".co") != std::string::npos || lowerTarget.rfind("localhost", 0) == 0) {
+            std::string fullUrl = target;
+            if (fullUrl.rfind("http://", 0) != 0 && fullUrl.rfind("https://", 0) != 0) {
+                fullUrl = (fullUrl.rfind("localhost", 0) == 0) ? ("http://" + fullUrl) : ("https://" + fullUrl);
+            }
+            std::cout << "\n  " << C_GREEN << "🌐 Opening Website: " << C_BOLD << C_WHITE << fullUrl << C_RESET << "\n\n";
 #if defined(_WIN32)
-        // ShellExecute avoids cmd.exe parsing entirely.
-        ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            ShellExecuteA(NULL, "open", fullUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
 #elif defined(__APPLE__)
-        neuroshell::safe_exec::RunStatus({"open", url});
+            neuroshell::safe_exec::RunStatus({"open", fullUrl});
 #else
-        neuroshell::safe_exec::RunStatus({"xdg-open", url});
+            neuroshell::safe_exec::RunStatus({"xdg-open", fullUrl});
 #endif
-        std::cout << "\n  " << C_GREEN << "🌐 Opened in browser: " << C_BOLD << C_WHITE << url << C_RESET << "\n\n";
+            return;
+        }
+
+        // 5. Local File or Directory (e.g. "open README.md", "open src", "open C:\...")
+        if (fs::exists(target)) {
+            std::cout << "\n  " << C_GREEN << "⚡ Opening Local Target: " << C_BOLD << C_WHITE << target << C_RESET << "\n\n";
+#if defined(_WIN32)
+            ShellExecuteA(NULL, "open", target.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+            neuroshell::safe_exec::RunStatus({"open", target});
+#else
+            neuroshell::safe_exec::RunStatus({"xdg-open", target});
+#endif
+            return;
+        }
+
+        // 6. Well-Known User Folders (downloads, desktop, documents, pictures, videos)
+        fs::path home = PlatformFS::GetHomeDir();
+        std::vector<std::string> knownFolders = {"desktop", "downloads", "documents", "pictures", "videos", "music"};
+        for (const auto& kf : knownFolders) {
+            if (lowerTarget == kf || lowerTarget == kf + " folder" || lowerTarget == kf + " directory") {
+                fs::path folderPath = home / kf;
+                if (fs::exists(folderPath)) {
+                    std::cout << "\n  " << C_GREEN << "📁 Opening Folder: " << C_BOLD << C_WHITE << folderPath.string() << C_RESET << "\n\n";
+#if defined(_WIN32)
+                    ShellExecuteA(NULL, "open", folderPath.string().c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+                    neuroshell::safe_exec::RunStatus({"open", folderPath.string()});
+#else
+                    neuroshell::safe_exec::RunStatus({"xdg-open", folderPath.string()});
+#endif
+                    return;
+                }
+            }
+        }
+
+        // 7. Universal Smart Open via Python IPC Engine (Dynamic App / Setting / Tool Resolution)
+        std::string pyBin = GetPythonBinary();
+        std::string escapedTarget = target;
+        for (char& c : escapedTarget) { if (c == '"' || c == '\\') c = ' '; }
+
+        std::string runnerCmd = pyBin + " -c \"from intelligence.smart_open import SmartOpenEngine; res = SmartOpenEngine().try_resolve('open " + escapedTarget + "'); print(res.command if res else '')\"";
+        PlatformProcessRunner::ExecResult smartRes = PlatformProcessRunner::Execute(runnerCmd);
+        
+        std::string resolvedCmd = smartRes.output;
+        size_t cs = resolvedCmd.find_first_not_of(" \t\r\n");
+        if (cs != std::string::npos) resolvedCmd = resolvedCmd.substr(cs);
+        else resolvedCmd = "";
+        size_t ce = resolvedCmd.find_last_not_of(" \t\r\n");
+        if (ce != std::string::npos) resolvedCmd = resolvedCmd.substr(0, ce + 1);
+
+        if (!resolvedCmd.empty()) {
+            std::cout << "\n  " << C_GREEN << "🚀 Launching: " << C_BOLD << C_WHITE << target << C_RESET << " (" << C_MUTED << resolvedCmd << C_RESET << ")\n\n";
+            PlatformProcessRunner::Execute(resolvedCmd);
+            return;
+        }
+
+        // 8. Zero-Hardcoding Fallback: Launch via OS Process Manager directly
+        std::string cleanApp = target;
+        for (const std::string& suffix : {" browser", " editor", " app", " application", " tool", " program", " ide"}) {
+            if (cleanApp.size() > suffix.size() && cleanApp.substr(cleanApp.size() - suffix.size()) == suffix) {
+                cleanApp = cleanApp.substr(0, cleanApp.size() - suffix.size());
+                break;
+            }
+        }
+        cleanApp.erase(0, cleanApp.find_first_not_of(" \t"));
+        cleanApp.erase(cleanApp.find_last_not_of(" \t") + 1);
+
+        std::cout << "\n  " << C_GREEN << "🚀 Launching Application: " << C_BOLD << C_WHITE << cleanApp << C_RESET << "\n\n";
+#if defined(_WIN32)
+        std::string fallbackCmd = "powershell -NoProfile -Command \"Start-Process '" + cleanApp + "'\"";
+        PlatformProcessRunner::Execute(fallbackCmd);
+#elif defined(__APPLE__)
+        std::string fallbackCmd = "open -a \"" + cleanApp + "\"";
+        PlatformProcessRunner::Execute(fallbackCmd);
+#else
+        std::string fallbackCmd = "xdg-open \"" + cleanApp + "\" || gtk-launch \"" + cleanApp + "\"";
+        PlatformProcessRunner::Execute(fallbackCmd);
+#endif
+    }
+
+    void HandleOpenRepoCommand(const std::string& rawTarget) {
+        HandleUniversalOpenCommand(rawTarget);
     }
 
     void HandleMkCommand(const std::string& rawInput) {
@@ -4054,9 +4197,12 @@ public:
             HandleTreeCommand(target);
             return;
         }
-        if (lowerTrim.rfind("open ", 0) == 0 && (isdigit((unsigned char)lowerTrim[5]) || lowerTrim.find("/") != std::string::npos)) {
-            std::string target = lowerTrim.substr(5);
-            HandleOpenRepoCommand(target);
+        if (lowerTrim == "open" || lowerTrim.rfind("open ", 0) == 0 ||
+            lowerTrim == "/open" || lowerTrim.rfind("/open ", 0) == 0) {
+            std::string target = "";
+            if (lowerTrim.rfind("open ", 0) == 0) target = input.substr(5);
+            else if (lowerTrim.rfind("/open ", 0) == 0) target = input.substr(6);
+            HandleUniversalOpenCommand(target);
             return;
         }
 
