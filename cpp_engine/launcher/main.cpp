@@ -802,14 +802,101 @@ public:
 
     ErrorReport Analyze(const std::string& output, int exitCode, const std::string& lastCmd) {
         ErrorReport rep;
-        if (exitCode == 0 && output.find("Error:") == std::string::npos && output.find("Exception") == std::string::npos) {
+        if (exitCode == 0 && output.find("Error:") == std::string::npos && output.find("Exception") == std::string::npos && output.find("ParserError") == std::string::npos) {
             return rep;
         }
 
         std::string lowerOut = output;
         std::transform(lowerOut.begin(), lowerOut.end(), lowerOut.begin(), ::tolower);
 
-        if (output.find("ModuleNotFoundError: No module named ") != std::string::npos) {
+        // 1. PowerShell syntax and parsing errors
+        if (output.find("Unexpected token") != std::string::npos || output.find("CategoryInfo          : ParserError") != std::string::npos ||
+            output.find("MissingExpressionAfterOperator") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "PowerShell Syntax / Quoting Error";
+            rep.detail = "PowerShell treats quoted command paths as string literals. Use '&' operator or execute directly via cmd.exe.";
+            if (!lastCmd.empty() && lastCmd[0] == '"') {
+                rep.autoFixCmd = "& " + lastCmd;
+            } else {
+                rep.autoFixCmd = "cmd.exe /s /c " + lastCmd;
+            }
+        }
+        // 2. Windows CMD 'delete' / 'uninstall' not recognized
+        else if (lowerOut.find("'delete' is not recognized") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Windows Shell Command Missing";
+            rep.detail = "Windows CMD has no 'delete' command. Use NeuroShell universal delete ('delete <target>') or Windows 'del'.";
+            std::string sub = lastCmd;
+            if (sub.rfind("delete", 0) == 0) sub = sub.substr(6);
+            sub.erase(0, sub.find_first_not_of(" \t"));
+            rep.autoFixCmd = "delete " + sub;
+        }
+        else if (lowerOut.find("'uninstall' is not recognized") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Windows Shell Command Missing";
+            rep.detail = "Windows CMD has no 'uninstall' command. Use NeuroShell 'uninstall <app>' or 'winget uninstall <app>'.";
+            std::string sub = lastCmd;
+            if (sub.rfind("uninstall", 0) == 0) sub = sub.substr(9);
+            sub.erase(0, sub.find_first_not_of(" \t"));
+            rep.autoFixCmd = "uninstall " + sub;
+        }
+        else if (lowerOut.find("the directory name is invalid") != std::string::npos && lastCmd.find("del ") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Directory Deletion Error";
+            rep.detail = "The 'del' command only deletes files, not directories. Use 'rmdir /s /q <folder>' or 'delete <folder>'.";
+            std::string sub = lastCmd.substr(lastCmd.find("del ") + 4);
+            sub.erase(0, sub.find_first_not_of(" \t"));
+            rep.autoFixCmd = "delete " + sub;
+        }
+        // 3. Unix commands typed in Windows
+        else if (lowerOut.find("not recognized as an internal or external command") != std::string::npos ||
+                 lowerOut.find("command not found") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Command Not Found";
+            std::string cmdFirst = lastCmd;
+            size_t sp = cmdFirst.find(' ');
+            if (sp != std::string::npos) cmdFirst = cmdFirst.substr(0, sp);
+
+            if (cmdFirst == "touch") {
+                rep.detail = "Unix 'touch' is not in Windows CMD. Use 'type nul > <file>' to create new empty files.";
+                std::string arg = lastCmd.size() > 6 ? lastCmd.substr(6) : "file.txt";
+                rep.autoFixCmd = "type nul > " + arg;
+            } else if (cmdFirst == "grep") {
+                rep.detail = "Unix 'grep' is not in Windows CMD. Use 'findstr' to search text patterns.";
+                std::string arg = lastCmd.size() > 5 ? lastCmd.substr(5) : "";
+                rep.autoFixCmd = "findstr " + arg;
+            } else if (cmdFirst == "ls") {
+                rep.detail = "Unix 'ls' is not in Windows CMD. Use 'dir' to list directory files.";
+                rep.autoFixCmd = "dir";
+            } else if (cmdFirst == "clear") {
+                rep.detail = "Unix 'clear' is not in Windows CMD. Use 'cls' to clear the console.";
+                rep.autoFixCmd = "cls";
+            } else if (cmdFirst == "cat") {
+                rep.detail = "Unix 'cat' is not in Windows CMD. Use 'type' to display file contents.";
+                std::string arg = lastCmd.size() > 4 ? lastCmd.substr(4) : "";
+                rep.autoFixCmd = "type " + arg;
+            } else if (cmdFirst == "rm") {
+                rep.detail = "Unix 'rm' is not in Windows CMD. Use NeuroShell 'delete <target>'.";
+                std::string arg = lastCmd.size() > 3 ? lastCmd.substr(3) : "";
+                rep.autoFixCmd = "delete " + arg;
+            } else if (cmdFirst == "gti") {
+                rep.detail = "Typo detected: 'gti' instead of 'git'.";
+                rep.autoFixCmd = "git" + (lastCmd.size() > 3 ? lastCmd.substr(3) : "");
+            } else if (cmdFirst == "pyhton" || cmdFirst == "pythn") {
+                rep.detail = "Typo detected: 'pyhton' instead of 'python'.";
+                rep.autoFixCmd = "python" + (lastCmd.size() > 6 ? lastCmd.substr(6) : "");
+            } else if (cmdFirst == "dockr") {
+                rep.detail = "Typo detected: 'dockr' instead of 'docker'.";
+                rep.autoFixCmd = "docker" + (lastCmd.size() > 5 ? lastCmd.substr(5) : "");
+            } else if (cmdFirst == "npn") {
+                rep.detail = "Typo detected: 'npn' instead of 'npm'.";
+                rep.autoFixCmd = "npm" + (lastCmd.size() > 3 ? lastCmd.substr(3) : "");
+            } else {
+                rep.detail = "'" + cmdFirst + "' is not recognized. Check spelling or install it.";
+            }
+        }
+        // 4. Missing Python Dependency
+        else if (output.find("ModuleNotFoundError: No module named ") != std::string::npos) {
             rep.hasError = true;
             rep.category = "Missing Python Dependency";
             size_t pos = output.find("ModuleNotFoundError: No module named ");
@@ -817,10 +904,11 @@ public:
             size_t q2 = output.find("'", q1 + 1);
             if (q1 != std::string::npos && q2 != std::string::npos) {
                 std::string pkg = output.substr(q1 + 1, q2 - q1 - 1);
-                rep.detail = "ModuleNotFoundError: No module named '" + pkg + "'";
+                rep.detail = "Python package '" + pkg + "' is not installed in the active environment.";
                 rep.autoFixCmd = "pip install " + pkg;
             }
         }
+        // 5. Missing NPM Package
         else if (output.find("Cannot find module ") != std::string::npos) {
             rep.hasError = true;
             rep.category = "Missing NPM Package";
@@ -829,30 +917,53 @@ public:
             size_t q2 = output.find("'", q1 + 1);
             if (q1 != std::string::npos && q2 != std::string::npos) {
                 std::string pkg = output.substr(q1 + 1, q2 - q1 - 1);
-                rep.detail = "Cannot find module '" + pkg + "'";
+                rep.detail = "Node package '" + pkg + "' is missing from node_modules.";
                 rep.autoFixCmd = "npm install " + pkg;
             }
         }
+        // 6. Access / Permission Denied
+        else if (lowerOut.find("access is denied") != std::string::npos || lowerOut.find("permission denied") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Access / Permission Denied";
+            rep.detail = "Operation requires administrative privileges or target file/resource is locked.";
+#if defined(_WIN32)
+            rep.autoFixCmd = "powershell -NoProfile -Command \"Start-Process cmd -ArgumentList '/c " + lastCmd + "' -Verb RunAs\"";
+#else
+            rep.autoFixCmd = "sudo " + lastCmd;
+#endif
+        }
+        // 7. Git Repositories & Push Errors
         else if (lowerOut.find("not a git repository") != std::string::npos) {
             rep.hasError = true;
             rep.category = "Git Initialization Error";
-            rep.detail = "fatal: not a git repository";
+            rep.detail = "Current directory is not a Git repository. Run 'git init' to initialize.";
             rep.autoFixCmd = "git init";
         }
+        else if (lowerOut.find("updates were rejected because the remote contains work") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Git Remote Out of Sync";
+            rep.detail = "Remote repository has changes you do not have locally. Rebase or pull first.";
+            rep.autoFixCmd = "git pull --rebase";
+        }
+        else if (lowerOut.find("automatic merge failed; fix conflicts") != std::string::npos) {
+            rep.hasError = true;
+            rep.category = "Git Merge Conflict";
+            rep.detail = "Merge conflicts detected. Inspect modified files to resolve conflicts.";
+            rep.autoFixCmd = "git status";
+        }
+        // 8. Port Conflicts
         else if (lowerOut.find("address already in use") != std::string::npos || lowerOut.find("eaddrinuse") != std::string::npos) {
             rep.hasError = true;
-            rep.category = "Port Conflict";
-            rep.detail = "Address already in use / Port occupied";
-            rep.autoFixCmd = "show active ports";
+            rep.category = "Network Port Occupied";
+            rep.detail = "The network port requested by this server is already in use by another process.";
+            rep.autoFixCmd = "netstat -ano";
         }
-        else if (lowerOut.find("command not found") != std::string::npos || lowerOut.find("not recognized as an internal or external command") != std::string::npos) {
+        // 9. General fallback
+        else {
             rep.hasError = true;
-            rep.category = "Command Typo / Missing Path";
-            rep.detail = "'" + lastCmd + "' not found / not recognized";
-            if (lastCmd == "gti") rep.autoFixCmd = "git";
-            else if (lastCmd == "pyhton" || lastCmd == "pythn") rep.autoFixCmd = "python3";
-            else if (lastCmd == "dockr") rep.autoFixCmd = "docker";
-            else if (lastCmd == "npn") rep.autoFixCmd = "npm";
+            rep.category = "Command Execution Failure (Exit Code " + std::to_string(exitCode) + ")";
+            rep.detail = "Command returned an error status. Use '@fix' or run with '--help' for usage.";
+            rep.autoFixCmd = "@fix";
         }
 
         return rep;
@@ -861,21 +972,21 @@ public:
     void RenderErrorCard(const ErrorReport& rep) {
         if (!rep.hasError) return;
 
-        std::cout << "\n" << C_RED << "  ╭── ❌ Smart Error Shield ──────────────────────────────────────────╮\n"
-                  << "  │ " << C_BOLD << C_WHITE << "Category: " << C_RESET << C_YELLOW << rep.category << C_RED 
-                  << std::string(std::max(0, 53 - (int)rep.category.length()), ' ') << "│\n"
-                  << "  │ " << C_MUTED << "Details:  " << C_RESET << rep.detail << C_RED 
-                  << std::string(std::max(0, 53 - (int)rep.detail.length()), ' ') << "│\n";
+        std::cout << "\n" << C_RED << "  ╭── 💡 NeuroShell Plain-English Error Explainer ──────────────────────╮\n"
+                  << "  │ " << C_BOLD << C_WHITE << "Error Type:   " << C_RESET << C_YELLOW << rep.category << C_RED 
+                  << std::string(std::max(0, 52 - (int)rep.category.length()), ' ') << "│\n"
+                  << "  │ " << C_BOLD << C_WHITE << "Explanation:  " << C_RESET << rep.detail << C_RED 
+                  << std::string(std::max(0, 52 - (int)rep.detail.length()), ' ') << "│\n";
 
         if (!rep.autoFixCmd.empty()) {
-            std::cout << "  │                                                                   │\n"
-                      << "  │ " << C_BOLD << C_CYAN << "💡 Recommended Auto-Fix:                                          " << C_RED << "│\n"
+            std::cout << "  │                                                                     │\n"
+                      << "  │ " << C_BOLD << C_CYAN << "⚡ Smart Fix Option:                                                " << C_RED << "│\n"
                       << "  │    " << C_GREEN << "❯ " << C_BOLD << rep.autoFixCmd << C_RESET << C_RED 
                       << std::string(std::max(0, 51 - (int)rep.autoFixCmd.length()), ' ') << "│\n"
-                      << "  ╰───────────────────────────────────────────────────────────────────╯" << C_RESET << "\n"
-                      << C_YELLOW << "  Press " << C_BOLD << "[y]" << C_RESET << C_YELLOW << " to apply fix immediately, or press Enter to continue...\n" << C_RESET;
+                      << "  ╰─────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n"
+                      << C_YELLOW << "  Press " << C_BOLD << "[y]" << C_RESET << C_YELLOW << " to apply fix immediately, or press Enter to dismiss...\n" << C_RESET;
         } else {
-            std::cout << "  ╰───────────────────────────────────────────────────────────────────╯" << C_RESET << "\n";
+            std::cout << "  ╰─────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
         }
     }
 };
@@ -1166,6 +1277,17 @@ public:
         if (s != std::string::npos) lower = lower.substr(s);
         if (lower.empty()) return false;
 
+        // Exclude standard CLI commands and python scripts (with or without quotes)
+        if (lower.rfind("python", 0) == 0 || lower.rfind("\"python", 0) == 0 ||
+            lower.find("python.exe") != std::string::npos ||
+            lower.find(".venv") != std::string::npos ||
+            lower.rfind("git ", 0) == 0 || lower.rfind("gh ", 0) == 0 ||
+            lower.rfind("cargo ", 0) == 0 || lower.rfind("npm ", 0) == 0 ||
+            lower.rfind("node ", 0) == 0 || lower.rfind("pip ", 0) == 0 ||
+            lower.rfind("winget ", 0) == 0) {
+            return false;
+        }
+
         // Explicit PowerShell / pwsh invocation
         if (lower.rfind("powershell", 0) == 0 || lower.rfind("pwsh", 0) == 0) return true;
 
@@ -1192,11 +1314,20 @@ public:
             if (lower.find(verb) != std::string::npos) return true;
         }
 
-        // Compound statements separated by semicolon (cmd.exe fails on ';'; PowerShell handles it cleanly)
-        if (lower.find(';') != std::string::npos) {
-            if (lower.rfind("set ", 0) != 0) {
-                return true;
+        // Compound statements separated by unquoted semicolon (cmd.exe fails on ';'; PowerShell handles it cleanly)
+        bool inDq = false;
+        bool inSq = false;
+        bool hasUnquotedSemicolon = false;
+        for (char c : lower) {
+            if (c == '"' && !inSq) inDq = !inDq;
+            else if (c == '\'' && !inDq) inSq = !inSq;
+            else if (c == ';' && !inDq && !inSq) {
+                hasUnquotedSemicolon = true;
+                break;
             }
+        }
+        if (hasUnquotedSemicolon && lower.rfind("set ", 0) != 0) {
+            return true;
         }
 
         return false;
@@ -1374,7 +1505,8 @@ public:
                     if (c == '"') escaped += "\\\"";
                     else escaped += c;
                 }
-                cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"" + escaped + "\"";
+                std::string callPrefix = (!trimmedCmd.empty() && (trimmedCmd.front() == '"' || trimmedCmd.front() == '\'')) ? "& " : "";
+                cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"" + callPrefix + escaped + "\"";
             }
         } else {
             if (trimmedCmd.find('"') != std::string::npos) {
@@ -3749,7 +3881,29 @@ public:
             }
         }
 
-        // 7. Universal Smart Open via Python IPC Engine (Dynamic App / Setting / Tool Resolution)
+        // 7. Extract cleaned app name
+        std::string cleanApp = target;
+        for (const std::string& suffix : {" browser", " editor", " app", " application", " tool", " program", " ide"}) {
+            if (cleanApp.size() > suffix.size() && cleanApp.substr(cleanApp.size() - suffix.size()) == suffix) {
+                cleanApp = cleanApp.substr(0, cleanApp.size() - suffix.size());
+                break;
+            }
+        }
+        cleanApp.erase(0, cleanApp.find_first_not_of(" \t"));
+        cleanApp.erase(cleanApp.find_last_not_of(" \t") + 1);
+
+#if defined(_WIN32)
+        // Instant Win32 App Paths launch (Chrome, Edge, Notepad, VS Code, Calculator, Spotify, etc.)
+        if (!cleanApp.empty()) {
+            HINSTANCE hInst = ShellExecuteA(NULL, "open", cleanApp.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            if ((INT_PTR)hInst > 32) {
+                std::cout << "\n  " << C_GREEN << "🚀 Launched: " << C_BOLD << C_WHITE << cleanApp << C_RESET << "\n\n";
+                return;
+            }
+        }
+#endif
+
+        // 8. Universal Smart Open via Python IPC Engine (Dynamic App / Setting / Tool Resolution)
         std::string pyBin = GetPythonBinary();
         fs::path root = PlatformFS::GetNeuroShellRoot();
         std::string rootStr = root.string();
@@ -3768,23 +3922,17 @@ public:
         size_t ce = resolvedCmd.find_last_not_of(" \t\r\n");
         if (ce != std::string::npos) resolvedCmd = resolvedCmd.substr(0, ce + 1);
 
-        if (!resolvedCmd.empty()) {
+        if (smartRes.exitCode == 0 && !resolvedCmd.empty() &&
+            resolvedCmd.find("ParserError") == std::string::npos &&
+            resolvedCmd.find("Unexpected token") == std::string::npos &&
+            resolvedCmd.find("Traceback") == std::string::npos &&
+            resolvedCmd.find("Error") == std::string::npos) {
             std::cout << "\n  " << C_GREEN << "🚀 Launching: " << C_BOLD << C_WHITE << target << C_RESET << " (" << C_MUTED << resolvedCmd << C_RESET << ")\n\n";
             PlatformProcessRunner::Execute(resolvedCmd);
             return;
         }
 
-        // 8. Zero-Hardcoding Fallback: Launch via OS Process Manager directly
-        std::string cleanApp = target;
-        for (const std::string& suffix : {" browser", " editor", " app", " application", " tool", " program", " ide"}) {
-            if (cleanApp.size() > suffix.size() && cleanApp.substr(cleanApp.size() - suffix.size()) == suffix) {
-                cleanApp = cleanApp.substr(0, cleanApp.size() - suffix.size());
-                break;
-            }
-        }
-        cleanApp.erase(0, cleanApp.find_first_not_of(" \t"));
-        cleanApp.erase(cleanApp.find_last_not_of(" \t") + 1);
-
+        // 9. Zero-Hardcoding Fallback: Launch via OS Process Manager directly
         std::cout << "\n  " << C_GREEN << "🚀 Launching Application: " << C_BOLD << C_WHITE << cleanApp << C_RESET << "\n\n";
 #if defined(_WIN32)
         std::string fallbackCmd = "powershell -NoProfile -Command \"Start-Process '" + cleanApp + "'\"";
@@ -3800,6 +3948,83 @@ public:
 
     void HandleOpenRepoCommand(const std::string& rawTarget) {
         HandleUniversalOpenCommand(rawTarget);
+    }
+
+    void HandleUninstallCommand(const std::string& rawInput) {
+        std::string input = rawInput;
+        size_t s = input.find_first_not_of(" \t\r\n");
+        if (s != std::string::npos) input = input.substr(s);
+        else input = "";
+
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        std::string args = "";
+        if (lower == "uninstall" || lower == "/uninstall") {
+            args = "--list";
+        } else if (lower.rfind("uninstall ", 0) == 0) {
+            args = input.substr(10);
+        } else if (lower.rfind("/uninstall ", 0) == 0) {
+            args = input.substr(11);
+        } else if (lower.rfind("remove app ", 0) == 0) {
+            args = input.substr(11);
+        } else if (lower.rfind("delete app ", 0) == 0) {
+            args = input.substr(11);
+        } else {
+            args = input;
+        }
+
+        args.erase(0, args.find_first_not_of(" \t"));
+        args.erase(args.find_last_not_of(" \t") + 1);
+
+        std::string pyBin = GetPythonBinary();
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "uninstaller.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
+        PlatformProcessRunner::Execute(cmd);
+    }
+
+    void HandleDeleteCommand(const std::string& rawInput) {
+        std::string input = rawInput;
+        size_t s = input.find_first_not_of(" \t\r\n");
+        if (s != std::string::npos) input = input.substr(s);
+        else input = "";
+
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        std::string args = "";
+        if (lower == "delete" || lower == "/delete" || lower == "trash") {
+            std::cout << "\n" << C_BOLD << C_CYAN << "╭── 🗑️ Universal Asset & File Deleter ─────────────────────────────────╮" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_WHITE << "Universal deletion shield with automated Trash recovery and safety checks" << C_RESET << "\n"
+                      << C_CYAN << "│\n" << C_RESET
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "1. Specific files/folders: " << C_YELLOW << "delete build/ dist/ test.txt" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "2. Category cleaning:      " << C_YELLOW << "delete images" << C_WHITE << " (or " << C_YELLOW << "videos, logs, cache, temp" << C_WHITE << ")" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "3. Pattern wildcards:      " << C_YELLOW << "delete *.tmp *.log" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "4. Permanent (bypass trash):" << C_YELLOW << "delete --force target_folder" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "5. Undo accidental delete: " << C_GREEN << "undo" << C_RESET << "\n"
+                      << C_CYAN << "╰───────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        } else if (lower.rfind("delete ", 0) == 0) {
+            args = input.substr(7);
+        } else if (lower.rfind("/delete ", 0) == 0) {
+            args = input.substr(8);
+        } else if (lower.rfind("trash ", 0) == 0) {
+            args = input.substr(6);
+        } else if (lower.rfind("rm ", 0) == 0) {
+            args = input.substr(3);
+        } else if (lower.rfind("remove ", 0) == 0) {
+            args = input.substr(7);
+        } else {
+            args = input;
+        }
+
+        args.erase(0, args.find_first_not_of(" \t"));
+        args.erase(args.find_last_not_of(" \t") + 1);
+
+        std::string pyBin = GetPythonBinary();
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "deleter.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
+        PlatformProcessRunner::Execute(cmd);
     }
 
     void HandleMkCommand(const std::string& rawInput) {
@@ -4288,6 +4513,21 @@ public:
             return;
         }
 
+        if (lowerTrim == "uninstall" || lowerTrim.rfind("uninstall ", 0) == 0 ||
+            lowerTrim == "/uninstall" || lowerTrim.rfind("/uninstall ", 0) == 0 ||
+            lowerTrim.rfind("remove app ", 0) == 0 || lowerTrim.rfind("delete app ", 0) == 0) {
+            HandleUninstallCommand(input);
+            return;
+        }
+
+        if (lowerTrim == "delete" || lowerTrim.rfind("delete ", 0) == 0 ||
+            lowerTrim == "/delete" || lowerTrim.rfind("/delete ", 0) == 0 ||
+            lowerTrim == "trash" || lowerTrim.rfind("trash ", 0) == 0 ||
+            lowerTrim.rfind("rm ", 0) == 0 || lowerTrim.rfind("remove ", 0) == 0) {
+            HandleDeleteCommand(input);
+            return;
+        }
+
         // ── Smart File & Folder Scaffolder: "mk", "new" ──
         if (lowerTrim == "mk" || lowerTrim.rfind("mk ", 0) == 0 || lowerTrim.rfind("new ", 0) == 0) {
             HandleMkCommand(input);
@@ -4765,10 +5005,10 @@ public:
                 }
             }
 
-            if (errRep.hasError && !errRep.autoFixCmd.empty()) {
+            if (errRep.hasError) {
                 errorShield.RenderErrorCard(errRep);
 
-                if (isInteractive) {
+                if (!errRep.autoFixCmd.empty() && isInteractive) {
                     KeyEvent keyEv = terminal.ReadKey();
                     if (keyEv.ch == 'y' || keyEv.ch == 'Y') {
                         std::cout << "  " << C_GREEN << "⚡ Applying Auto-Fix: " << C_BOLD << C_WHITE << errRep.autoFixCmd << C_RESET << "\n\n";

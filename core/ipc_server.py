@@ -497,10 +497,13 @@ class NamedPipeServer:
                     fixer = ErrorFixer(self.shell.llm, self.shell.history, self.shell.context)
                 fix_result = fixer.fix(output, command)
                 if fix_result:
+                    auto_fix = getattr(fix_result, "fix_command", "") or getattr(fix_result, "fixed_command", "")
+                    explanation = getattr(fix_result, "explanation", "") or getattr(fix_result, "root_cause", "Command failed with error")
+                    category = getattr(fix_result, "root_cause", "") or getattr(fix_result, "category", "execution_error")
                     return {
-                        "category": getattr(fix_result, "category", "execution_error"),
-                        "root_cause": getattr(fix_result, "explanation", "Command failed with error"),
-                        "auto_fix": getattr(fix_result, "fixed_command", ""),
+                        "category": category,
+                        "root_cause": explanation,
+                        "auto_fix": auto_fix,
                         "confidence": getattr(fix_result, "confidence", 0.9),
                     }
             except Exception:
