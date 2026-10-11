@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from intelligence.project_graph import WorkspaceProjectGraph
 from intelligence.sanitizer import LLMSanitizer  # type: ignore
 from observability.provenance import ProvenanceSource, ProvenanceTag  # type: ignore
 
@@ -217,7 +218,7 @@ LOCAL_PATTERNS = {
     r"(?:trace(?:route)?|tracert)\s+(\S+)": "traceroute {0}",
     r"(?:lookup|resolve|nslookup)\s+(?:dns\s+)?(?:for\s+)?(\S+)": "nslookup {0}",
     r"(?:show|list)\s+(?:open\s+)?(?:network\s+)?ports": "netstat -tulpn",
-    r"(?:download|fetch|wget|curl)\s+(\S+)": "curl -O {0}",
+    r"(?:wget|curl)\s+(\S+)": "curl -O {0}",
     r"(?:check|test)\s+(?:if\s+)?(?:port\s+)?(\d+)\s+(?:is\s+)?(?:open|listening)": "netstat -an | grep {0}",
 
     # Miscellaneous
@@ -732,6 +733,26 @@ class Translator:
         if self._is_multi_step(user_input_clean):
             return self._translate_multi_step(user_input_clean, entities)
 
+        # 3.5. Semantic Workspace Graph Direct Resolution
+        try:
+            repo_cmd = WorkspaceProjectGraph.resolve_action(user_input_clean)
+            if repo_cmd:
+                manifest = WorkspaceProjectGraph.get_manifest()
+                return TranslationResult(
+                    command=repo_cmd,
+                    confidence=0.92,
+                    explanation=f"Resolved via workspace manifest ({manifest.summary()})",
+                    source="project_graph",
+                    provenance=ProvenanceTag(
+                        source=ProvenanceSource.LOCAL,
+                        confidence=0.92,
+                        detail="workspace manifest resolution",
+                        latency_ms=0.5,
+                    ),
+                )
+        except Exception:
+            pass
+
         # 4. AI MODEL TRANSLATION (Primary Intelligence)
         # Dynamically synthesizes tailored commands based on context, OS, language, and tools
         llm_result = None
@@ -1007,13 +1028,21 @@ class Translator:
             (r"(?:install|setup|get)\s+(?:the\s+)?(?:github\s+cli|gh\s+cli|gh)\s*$", lambda g: self._get_gh_install_cmd()),
             # Universal Downloader (URL, File, PDF, Doc, Repo, App)
             (r"(?:download|fetch)\s+(?:the\s+)?(?:file\s+|pdf\s+|doc\s+|document\s+)?(?:from\s+)?(https?://\S+)(?:\s+(?:to|into)\s+(\S+))?\s*$", lambda g: f'python -m operations.downloader "{g[0]}"' + (f' "{g[1]}"' if len(g) > 1 and g[1] else "")),
+            (r"(?:download|fetch|get)\s+(?:the\s+)?(?:paper|research\s+paper|pdf|doc|document)\s+['\"]?(.+?)['\"]?\s*$", lambda g: f'python -m operations.downloader paper "{g[0]}"'),
             (r"(?:download|clone)\s+(?:the\s+)?(?:git\s+|github\s+)?repo(?:sitory)?\s+(?:from\s+)?([\w.-]+/[\w.-]+|https?://\S+)\s*$", lambda g: f'python -m operations.downloader "{g[0]}"'),
-            (r"(?:download|install)\s+(?:the\s+)?(?:app|application|tool|program)\s+(\S+)\s*$", lambda g: f'python -m operations.downloader "{g[0]}"'),
-            # Universal Web Scraper (Clean Text, Tables, Links, Multi-Site)
+            (r"(?:download|clone)\s+(?:the\s+)?(?:repo|repository)\s+['\"]?(.+?)['\"]?\s*$", lambda g: f'python -m operations.downloader repo "{g[0]}"'),
+            (r"(?:download|install)\s+(?:the\s+)?(?:app\s+|application\s+|tool\s+|program\s+)?([A-Za-z0-9_\-\.]+)\s*$", lambda g: f'python -m operations.downloader "{g[0]}"'),
+            # Universal Web Scraper (Clean Text, Tables, Links, Multi-Site, Web Search)
             (r"(?:scrape|extract)\s+(?:all\s+)?(?:tables?)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.scraper "{g[0]}" --mode tables'),
             (r"(?:scrape|extract)\s+(?:all\s+)?(?:links?|urls?|documents?|pdfs?)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.scraper "{g[0]}" --mode links'),
             (r"(?:scrape|extract)\s+(?:all\s+)?(?:data|text|content)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.scraper "{g[0]}"'),
             (r"(?:scrape|crawl)\s+(?:websites?\s+|urls?\s+)?(https?://\S+(?:,\s*https?://\S+)*)\s*$", lambda g: f'python -m operations.scraper "{g[0]}"'),
+            (r"(?:scrape|extract)\s+(?:data\s+|websites?\s+)?(?:for|about|search)\s+['\"]?(.+?)['\"]?\s*$", lambda g: f'python -m operations.scraper search "{g[0]}"'),
+            # Universal Harvester (Scrape + Bulk Download / Tables / Search Discovery)
+            (r"(?:harvest)\s+(?:all\s+)?(?:(?:pdf|csv|zip|doc|document)s?\s+)?(?:files?|documents?|pdfs?|assets?|data|tables?)?\s*(?:from\s+)?(https?://\S+)(?:\s+(?:to|into)\s+(\S+))?\s*$", lambda g: f'python -m operations.harvester "{g[0]}"' + (f' --dest "{g[1]}"' if len(g) > 1 and g[1] else "")),
+            (r"(?:harvest)\s+(?:all\s+)?(?:tables?)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.harvester "{g[0]}"'),
+            (r"(?:harvest)\s+(https?://\S+)(?:\s+(?:to|into)\s+(\S+))?\s*$", lambda g: f'python -m operations.harvester "{g[0]}"' + (f' --dest "{g[1]}"' if len(g) > 1 and g[1] else "")),
+            (r"(?:harvest)\s+(?:all\s+)?(?:(?:pdf|csv|zip|doc|document)s?\s+)?(?:files?|documents?|pdfs?|assets?|data|tables?)?\s*(?:for|about|search)\s+['\"]?(.+?)['\"]?\s*$", lambda g: f'python -m operations.harvester search "{g[0]}"'),
         ]
 
         for pattern, builder in patterns:

@@ -416,6 +416,49 @@ class WebScraper:
                     results.append(PageScrapeResult(url=u, error=str(e)))
         return results
 
+    def search_and_scrape(
+        self,
+        query: str,
+        limit: int = 5,
+        mode: str = "text",
+        render_js: bool = False,
+    ) -> list[PageScrapeResult]:
+        """
+        Search the web using search discovery to locate top authority URLs,
+        then concurrently scrape all discovered websites.
+        """
+        clean_query = query.strip()
+        print(f"\n  {C_BOLD}{C_CYAN}🌐 Web Search Discovery: {C_WHITE}'{clean_query}' (Top {limit} sites){C_RESET}\n")
+        discovered_urls = self._search_urls(clean_query, limit=limit)
+        if not discovered_urls:
+            print(f"  {C_YELLOW}⚠ No search results returned for query: '{clean_query}'{C_RESET}\n")
+            return []
+        print(f"  {C_MUTED}Discovered {len(discovered_urls)} URLs. Scraping concurrently...{C_RESET}\n")
+        return self.scrape_multi(discovered_urls, mode=mode, render_js=render_js)
+
+    def _search_urls(self, query: str, limit: int = 5) -> list[str]:
+        """Query DuckDuckGo Lite search to extract organic search result URLs."""
+        urls = []
+        try:
+            import urllib.parse
+            data = urllib.parse.urlencode({"q": query}).encode()
+            req = Request("https://lite.duckduckgo.com/lite/", data=data, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            })
+            with urlopen(req, timeout=12) as resp:
+                raw_html = resp.read().decode("utf-8", errors="replace")
+
+            # Extract URLs from result links
+            matches = re.findall(r'href=[\"\'](https?://[^\s\"\']+)[\"\']\s+class=[\"\']result-link', raw_html)
+            for u in matches:
+                if u not in urls and "duckduckgo.com" not in u:
+                    urls.append(u)
+                    if len(urls) >= limit:
+                        break
+        except Exception:
+            pass
+        return urls
+
     def _filter_by_selector(self, raw_html: str, selector: str) -> str:
         """Extract matching elements by CSS class, id, or tag name."""
         clean_sel = selector.strip()
@@ -494,19 +537,33 @@ class WebScraper:
         print()
 
 
-# CLI Entrypoint: python -m operations.scraper <url(s)> [--mode text|tables|links] [--out file]
+# CLI Entrypoint: python -m operations.scraper <url(s)|search <query>|-f <file>> [--mode text|tables|links]
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m operations.scraper <url1,url2...> [--mode text|tables|links] [--selector <css>] [--out <file>] [--render-js]")
+        print("Usage: python -m operations.scraper <url1,url2... | search <query> | -f <file>> [--mode text|tables|links] [--out <file>]")
         sys.exit(1)
 
-    raw_urls = sys.argv[1]
-    url_list = [u.strip() for u in raw_urls.split(",") if u.strip()]
-
+    first_arg = sys.argv[1]
     mode_arg = "text"
     sel_arg = None
     out_arg = None
     render_js_arg = False
+    url_list = []
+    is_search = False
+    search_query = ""
+
+    # Check search mode
+    if first_arg.lower() in ("search", "-s", "--search"):
+        is_search = True
+        search_query = " ".join([a for a in sys.argv[2:] if not a.startswith("--")])
+    elif first_arg in ("-f", "--file") and len(sys.argv) > 2:
+        file_path = Path(sys.argv[2])
+        if file_path.is_file():
+            url_list = [l.strip() for l in file_path.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
+    elif os.path.isfile(first_arg) and first_arg.endswith((".txt", ".urls")):
+        url_list = [l.strip() for l in Path(first_arg).read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
+    else:
+        url_list = [u.strip() for u in first_arg.split(",") if u.strip()]
 
     i = 2
     while i < len(sys.argv):
@@ -527,14 +584,41 @@ if __name__ == "__main__":
             i += 1
 
     scraper = WebScraper()
-    if len(url_list) == 1:
+    formatter = AdaptiveTableFormatter()
+
+    if is_search:
+        results = scraper.search_and_scrape(search_query, limit=5, mode=mode_arg, render_js=render_js_arg)
+    elif len(url_list) == 1:
         res = scraper.scrape_url(url_list[0], mode=mode_arg, selector=sel_arg, render_js=render_js_arg)
         scraper.print_result(res, mode=mode_arg)
         if out_arg:
             Path(out_arg).write_text(res.markdown_content, encoding="utf-8")
             print(f"  {C_GREEN}✔ Saved content to: {out_arg}{C_RESET}\n")
+        results = [res]
     else:
         print(f"\n  {C_BOLD}{C_CYAN}🌐 Concurrently scraping {len(url_list)} websites...{C_RESET}\n")
         results = scraper.scrape_multi(url_list, mode=mode_arg, render_js=render_js_arg)
         for r in results:
-            scraper.print_result(r, mode=mode_arg, max_lines=15)
+            scraper.print_result(r, mode=mode_arg, max_lines=12)
+
+    # Render Multi-Site Summary Table if more than 1 result
+    if len(results) > 1:
+        summary_rows = []
+        for idx, r in enumerate(results):
+            status_badge = "OK (200)" if not r.error else "FAILED"
+            clean_title = (r.title[:30] + "...") if len(r.title) > 30 else (r.title or "-")
+            summary_rows.append([
+                str(idx + 1),
+                r.url[:40],
+                clean_title,
+                str(len(r.tables)),
+                str(len([l for l in r.links if l.is_document])),
+                f"{r.elapsed_seconds:.2f}s",
+                status_badge,
+            ])
+        print("\n" + formatter.render_table(
+            headers=["#", "TARGET URL", "TITLE", "TABLES", "DOCS", "TIME", "STATUS"],
+            rows=summary_rows,
+            title=f"Multi-Site Extraction Matrix ({len(results)} Sites)",
+        ) + "\n")
+

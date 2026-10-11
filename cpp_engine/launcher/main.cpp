@@ -3225,6 +3225,108 @@ public:
         PlatformProcessRunner::Execute(cmd);
     }
 
+    void HandleHarvestCommand(const std::string& input) {
+        std::string args = input;
+        size_t sp = args.find(' ');
+        if (sp != std::string::npos) {
+            args = args.substr(sp + 1);
+        } else {
+            args = "";
+        }
+        size_t firstChar = args.find_first_not_of(" \t");
+        if (firstChar != std::string::npos) args = args.substr(firstChar);
+        else args = "";
+
+        if (args.empty()) {
+            std::cout << "\n  " << C_BOLD << C_MAGENTA << "🌾 NeuroShell Universal Harvester Pipeline" << C_RESET << "\n\n";
+            std::cout << "  " << C_YELLOW << "Usage: /harvest <url1,url2...> [--type pdf|csv|zip|all] [--dest <dir>] [--csv <path>]" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Capabilities:" << C_RESET << "\n";
+            std::cout << "    • Scrapes pages & portals, discovering all downloadable documents\n";
+            std::cout << "    • Extracts and adaptively formats HTML tables to console tables or CSV\n";
+            std::cout << "    • Streams bulk downloads with HTTP resume and SHA-256 integrity\n\n";
+            std::cout << "  " << C_MUTED << "Examples:" << C_RESET << "\n";
+            std::cout << "    • /harvest https://arxiv.org/list/cs.AI/recent --type pdf\n";
+            std::cout << "    • /harvest https://en.wikipedia.org/wiki/List_of_countries --csv countries.csv\n\n";
+            return;
+        }
+
+        std::string pyBin = GetPythonBinary();
+        std::string cmd = pyBin + " -m operations.harvester " + args;
+        PlatformProcessRunner::Execute(cmd);
+    }
+
+    void HandleInspectCommand(const std::string& input) {
+        std::string args = input;
+        size_t sp = args.find(' ');
+        if (sp != std::string::npos) {
+            args = args.substr(sp + 1);
+        } else {
+            args = "";
+        }
+        size_t firstChar = args.find_first_not_of(" \t");
+        if (firstChar != std::string::npos) args = args.substr(firstChar);
+        else args = "";
+
+        std::string pyBin = GetPythonBinary();
+        std::string cmd = pyBin + " -m operations.pager " + args;
+        PlatformProcessRunner::Execute(cmd);
+    }
+
+    void HandlePipedTransform(const std::string& directive, const std::string& upstreamOutput) {
+        fs::path tempFile = PlatformFS::GetHomeDir() / ".neuroshell" / "pipe_data.tmp";
+        fs::create_directories(tempFile.parent_path());
+        std::ofstream ofs(tempFile, std::ios::binary);
+        ofs << upstreamOutput;
+        ofs.close();
+
+        std::string pyBin = GetPythonBinary();
+        std::string escapedPath = tempFile.string();
+        for (char& c : escapedPath) { if (c == '\\') c = '/'; }
+
+        if (directive == "@table") {
+            std::string script = "from ui.table_formatter import AdaptiveTableFormatter; print(AdaptiveTableFormatter().format_tsv(open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(), title='Piped Table Output'))";
+            PlatformProcessRunner::Execute(pyBin + " -c \"" + script + "\"");
+        } else if (directive == "@json") {
+            std::string script = "import json; data=open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(); print(json.dumps(json.loads(data), indent=2) if data.strip().startswith(('{','[')) else data)";
+            PlatformProcessRunner::Execute(pyBin + " -c \"" + script + "\"");
+        } else if (directive == "@inspect") {
+            PlatformProcessRunner::Execute(pyBin + " -m operations.pager \"" + escapedPath + "\"");
+        } else if (directive == "@arrange") {
+            std::string script = "from ui.table_formatter import AutoArranger; print(AutoArranger().arrange(open('" + escapedPath + "', encoding='utf-8', errors='ignore').read(), title='Arranged Output'))";
+            PlatformProcessRunner::Execute(pyBin + " -c \"" + script + "\"");
+        }
+
+        std::error_code ec;
+        fs::remove(tempFile, ec);
+    }
+
+    bool autoArrangeMode = false;
+
+    void HandleArrangeCommand(const std::string& input) {
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t sp = lower.find(' ');
+        std::string arg = (sp != std::string::npos) ? lower.substr(sp + 1) : "";
+        arg.erase(0, arg.find_first_not_of(" \t\r\n"));
+        arg.erase(arg.find_last_not_of(" \t\r\n") + 1);
+
+        if (arg == "on" || arg == "true" || arg == "enable") {
+            autoArrangeMode = true;
+            std::cout << "\n  " << C_GREEN << "✨ Auto-Arranger Mode: " << C_BOLD << "ENABLED" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "All structured terminal outputs (JSON, CSV, TSV, tables) will be automatically framed and aligned." << C_RESET << "\n\n";
+        } else if (arg == "off" || arg == "false" || arg == "disable") {
+            autoArrangeMode = false;
+            std::cout << "\n  " << C_YELLOW << "⚡ Auto-Arranger Mode: " << C_BOLD << "DISABLED" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Outputs will stream in standard format. Use '| @arrange' or '| @table' for on-demand formatting." << C_RESET << "\n\n";
+        } else if (arg == "status") {
+            std::cout << "\n  " << C_CYAN << "⌬ Auto-Arranger Status: " << (autoArrangeMode ? (std::string(C_GREEN) + "ENABLED" + C_RESET) : (std::string(C_MUTED) + "DISABLED" + C_RESET)) << "\n\n";
+        } else {
+            autoArrangeMode = !autoArrangeMode;
+            std::cout << "\n  " << (autoArrangeMode ? C_GREEN : C_YELLOW) << "✨ Auto-Arranger Mode: " << C_BOLD << (autoArrangeMode ? "ENABLED" : "DISABLED") << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Type '/arrange on' or '/arrange off' to configure explicitly." << C_RESET << "\n\n";
+        }
+    }
+
     void HandleReadCommand(const std::string& rawTarget) {
         std::string target = ResolveRepoTarget(rawTarget);
         if (target.empty()) {
@@ -3672,6 +3774,12 @@ public:
         else if (lower == "/scrape" || lower.rfind("/scrape ", 0) == 0) {
             HandleScrapeCommand(input);
         }
+        else if (lower == "/harvest" || lower.rfind("/harvest ", 0) == 0) {
+            HandleHarvestCommand(input);
+        }
+        else if (lower == "/inspect" || lower.rfind("/inspect ", 0) == 0) {
+            HandleInspectCommand(input);
+        }
         else {
             std::cout << C_MUTED << "  ℹ️ Executed slash command: " << input << C_RESET << "\n\n";
         }
@@ -3893,12 +4001,29 @@ public:
             HandleReposCommand();
             return;
         }
-        if (lowerTrim == "/download" || lowerTrim.rfind("/download ", 0) == 0) {
+        if (lowerTrim == "/download" || lowerTrim.rfind("/download ", 0) == 0 ||
+            lowerTrim == "download" || lowerTrim.rfind("download ", 0) == 0) {
             HandleDownloadCommand(input);
             return;
         }
-        if (lowerTrim == "/scrape" || lowerTrim.rfind("/scrape ", 0) == 0) {
+        if (lowerTrim == "/scrape" || lowerTrim.rfind("/scrape ", 0) == 0 ||
+            lowerTrim == "scrape" || lowerTrim.rfind("scrape ", 0) == 0) {
             HandleScrapeCommand(input);
+            return;
+        }
+        if (lowerTrim == "/harvest" || lowerTrim.rfind("/harvest ", 0) == 0 ||
+            lowerTrim == "harvest" || lowerTrim.rfind("harvest ", 0) == 0) {
+            HandleHarvestCommand(input);
+            return;
+        }
+        if (lowerTrim == "/arrange" || lowerTrim.rfind("/arrange ", 0) == 0 ||
+            lowerTrim == "arrange" || lowerTrim.rfind("arrange ", 0) == 0) {
+            HandleArrangeCommand(input);
+            return;
+        }
+        if (lowerTrim == "/inspect" || lowerTrim.rfind("/inspect ", 0) == 0 ||
+            lowerTrim == "inspect" || lowerTrim.rfind("inspect ", 0) == 0) {
+            HandleInspectCommand(input);
             return;
         }
         if (lowerTrim == "/gh" || lowerTrim == "/github" || lowerTrim.rfind("/gh ", 0) == 0 || lowerTrim.rfind("/github ", 0) == 0) {
@@ -4194,10 +4319,26 @@ public:
             size_t s = rhs.find_first_not_of(" \t");
             if (s != std::string::npos) {
                 rhs = rhs.substr(s);
-                if (rhs.rfind("@ai", 0) == 0 || rhs.rfind("@fix", 0) == 0 ||
+                std::string upstream = input.substr(0, pipePos);
+                size_t ue = upstream.find_last_not_of(" \t");
+                if (ue != std::string::npos) upstream = upstream.substr(0, ue + 1);
+
+                if (rhs.rfind("@table", 0) == 0 || rhs.rfind("@json", 0) == 0 ||
+                    rhs.rfind("@inspect", 0) == 0 || rhs.rfind("@arrange", 0) == 0) {
+                    std::string directive = "@table";
+                    if (rhs.rfind("@json", 0) == 0) directive = "@json";
+                    else if (rhs.rfind("@inspect", 0) == 0) directive = "@inspect";
+                    else if (rhs.rfind("@arrange", 0) == 0) directive = "@arrange";
+
+                    std::cout << "  " << C_MAGENTA << "⚡ Executing upstream pipeline: " << C_WHITE << upstream << C_RESET << "\n";
+                    PlatformProcessRunner::ExecResult upRes = PlatformProcessRunner::Execute(upstream);
+                    std::cout << "\n";
+                    HandlePipedTransform(directive, upRes.output);
+                    return;
+                }
+                else if (rhs.rfind("@ai", 0) == 0 || rhs.rfind("@fix", 0) == 0 ||
                     rhs.rfind("@explain", 0) == 0 || rhs.rfind("@agent", 0) == 0) {
                     
-                    std::string upstream = input.substr(0, pipePos);
                     std::string directive = "@ai";
                     std::string prompt = "";
                     size_t sp = rhs.find(' ');
