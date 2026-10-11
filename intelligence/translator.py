@@ -1005,6 +1005,15 @@ class Translator:
             (r"(?:show|list|view)\s+(?:mine|my)\s+issues\s*$", lambda g: "gh issue list" if self._has_gh() else None),
             # Install GitHub CLI
             (r"(?:install|setup|get)\s+(?:the\s+)?(?:github\s+cli|gh\s+cli|gh)\s*$", lambda g: self._get_gh_install_cmd()),
+            # Universal Downloader (URL, File, PDF, Doc, Repo, App)
+            (r"(?:download|fetch)\s+(?:the\s+)?(?:file\s+|pdf\s+|doc\s+|document\s+)?(?:from\s+)?(https?://\S+)(?:\s+(?:to|into)\s+(\S+))?\s*$", lambda g: f'python -m operations.downloader "{g[0]}"' + (f' "{g[1]}"' if len(g) > 1 and g[1] else "")),
+            (r"(?:download|clone)\s+(?:the\s+)?(?:git\s+|github\s+)?repo(?:sitory)?\s+(?:from\s+)?([\w.-]+/[\w.-]+|https?://\S+)\s*$", lambda g: f'python -m operations.downloader "{g[0]}"'),
+            (r"(?:download|install)\s+(?:the\s+)?(?:app|application|tool|program)\s+(\S+)\s*$", lambda g: f'python -m operations.downloader "{g[0]}"'),
+            # Universal Web Scraper (Clean Text, Tables, Links, Multi-Site)
+            (r"(?:scrape|extract)\s+(?:all\s+)?(?:tables?)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.scraper "{g[0]}" --mode tables'),
+            (r"(?:scrape|extract)\s+(?:all\s+)?(?:links?|urls?|documents?|pdfs?)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.scraper "{g[0]}" --mode links'),
+            (r"(?:scrape|extract)\s+(?:all\s+)?(?:data|text|content)\s+(?:from\s+)?(https?://\S+)\s*$", lambda g: f'python -m operations.scraper "{g[0]}"'),
+            (r"(?:scrape|crawl)\s+(?:websites?\s+|urls?\s+)?(https?://\S+(?:,\s*https?://\S+)*)\s*$", lambda g: f'python -m operations.scraper "{g[0]}"'),
         ]
 
         for pattern, builder in patterns:

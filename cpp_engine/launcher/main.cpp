@@ -2972,36 +2972,74 @@ public:
             return;
         }
 
+        // Dynamic Terminal Width Detection
+        int termWidth = 100;
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+            termWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+        }
+#elif defined(TIOCGWINSZ)
+        struct winsize ws;
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+            termWidth = ws.ws_col;
+        }
+#endif
+        termWidth = (std::max)(75, (std::min)(160, termWidth));
+
+        size_t idxColW = 4;
+        size_t nameColW = 32;
+        size_t visColW = 10;
+        size_t upColW = 10;
+        // Borders and paddings: 2 margin + 6 borders + 5*2 paddings = 18
+        size_t fixedOverhead = 2 + 6 + 10 + idxColW + nameColW + visColW + upColW;
+        size_t descColW = (termWidth > (int)fixedOverhead) ? (size_t)(termWidth - fixedOverhead) : 20;
+
+        auto makeUHoriz = [](size_t len) {
+            std::string s = "";
+            for (size_t i = 0; i < len + 2; ++i) s += "─";
+            return s;
+        };
+
         // Draw Mathematically Perfect Aligned Box Table
-        std::cout << "  " << C_CYAN << "╭────┬──────────────────────────────────────┬────────────┬────────────┬──────────────────────────────────────────╮" << C_RESET << "\n";
-        std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << " # " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "REPOSITORY                          " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "VISIBILITY " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "UPDATED    " << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << "DESCRIPTION                              " << C_RESET << C_CYAN << "│" << C_RESET << "\n";
-        std::cout << "  " << C_CYAN << "├────┼──────────────────────────────────────┼────────────┼────────────┼──────────────────────────────────────────┤" << C_RESET << "\n";
+        std::cout << "  " << C_CYAN << "╭" << makeUHoriz(idxColW) << "┬" << makeUHoriz(nameColW) << "┬" << makeUHoriz(visColW) << "┬" << makeUHoriz(upColW) << "┬" << makeUHoriz(descColW) << "╮" << C_RESET << "\n";
+
+        std::string hIdx = " #"; while (hIdx.size() < idxColW) hIdx += " ";
+        std::string hName = "REPOSITORY"; while (hName.size() < nameColW) hName += " ";
+        std::string hVis = "VISIBILITY"; while (hVis.size() < visColW) hVis += " ";
+        std::string hUp = "UPDATED"; while (hUp.size() < upColW) hUp += " ";
+        std::string hDesc = "DESCRIPTION"; while (hDesc.size() < descColW) hDesc += " ";
+
+        std::cout << "  " << C_CYAN << "│ " << C_BOLD << C_WHITE << hIdx << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << hName << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << hVis << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << hUp << C_RESET << C_CYAN << "│ " << C_BOLD << C_WHITE << hDesc << C_RESET << C_CYAN << "│" << C_RESET << "\n";
+        std::cout << "  " << C_CYAN << "├" << makeUHoriz(idxColW) << "┼" << makeUHoriz(nameColW) << "┼" << makeUHoriz(visColW) << "┼" << makeUHoriz(upColW) << "┼" << makeUHoriz(descColW) << "┤" << C_RESET << "\n";
 
         for (size_t i = 0; i < g_cached_repos.size(); ++i) {
             const auto& r = g_cached_repos[i];
             char idxBuf[24];
             snprintf(idxBuf, sizeof(idxBuf), "%2zu", i + 1);
             std::string idxStr = idxBuf;
-            while (idxStr.size() < 3) idxStr += " ";
+            while (idxStr.size() < idxColW) idxStr += " ";
 
             std::string namePad = r.name;
-            if (namePad.size() > 36) namePad = namePad.substr(0, 33) + "...";
-            while (namePad.size() < 36) namePad += " ";
+            if (namePad.size() > nameColW) namePad = namePad.substr(0, nameColW - 3) + "...";
+            while (namePad.size() < nameColW) namePad += " ";
 
-            std::string visStr = r.isPrivate ? "private   " : "public    ";
+            std::string visStr = r.isPrivate ? "private" : "public";
+            while (visStr.size() < visColW) visStr += " ";
             std::string visColor = r.isPrivate ? (std::string(C_MAGENTA) + visStr + C_RESET) : (std::string(C_GREEN) + visStr + C_RESET);
 
             std::string upPad = r.updated;
-            while (upPad.size() < 10) upPad += " ";
+            if (upPad.size() > upColW) upPad = upPad.substr(0, upColW);
+            while (upPad.size() < upColW) upPad += " ";
 
             std::string descPad = r.desc;
-            if (descPad.size() > 40) descPad = descPad.substr(0, 37) + "...";
-            while (descPad.size() < 40) descPad += " ";
+            if (descPad.size() > descColW) descPad = descPad.substr(0, descColW - 3) + "...";
+            while (descPad.size() < descColW) descPad += " ";
 
             std::cout << "  " << C_CYAN << "│" << C_RESET << " " << C_MUTED << idxStr << C_RESET << C_CYAN << "│" << C_RESET << " " << C_BOLD << C_WHITE << namePad << C_RESET << " " << C_CYAN << "│" << C_RESET << " " << visColor << " " << C_CYAN << "│" << C_RESET << " " << C_MUTED << upPad << C_RESET << " " << C_CYAN << "│" << C_RESET << " " << C_WHITE << descPad << C_RESET << " " << C_CYAN << "│" << C_RESET << "\n";
         }
 
-        std::cout << "  " << C_CYAN << "╰────┴──────────────────────────────────────┴────────────┴────────────┴──────────────────────────────────────────╯" << C_RESET << "\n";
+        std::cout << "  " << C_CYAN << "╰" << makeUHoriz(idxColW) << "┴" << makeUHoriz(nameColW) << "┴" << makeUHoriz(visColW) << "┴" << makeUHoriz(upColW) << "┴" << makeUHoriz(descColW) << "╯" << C_RESET << "\n";
         std::cout << "  " << C_MUTED << "Total Repositories: " << C_BOLD << C_WHITE << g_cached_repos.size() << C_RESET << C_MUTED << "  • Type " << C_YELLOW << "read <#>" << C_RESET << C_MUTED << ", " << C_YELLOW << "audit <#>" << C_RESET << C_MUTED << ", " << C_YELLOW << "tree <#>" << C_RESET << C_MUTED << ", or " << C_YELLOW << "clone <#>" << C_RESET << "\n\n";
     }
 
@@ -3108,6 +3146,83 @@ public:
         }
 
         PlatformProcessRunner::Execute("gh " + sub);
+    }
+
+    static std::string GetPythonBinary() {
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        if (fs::exists(".venv\\Scripts\\python.exe")) return ".venv\\Scripts\\python.exe";
+        if (fs::exists("..\\.venv\\Scripts\\python.exe")) return "..\\.venv\\Scripts\\python.exe";
+        return "python";
+#else
+        if (fs::exists(".venv/bin/python")) return ".venv/bin/python";
+        if (fs::exists("../.venv/bin/python")) return "../.venv/bin/python";
+        return "python3";
+#endif
+    }
+
+    void HandleDownloadCommand(const std::string& input) {
+        std::string args = input;
+        size_t sp = args.find(' ');
+        if (sp != std::string::npos) {
+            args = args.substr(sp + 1);
+        } else {
+            args = "";
+        }
+        size_t firstChar = args.find_first_not_of(" \t");
+        if (firstChar != std::string::npos) args = args.substr(firstChar);
+        else args = "";
+
+        if (args.empty()) {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "⬇ NeuroShell Universal Downloader" << C_RESET << "\n\n";
+            std::cout << "  " << C_YELLOW << "Usage: /download <url|repo|app> [destination]" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Capabilities:" << C_RESET << "\n";
+            std::cout << "    • Stream HTTP/HTTPS files with auto-resume & SHA-256 verification\n";
+            std::cout << "    • Clone Git repositories & download release assets\n";
+            std::cout << "    • Download & install apps via package managers (winget, brew, apt)\n\n";
+            std::cout << "  " << C_MUTED << "Examples:" << C_RESET << "\n";
+            std::cout << "    • /download https://arxiv.org/pdf/1706.03762.pdf\n";
+            std::cout << "    • /download abneeshsingh21/konvert\n";
+            std::cout << "    • /download chrome\n\n";
+            return;
+        }
+
+        std::string pyBin = GetPythonBinary();
+        std::string cmd = pyBin + " -m operations.downloader " + args;
+        PlatformProcessRunner::Execute(cmd);
+    }
+
+    void HandleScrapeCommand(const std::string& input) {
+        std::string args = input;
+        size_t sp = args.find(' ');
+        if (sp != std::string::npos) {
+            args = args.substr(sp + 1);
+        } else {
+            args = "";
+        }
+        size_t firstChar = args.find_first_not_of(" \t");
+        if (firstChar != std::string::npos) args = args.substr(firstChar);
+        else args = "";
+
+        if (args.empty()) {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "🌐 NeuroShell Multi-Site Web Scraper" << C_RESET << "\n\n";
+            std::cout << "  " << C_YELLOW << "Usage: /scrape <url1,url2...> [--mode text|tables|links] [--selector <css>] [--out <file>]" << C_RESET << "\n";
+            std::cout << "  " << C_MUTED << "Capabilities:" << C_RESET << "\n";
+            std::cout << "    • Clean boilerplate-free Markdown & text extraction\n";
+            std::cout << "    • Automated HTML table extraction to terminal table, CSV, or JSON\n";
+            std::cout << "    • Hyperlink and downloadable document harvesting (PDFs, docs, zips)\n";
+            std::cout << "    • Concurrent multi-URL crawling across multiple websites\n";
+            std::cout << "    • Headless Chromium rendering for JavaScript-heavy SPAs\n\n";
+            std::cout << "  " << C_MUTED << "Examples:" << C_RESET << "\n";
+            std::cout << "    • /scrape https://news.ycombinator.com\n";
+            std::cout << "    • /scrape https://en.wikipedia.org/wiki/Artificial_intelligence --mode tables\n";
+            std::cout << "    • /scrape https://example.com --mode links\n";
+            std::cout << "    • /scrape https://site1.com,https://site2.com\n\n";
+            return;
+        }
+
+        std::string pyBin = GetPythonBinary();
+        std::string cmd = pyBin + " -m operations.scraper " + args;
+        PlatformProcessRunner::Execute(cmd);
     }
 
     void HandleReadCommand(const std::string& rawTarget) {
@@ -3542,11 +3657,20 @@ public:
         else if (lower == "/update" || lower == "update") {
             HandleSlashUpdate();
         }
-        else if (lower == "/repos" || lower == "repos" || lower == "my repos") {
+        else if (lower == "/repos" || lower == "repos" || lower == "my repos" ||
+                 lower == "show github repos" || lower == "show my repos" || lower == "show mine github repos" ||
+                 lower == "list github repos" || lower == "list my repos" || lower == "list mine github repos" ||
+                 lower == "get github repos" || lower == "view github repos") {
             HandleReposCommand();
         }
         else if (lower == "/gh" || lower == "/github" || lower.rfind("/gh ", 0) == 0 || lower.rfind("/github ", 0) == 0) {
             HandleGitHubCommand(input);
+        }
+        else if (lower == "/download" || lower.rfind("/download ", 0) == 0) {
+            HandleDownloadCommand(input);
+        }
+        else if (lower == "/scrape" || lower.rfind("/scrape ", 0) == 0) {
+            HandleScrapeCommand(input);
         }
         else {
             std::cout << C_MUTED << "  ℹ️ Executed slash command: " << input << C_RESET << "\n\n";
@@ -3759,9 +3883,22 @@ public:
             return;
         }
 
-        // Explicit slash command for repository viewer
-        if (lowerTrim == "/repos" || lowerTrim == "/repositories") {
+        // Repository viewer: slash commands, raw commands, and natural language intents
+        if (lowerTrim == "/repos" || lowerTrim == "/repositories" || lowerTrim == "repos" ||
+            lowerTrim == "my repos" || lowerTrim == "my github repos" || lowerTrim == "mine repos" ||
+            lowerTrim == "show github repos" || lowerTrim == "show my repos" || lowerTrim == "show mine github repos" ||
+            lowerTrim == "list github repos" || lowerTrim == "list my repos" || lowerTrim == "list mine github repos" ||
+            lowerTrim == "get github repos" || lowerTrim == "view github repos" ||
+            lowerTrim == "gh repo list" || lowerTrim.rfind("gh repo list ", 0) == 0) {
             HandleReposCommand();
+            return;
+        }
+        if (lowerTrim == "/download" || lowerTrim.rfind("/download ", 0) == 0) {
+            HandleDownloadCommand(input);
+            return;
+        }
+        if (lowerTrim == "/scrape" || lowerTrim.rfind("/scrape ", 0) == 0) {
+            HandleScrapeCommand(input);
             return;
         }
         if (lowerTrim == "/gh" || lowerTrim == "/github" || lowerTrim.rfind("/gh ", 0) == 0 || lowerTrim.rfind("/github ", 0) == 0) {

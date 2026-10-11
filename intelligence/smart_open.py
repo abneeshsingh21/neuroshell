@@ -1019,6 +1019,9 @@ class SmartOpenEngine:
         unzip_match = self._UNZIP_PATTERN.match(lower)
         if unzip_match:
             source = unzip_match.group(1).strip()
+            # If source contains a web URL or web scrape keywords, skip zip archive handling
+            if "http://" in source or "https://" in source or re.search(r"\b(tables?|links?|data|web|website|site)\b", source, re.IGNORECASE):
+                return None
             dest = unzip_match.group(2)
 
             # Fuzzy resolve the source archive using folder fuzzy finding logic if missing
