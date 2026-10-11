@@ -201,6 +201,10 @@ class WorkspaceProjectGraph:
         intent = natural_intent.lower().strip()
         is_windows = os.name == "nt"
 
+        # If the intent is explicitly targeting a specific file with extension, do not intercept as generic project command
+        if re.search(r"\b(?:run|execute|compile)\s+\S+\.[a-zA-Z0-9]+\b", intent):
+            return None
+
         # 1. Dev Server Start
         if re.search(r"\b(?:start|run|launch)\s+(?:the\s+)?(?:dev|development|frontend|client|app|server)\b", intent):
             if manifest.project_type == "node":

@@ -4027,6 +4027,49 @@ public:
         PlatformProcessRunner::Execute(cmd);
     }
 
+    void HandleRunCodeCommand(const std::string& rawInput) {
+        std::string input = rawInput;
+        size_t s = input.find_first_not_of(" \t\r\n");
+        if (s != std::string::npos) input = input.substr(s);
+        else input = "";
+
+        std::string lower = input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        std::string args = "";
+        if (lower == "run" || lower == "/run") {
+            std::cout << "\n" << C_BOLD << C_CYAN << "╭── ⚡ NeuroShell Universal Polyglot Code Runner ─────────────────────╮" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_WHITE << "Directly compiles and runs code files across all major languages:" << C_RESET << "\n"
+                      << C_CYAN << "│\n" << C_RESET
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Python:     " << C_YELLOW << "run script.py [args...]" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "• C / C++:    " << C_YELLOW << "run main.cpp" << C_WHITE << " (auto-detects g++, clang++, cl.exe)" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Java:       " << C_YELLOW << "run App.java" << C_WHITE << " (Java 11+ single-file execution)" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "• Rust / Go:  " << C_YELLOW << "run main.rs / run main.go" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "• TypeScript: " << C_YELLOW << "run index.ts" << C_WHITE << " (auto-detects tsx, bun, deno)" << C_RESET << "\n"
+                      << C_CYAN << "│ " << C_BOLD << C_WHITE << "• C# / .NET:  " << C_YELLOW << "run Program.cs" << C_RESET << "\n"
+                      << C_CYAN << "╰─────────────────────────────────────────────────────────────────────╯" << C_RESET << "\n\n";
+            return;
+        } else if (lower.rfind("run ", 0) == 0) {
+            args = input.substr(4);
+        } else if (lower.rfind("/run ", 0) == 0) {
+            args = input.substr(5);
+        } else if (lower.rfind("compile and run ", 0) == 0) {
+            args = input.substr(16);
+        } else if (lower.rfind("compile ", 0) == 0) {
+            args = input.substr(8);
+        } else {
+            args = input;
+        }
+
+        args.erase(0, args.find_first_not_of(" \t"));
+        args.erase(args.find_last_not_of(" \t") + 1);
+
+        std::string pyBin = GetPythonBinary();
+        fs::path script = PlatformFS::GetNeuroShellRoot() / "operations" / "code_runner.py";
+        std::string cmd = pyBin + " \"" + script.string() + "\" " + args;
+        PlatformProcessRunner::Execute(cmd);
+    }
+
     void HandleMkCommand(const std::string& rawInput) {
         std::string expr = rawInput;
         if (expr.rfind("mk ", 0) == 0) expr = expr.substr(3);
@@ -4525,6 +4568,27 @@ public:
             lowerTrim == "trash" || lowerTrim.rfind("trash ", 0) == 0 ||
             lowerTrim.rfind("rm ", 0) == 0 || lowerTrim.rfind("remove ", 0) == 0) {
             HandleDeleteCommand(input);
+            return;
+        }
+
+        if (lowerTrim == "run" || lowerTrim == "/run" ||
+            lowerTrim.rfind("run ", 0) == 0 || lowerTrim.rfind("/run ", 0) == 0 ||
+            lowerTrim.rfind("compile and run ", 0) == 0 || lowerTrim.rfind("compile ", 0) == 0) {
+            HandleRunCodeCommand(input);
+            return;
+        }
+
+        if (lowerTrim == "undo commit" || lowerTrim == "/undo commit" ||
+            lowerTrim == "reverse commit" || lowerTrim == "undo last commit" ||
+            lowerTrim == "reverse last commit") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "⚡ Undoing Last Commit (Soft Reset — preserving all staged files)..." << C_RESET << "\n\n";
+            ExecuteCommand("git reset --soft HEAD~1");
+            return;
+        }
+
+        if (lowerTrim == "revert commit" || lowerTrim == "/revert commit" || lowerTrim == "revert last commit") {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "⚡ Creating Revert Commit for HEAD..." << C_RESET << "\n\n";
+            ExecuteCommand("git revert --no-edit HEAD");
             return;
         }
 

@@ -247,6 +247,37 @@ class GitOps:
         cp = self._run(["restore", "--", path])
         return self._check(cp, f"restore {path}")
 
+    def revert_commit(self, commit_sha: str = "") -> str:
+        """
+        Create a new commit that reverts the changes from an existing commit.
+        Safe for remote/shared branches.
+        """
+        target = commit_sha.strip() if commit_sha.strip() else "HEAD"
+        cp = self._run(["revert", "--no-edit", target])
+        return self._check(cp, f"revert {target}")
+
+    def commit_all(self, message: str) -> str:
+        """
+        Stage all changed, new, and deleted files, and create a commit.
+        Returns the short commit SHA.
+        """
+        self.add(".")
+        return self.commit(message)
+
+    def discard_all_changes(self) -> str:
+        """
+        Discard all uncommitted staged and unstaged changes, and remove untracked files.
+        """
+        self._run(["restore", "--staged", "."])
+        self._run(["restore", "."])
+        self._run(["clean", "-fd"])
+        return "All uncommitted changes discarded and untracked files removed."
+
+    def reflog(self, max_count: int = 15) -> list[str]:
+        """Return recent reflog history entries."""
+        cp = self._run(["reflog", f"-n{max_count}", "--oneline"])
+        return [line.strip() for line in (cp.stdout or "").splitlines() if line.strip()]
+
     def stash(self, message: str = "neuroshell-autostash") -> str:
         """Stash all current changes."""
         cp = self._run(["stash", "push", "-m", message])

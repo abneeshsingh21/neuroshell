@@ -133,6 +133,40 @@ class GitHubAccessManager:
             raise RuntimeError((cp.stderr or cp.stdout or "failed to list repositories").strip())
         return json.loads(cp.stdout or "[]")
 
+    def repo_delete(self, repo: str | None = None, force: bool = False) -> str:
+        """
+        Delete a GitHub repository via gh CLI.
+        Requires explicit confirmation or force=True.
+        """
+        resolved = self._resolve_repo(repo)
+        if not resolved:
+            raise ValueError("Repository in owner/name format is required for deletion.")
+        args = ["repo", "delete", resolved, "--yes"]
+        cp = self._run_gh(args, timeout_s=45)
+        if cp.returncode != 0:
+            raise RuntimeError((cp.stderr or cp.stdout or f"Failed to delete repository {resolved}").strip())
+        return f"Successfully deleted repository: {resolved}"
+
+    def repo_create(self, name: str, private: bool = True, description: str = "") -> str:
+        """Create a new GitHub repository."""
+        args = ["repo", "create", name]
+        args.append("--private" if private else "--public")
+        if description:
+            args.extend(["--description", description])
+        args.append("--source=.")
+        cp = self._run_gh(args, timeout_s=60)
+        if cp.returncode != 0:
+            raise RuntimeError((cp.stderr or cp.stdout or f"Failed to create repository {name}").strip())
+        return (cp.stdout or "").strip()
+
+    def repo_fork(self, repo: str) -> str:
+        """Fork a GitHub repository to the authenticated account."""
+        resolved = self._resolve_repo(repo) or repo
+        cp = self._run_gh(["repo", "fork", resolved, "--clone=false"], timeout_s=60)
+        if cp.returncode != 0:
+            raise RuntimeError((cp.stderr or cp.stdout or f"Failed to fork repository {resolved}").strip())
+        return (cp.stdout or "").strip()
+
     def repo_readme(self, repo: str) -> str:
         """Fetch and return the README of any GitHub repository in markdown format."""
         resolved = self._resolve_repo(repo) or repo
