@@ -791,15 +791,15 @@ class Translator:
         if smart and smart.confidence >= 0.90:
             return smart
 
-        # 5.2 High-confidence Native Neural Core (EmbeddingGemma 2 vector match)
-        native_match = self._try_native_engine(user_input_clean)
-        if native_match and native_match.confidence >= 0.75:
-            return native_match
-
-        # 5.3 Local dynamic patterns (only exact syntax)
+        # 5.2 Local deterministic patterns (exact syntax, dev patterns, git lifecycle)
         local = self._try_local_patterns(user_input_clean)
         if local:
             return local
+
+        # 5.3 High-confidence Native Neural Core (EmbeddingGemma 2 vector match)
+        native_match = self._try_native_engine(user_input_clean)
+        if native_match and native_match.confidence >= 0.75:
+            return native_match
 
         # 5.4 Offline Phrase Dictionary (last-resort offline fallback with high threshold)
         phrase_match = self._try_phrase_dictionary(user_input_clean)
