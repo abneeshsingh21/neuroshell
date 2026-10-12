@@ -129,6 +129,35 @@ class CyberFormatter:
                     port_lines.append((port, state, service, version))
 
         if not port_lines:
+            # 1. Host drops ICMP ping probes
+            if "blocking our ping probes" in raw_output or "0 hosts up" in raw_output:
+                return (
+                    f"\n  {cls.C_BOLD}{cls.C_YELLOW}╭── 🛡️ Target Host Security Analysis ({target_host}) ───────────────╮{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}│ {cls.C_BOLD}{'STATUS:':<14} {cls.C_WHITE}{'Host is Online but Dropping ICMP Ping Probes':<52}{cls.C_YELLOW}│{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}│ {cls.C_BOLD}{'FIREWALL:':<14} {cls.C_MUTED}{'Windows Defender / Device Firewall is Active':<52}{cls.C_YELLOW}│{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}│ {cls.C_BOLD}{'DIAGNOSIS:':<14} {cls.C_CYAN}{'ICMP echo dropped to prevent network discovery':<52}{cls.C_YELLOW}│{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}├──────────────────────────────────────────────────────────────────────┤{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}│ {cls.C_BOLD}{'ACTION:':<14} {cls.C_GREEN}{'Add -Pn flag to bypass ping and scan directly:':<52}{cls.C_YELLOW}│{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}│                {cls.C_BOLD}{cls.C_WHITE}nmap -Pn -sV {target_host:<40}{cls.C_RESET}{cls.C_YELLOW}│{cls.C_RESET}\n"
+                    f"  {cls.C_YELLOW}╰──────────────────────────────────────────────────────────────────────╯{cls.C_RESET}\n"
+                )
+
+            # 2. Host is up, but all ports filtered / closed
+            if "in ignored states" in raw_output or "filtered" in raw_output or "closed" in raw_output or "1 host up" in raw_output:
+                return (
+                    f"\n  {cls.C_BOLD}{cls.C_CYAN}╭── 🛡️ Target Security & Port Assessment ({target_host}) ──────────╮{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│ {cls.C_BOLD}{'HOST STATUS:':<14} {cls.C_GREEN}{'ONLINE (Device is active on Wi-Fi network)':<52}{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│ {cls.C_BOLD}{'PORT STATUS:':<14} {cls.C_YELLOW}{'All scanned ports are FILTERED / CLOSED':<52}{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│ {cls.C_BOLD}{'SECURITY:':<14} {cls.C_MUTED}{'Firewall active / No standard remote services open':<52}{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}├──────────────────────────────────────────────────────────────────────┤{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│ {cls.C_BOLD}{'DIAGNOSIS:':<14} {cls.C_WHITE}{'Device does not have SSH/RDP services turned on.':<52}{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│ {cls.C_BOLD}{'HOW TO ACCESS:':<14} {cls.C_CYAN}{'Enable remote services on the target device:':<52}{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│                {cls.C_WHITE}• Windows PC: Settings > Remote Desktop > Turn ON{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│                {cls.C_WHITE}• Linux PC:   sudo apt install -y openssh-server {cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}│                {cls.C_WHITE}• Deep Scan:  nmap -Pn -p- -T4 {target_host:<25}{cls.C_RESET}{cls.C_CYAN}│{cls.C_RESET}\n"
+                    f"  {cls.C_CYAN}╰──────────────────────────────────────────────────────────────────────╯{cls.C_RESET}\n"
+                )
+
             return raw_output
 
         out: list[str] = [

@@ -5406,6 +5406,31 @@ public:
             sbxPtr,
             isCyberTool);
 
+        // Auto-retry with -Pn if target drops ping probes
+        if (isCyberTool && originalCyberCmd.find("nmap") != std::string::npos &&
+            originalCyberCmd.find("-Pn") == std::string::npos &&
+            (execRes.output.find("blocking our ping probes") != std::string::npos ||
+             execRes.output.find("0 hosts up") != std::string::npos)) {
+            std::cout << "\n  " << C_YELLOW << "⚡ [Smart Retry] Target is dropping ICMP ping probes. Auto-engaging stealth bypass (-Pn)...\n\n" << C_RESET;
+            size_t nmapPos = originalCyberCmd.find("nmap");
+            if (nmapPos != std::string::npos) {
+                originalCyberCmd.insert(nmapPos + 4, " -Pn");
+            } else {
+                originalCyberCmd += " -Pn";
+            }
+            commandToRun = originalCyberCmd;
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+            if (WSLBridge::ShouldRouteThroughWSL(commandToRun, isCyberEdition)) {
+                commandToRun = WSLBridge::WrapForWSL(commandToRun);
+            }
+#endif
+            execRes = PlatformProcessRunner::Execute(
+                commandToRun,
+                [this](const std::string& line) { return dlpMasker.filter_stream(line); },
+                sbxPtr,
+                isCyberTool);
+        }
+
         // If cyber structured tool output was captured, format dynamically via IPC CyberFormatter
         if (isCyberTool && !execRes.output.empty()) {
             std::string formatted = ipcClient.FormatCyberOutput(originalCyberCmd, execRes.output);

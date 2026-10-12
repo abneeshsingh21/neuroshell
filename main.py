@@ -2168,6 +2168,27 @@ class NeuroShell:
             capture_snapshot=capture,
         )
 
+        # Auto-retry with -Pn if target drops ping probes
+        if is_cyber_tool and "nmap" in command and "-Pn" not in command and (
+            "blocking our ping probes" in (result.stdout or "") or "0 hosts up" in (result.stdout or "")
+        ):
+            if has_ui:
+                self.ui.print_info("  ⚡ [Smart Retry] Target is dropping ICMP ping probes. Auto-engaging stealth bypass (-Pn)...")
+            retry_cmd = command.replace("nmap", "nmap -Pn", 1)
+            retry_exec = retry_cmd
+            if platform.system().lower() == "windows":
+                from editions.cyber.wsl_bridge import WSLKaliBridge
+                d = WSLKaliBridge.detect_wsl_distro()
+                if d.available:
+                    escaped_cmd = retry_cmd.replace('"', '\\"')
+                    retry_exec = f'wsl.exe -d {d.distro_name} -- bash -c "{escaped_cmd}"'
+            result = self.executor.execute(
+                retry_exec,
+                stream_callback=lambda line: print(line) if not (is_cyber and is_cyber_tool) else None,
+                capture_snapshot=capture,
+            )
+            command = retry_cmd
+
         self._last_command = command
         self.metrics.count("commands_executed")
 

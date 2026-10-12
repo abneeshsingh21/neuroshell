@@ -37,10 +37,11 @@ CYBER_PATTERNS: dict[str, str] = {
 
     # ── Reconnaissance & Port Scanning ──
     r"(?:stealth\s+syn\s+scan|syn\s+scan)\s+(\S+)": "nmap -sS -Pn {0}",
-    r"(?:aggressive|full)\s+scan\s+(\S+)": "nmap -A -p- -T4 {0}",
-    r"(?:scan|detect)\s+(?:service\s+)?versions?\s+(?:on\s+)?(\S+)": "nmap -sV -sC {0}",
-    r"(?:quick|fast)\s+scan\s+(\S+)": "nmap --top-ports 100 -T4 {0}",
-    r"(?:scan\s+all\s+ports|full\s+port\s+scan)\s+(?:on\s+)?(\S+)": "nmap -p- -T4 {0}",
+    r"(?:aggressive|full)\s+scan\s+(\S+)": "nmap -Pn -A -p- -T4 {0}",
+    r"(?:scan|detect)\s+(?:service\s+)?versions?\s+(?:on\s+)?(\S+)": "nmap -Pn -sV {0}",
+    r"(?:scan|find|detect|check)\s+(?:open\s+)?ports?\s+(?:on\s+)?(\S+)": "nmap -Pn -F {0}",
+    r"(?:quick|fast)\s+scan\s+(\S+)": "nmap -Pn --top-ports 100 -T4 {0}",
+    r"(?:scan\s+all\s+ports|full\s+port\s+scan)\s+(?:on\s+)?(\S+)": "nmap -Pn -p- -T4 {0}",
 
     # ── Web Fuzzing & Directory Bruteforce ──
     r"(?:fuzz|brute\s*force|find)\s+(?:web\s+)?directories\s+(?:on\s+)?(\S+)": "gobuster dir -u {0} -w /usr/share/wordlists/dirb/common.txt -b 404",
