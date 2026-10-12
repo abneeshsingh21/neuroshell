@@ -774,6 +774,45 @@ class Translator:
         except Exception:
             pass
 
+        # 3.7 Exact Cyber & Developer Pattern Translation
+        try:
+            from editions.cyber.cyber_patterns import translate_cyber_intent
+            cyber_cmd = translate_cyber_intent(user_input_clean)
+            if cyber_cmd:
+                return TranslationResult(
+                    command=cyber_cmd,
+                    confidence=0.98,
+                    explanation=f"Cyber Edition intent translation: {cyber_cmd}",
+                    source="cyber_intent",
+                    provenance=ProvenanceTag(
+                        source=ProvenanceSource.LOCAL,
+                        confidence=0.98,
+                        detail="cyber intent pattern",
+                        latency_ms=0.1,
+                    ),
+                )
+        except Exception:
+            pass
+
+        try:
+            from editions.standard.dev_patterns import translate_dev_intent
+            dev_cmd = translate_dev_intent(user_input_clean)
+            if dev_cmd:
+                return TranslationResult(
+                    command=dev_cmd,
+                    confidence=0.98,
+                    explanation=f"Developer intent translation: {dev_cmd}",
+                    source="dev_intent",
+                    provenance=ProvenanceTag(
+                        source=ProvenanceSource.LOCAL,
+                        confidence=0.98,
+                        detail="developer intent pattern",
+                        latency_ms=0.1,
+                    ),
+                )
+        except Exception:
+            pass
+
         # 3.9 High-confidence Native Neural Core (EmbeddingGemma 2 on-device vector match, sub-5ms)
         native_match = self._try_native_engine(user_input_clean)
         if native_match and native_match.confidence >= 0.85:
@@ -835,6 +874,10 @@ class Translator:
 
             match = self._native_engine.translate(user_input)
             if match and match.command:
+                # Disambiguation guard: net_get_public_ip must never trigger for local network/wifi device discovery
+                if match.action_id == "net_get_public_ip" and any(w in user_input.lower() for w in ("network", "wifi", "lan", "devices", "hosts", "connected", "other", "all")):
+                    return None
+
                 sanitized = self._sanitizer.sanitize(match.command, source="native_ai")
                 cmd = sanitized.command if sanitized.is_safe else match.command
                 return TranslationResult(

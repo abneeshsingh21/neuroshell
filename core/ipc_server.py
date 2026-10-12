@@ -485,6 +485,16 @@ class NamedPipeServer:
             handled = self.shell._handle_slash_command(cmd)
             return {"handled": handled, "command": cmd}
 
+        elif method == "format_cyber_output":
+            command = params.get("command", "")
+            output = params.get("output", "")
+            try:
+                from editions.cyber.cyber_formatter import CyberFormatter
+                formatted = CyberFormatter.auto_format(command, output)
+                return {"formatted": formatted, "was_formatted": formatted != output}
+            except Exception as e:
+                return {"formatted": output, "was_formatted": False, "error": str(e)}
+
         elif method == "diagnose_error":
             command = params.get("command", "")
             output = params.get("output", "")

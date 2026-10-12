@@ -1341,13 +1341,14 @@ public:
     // Landlock + seccomp between fork and exec; a failed application
     // honors fail_closed by refusing to exec (exit 90+step).
     static ExecResult Execute(const std::string& command, const LineFilter& lineFilter = nullptr,
-                              const neuroshell::PreparedSandbox* sandbox = nullptr) {
+                              const neuroshell::PreparedSandbox* sandbox = nullptr,
+                              bool suppressStdout = false) {
         ExecResult res;
 
         // Line-buffered filter application: secrets are redacted BEFORE they
         // ever reach the viewport (previously output was displayed raw and
         // only the recorded copy was masked).
-        auto emit = [&lineFilter](std::string& pending, const char* data, size_t len,
+        auto emit = [&lineFilter, suppressStdout](std::string& pending, const char* data, size_t len,
                                   std::string& rolling, std::mutex& lock, size_t maxCapture, bool isStderr = false) {
             pending.append(data, len);
             size_t nl;
@@ -1365,7 +1366,7 @@ public:
                             text.pop_back();
                         }
                         std::cout << C_RED << text << C_RESET << eol << std::flush;
-                    } else {
+                    } else if (!suppressStdout) {
                         std::cout << line << std::flush;
                     }
                     rolling += line;
@@ -1375,7 +1376,7 @@ public:
                 }
             }
         };
-        auto flushPending = [&lineFilter](std::string& pending, std::string& rolling,
+        auto flushPending = [&lineFilter, suppressStdout](std::string& pending, std::string& rolling,
                                           std::mutex& lock, size_t maxCapture, bool isStderr = false) {
             if (pending.empty()) return;
             std::string line = lineFilter ? lineFilter(pending) : pending;
@@ -1389,7 +1390,7 @@ public:
                         text.pop_back();
                     }
                     std::cout << C_RED << text << C_RESET << eol << std::flush;
-                } else {
+                } else if (!suppressStdout) {
                     std::cout << line << std::flush;
                 }
                 rolling += line;
@@ -5189,13 +5190,44 @@ public:
             }
         }
 
+        // 5.9. Cyber Structured Output Interception
+        std::string cmdLower = commandToRun;
+        std::transform(cmdLower.begin(), cmdLower.end(), cmdLower.begin(), ::tolower);
+        bool isCyberTool = isCyberEdition && (
+            cmdLower.find("nmap") != std::string::npos ||
+            cmdLower.find("gobuster") != std::string::npos ||
+            cmdLower.find("ffuf") != std::string::npos ||
+            cmdLower.find("nuclei") != std::string::npos ||
+            cmdLower.find("sqlmap") != std::string::npos ||
+            cmdLower.find("hashcat") != std::string::npos ||
+            cmdLower.find("john") != std::string::npos ||
+            cmdLower.find("nikto") != std::string::npos ||
+            cmdLower.find("arp") != std::string::npos ||
+            cmdLower.find("ipify") != std::string::npos ||
+            cmdLower.find("icanhazip") != std::string::npos ||
+            cmdLower.find("ifconfig.me") != std::string::npos ||
+            cmdLower.find("wpscan") != std::string::npos ||
+            cmdLower.find("subfinder") != std::string::npos
+        );
+
         // 6. Cross-Platform Process Runner — DLP masking is applied as a live
         // line filter so secrets never reach the viewport unredacted
         // (previously raw output was displayed and only the record was masked).
         PlatformProcessRunner::ExecResult execRes = PlatformProcessRunner::Execute(
             commandToRun,
             [this](const std::string& line) { return dlpMasker.filter_stream(line); },
-            sbxPtr);
+            sbxPtr,
+            isCyberTool);
+
+        // If cyber structured tool output was captured, format dynamically via IPC CyberFormatter
+        if (isCyberTool && !execRes.output.empty()) {
+            std::string formatted = ipcClient.FormatCyberOutput(commandToRun, execRes.output);
+            if (!formatted.empty() && formatted != execRes.output) {
+                std::cout << formatted << "\n";
+            } else {
+                std::cout << execRes.output << "\n";
+            }
+        }
 
         // Sandbox application failure surfaces as exit 90+step (fail-closed).
         if (sbxPtr && execRes.exitCode >= 90 + neuroshell::SBX_ERR_NNP &&

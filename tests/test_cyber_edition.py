@@ -286,6 +286,48 @@ class TestCyberPatterns:
         cmd7 = translate_cyber_intent("generate engagement report")
         assert cmd7 == "/report"
 
+        cmd8 = translate_cyber_intent("find all ip addresses on my network")
+        assert cmd8 == "arp -a"
+
+        cmd9 = translate_cyber_intent("find all devices on my wifi")
+        assert cmd9 == "arp -a"
+
+        cmd10 = translate_cyber_intent("ping sweep 192.168.1.0/24")
+        assert cmd10 == "nmap -sn 192.168.1.0/24"
+
+    def test_format_public_ip(self):
+        sample_ip = "49.36.25.76"
+        res = CyberFormatter.format_public_ip(sample_ip)
+        assert "Public External WAN IP Address" in res
+        assert "49.36.25.76" in res
+        assert "Internet Service Provider" in res
+
+    def test_format_network_discovery(self):
+        sample_arp = """
+Interface: 192.168.1.100 --- 0x1
+  Internet Address      Physical Address      Type
+  192.168.1.1           70-97-41-e0-98-66     dynamic
+  192.168.1.55          00-45-e2-bd-e7-09     dynamic
+  192.168.1.255         ff-ff-ff-ff-ff-ff     static
+"""
+        res = CyberFormatter.format_network_discovery(sample_arp)
+        assert "Local Wi-Fi & Network Device Inventory" in res
+        assert "WI-FI ROUTER / GATEWAY" in res
+        assert "CONNECTED DEVICE" in res
+        assert "BROADCAST / MULTICAST" in res
+
+    def test_format_kali_generic(self):
+        sample_tool = """
+[*] Starting scan on target 10.10.10.5
+[+] Found vulnerable endpoint: /api/v1/debug
+[!] Rate limit reached, slowing down
+[-] Failed to authenticate as guest
+"""
+        res = CyberFormatter.format_kali_generic(sample_tool, "wpscan")
+        assert "WPSCAN Structured Execution Output" in res
+        assert "SUCCESS" in res
+        assert "ALERT" in res
+
 
 class TestZeroRegressionStandardEdition:
     def test_standard_edition_exports(self):

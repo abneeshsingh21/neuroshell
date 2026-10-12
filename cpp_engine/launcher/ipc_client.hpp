@@ -395,6 +395,16 @@ public:
         out.response = ExtractStringField(resp, "response");
         return out;
     }
+
+    std::string FormatCyberOutput(const std::string& command, const std::string& output) {
+        if (!EnsureConnected()) return output;
+        std::string req = "{\"jsonrpc\":\"2.0\",\"method\":\"format_cyber_output\",\"params\":{\"command\":\"" +
+                          EscapeJSON(command) + "\",\"output\":\"" + EscapeJSON(output) + "\"},\"id\":8}";
+        std::string resp = SendRawRPC(req, 10000);
+        if (resp.empty()) return output;
+        std::string fmt = ExtractStringField(resp, "formatted");
+        return fmt.empty() ? output : fmt;
+    }
 };
 
 } // namespace NeuroShell::IPC

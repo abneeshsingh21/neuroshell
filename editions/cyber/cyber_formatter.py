@@ -40,41 +40,65 @@ class CyberFormatter:
         cmd_lower = command.lower().strip()
         out_lower = raw_output.lower()
 
-        # 1. Nmap port & service scans
+        # 1. Public External IP lookup (ipify, icanhazip, ifconfig.me)
+        if "ipify" in cmd_lower or "ifconfig.me" in cmd_lower or "icanhazip" in cmd_lower:
+            formatted = cls.format_public_ip(raw_output)
+            if formatted != raw_output:
+                return formatted
+
+        # 2. Network & Device Discovery (arp -a, ip neigh, arp-scan, nmap -sn)
+        if "arp" in cmd_lower or "neigh" in cmd_lower or "-sn" in cmd_lower or "interface:" in out_lower:
+            formatted = cls.format_network_discovery(raw_output, command)
+            if formatted != raw_output:
+                return formatted
+
+        # 3. Single external IP string detector
+        single_ip = raw_output.strip()
+        if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", single_ip):
+            formatted = cls.format_public_ip(raw_output)
+            if formatted != raw_output:
+                return formatted
+
+        # 4. Nmap port & service scans
         if "nmap" in cmd_lower or ("port" in out_lower and "state" in out_lower and "service" in out_lower):
             formatted = cls.format_nmap(raw_output)
             if formatted != raw_output:
                 return formatted
 
-        # 2. Gobuster / FFuF directory & parameter fuzzing
+        # 5. Gobuster / FFuF directory & parameter fuzzing
         if "gobuster" in cmd_lower or "ffuf" in cmd_lower or "(status:" in out_lower:
             formatted = cls.format_gobuster(raw_output)
             if formatted != raw_output:
                 return formatted
 
-        # 3. Nuclei vulnerability scans
+        # 6. Nuclei vulnerability scans
         if "nuclei" in cmd_lower or ("[cve-" in out_lower or "[critical]" in out_lower or "[high]" in out_lower):
             formatted = cls.format_nuclei(raw_output)
             if formatted != raw_output:
                 return formatted
 
-        # 4. SQLmap automated injection
+        # 7. SQLmap automated injection
         if "sqlmap" in cmd_lower or ("parameter:" in out_lower and "type:" in out_lower):
             formatted = cls.format_sqlmap(raw_output)
             if formatted != raw_output:
                 return formatted
 
-        # 5. Hashcat / John password cracking
+        # 8. Hashcat / John password cracking
         if "hashcat" in cmd_lower or "john" in cmd_lower or "recovered" in out_lower:
             formatted = cls.format_hashcat(raw_output)
             if formatted != raw_output:
                 return formatted
 
-        # 6. Nikto web scanner
+        # 9. Nikto web scanner
         if "nikto" in cmd_lower or "osvdb" in out_lower:
             formatted = cls.format_nikto(raw_output)
             if formatted != raw_output:
                 return formatted
+
+        # 10. Universal Kali tool formatter fallback (wpscan, hydra, searchsploit, etc.)
+        formatted = cls.format_kali_generic(raw_output, command)
+        if formatted != raw_output:
+            return formatted
 
         return raw_output
 
@@ -383,4 +407,207 @@ class CyberFormatter:
             out.append(f"  {cls.C_RED}│ {cls.C_BOLD}{'FIX COMMAND:':<14} {cls.C_BOLD}{cls.C_GREEN}{fix_cmd:<52}{cls.C_RED}│{cls.C_RESET}")
 
         out.append(f"  {cls.C_RED}╰──────────────────────────────────────────────────────────────────────╯{cls.C_RESET}\n")
+        return "\n".join(out)
+
+    @classmethod
+    def format_public_ip(cls, raw_output: str) -> str:
+        """Parse and explain public WAN IP output so the user knows whose IP it is."""
+        clean = raw_output.strip()
+        m = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", clean)
+        if not m:
+            return raw_output
+        ip = m.group(1)
+
+        out: list[str] = [
+            f"\n  {cls.C_BOLD}{cls.C_CYAN}╭── 🌐 Public External WAN IP Address ───────────────────────────────╮{cls.C_RESET}",
+            f"  {cls.C_CYAN}│ {cls.C_BOLD}{'PUBLIC IP:':<16} {cls.C_BOLD}{cls.C_GREEN}{ip:<50}{cls.C_CYAN}│{cls.C_RESET}",
+            f"  {cls.C_CYAN}│ {cls.C_BOLD}{'ASSIGNED BY:':<16} {cls.C_WHITE}{'Your Internet Service Provider (ISP / WAN Gateway)':<50}{cls.C_CYAN}│{cls.C_RESET}",
+            f"  {cls.C_CYAN}│ {cls.C_BOLD}{'VISIBILITY:':<16} {cls.C_YELLOW}{'Public Internet (Visible to remote websites & servers)':<50}{cls.C_CYAN}│{cls.C_RESET}",
+            f"  {cls.C_CYAN}│ {cls.C_BOLD}{'SCOPE NOTE:':<16} {cls.C_MUTED}{'This is NOT a local Wi-Fi device or private subnet IP':<50}{cls.C_CYAN}│{cls.C_RESET}",
+            f"  {cls.C_CYAN}╰────────────────────────────────────────────────────────────────────╯{cls.C_RESET}\n",
+        ]
+        return "\n".join(out)
+
+    @classmethod
+    def format_network_discovery(cls, raw_output: str, command: str = "") -> str:
+        """
+        Parse ARP tables, IP neighbor lists, and Nmap subnet sweeps into a crystal-clear,
+        aligned inventory distinguishing your host, the Wi-Fi router, and other devices.
+        """
+        lines = raw_output.splitlines()
+        interface_ip = ""
+        entries: list[dict] = []
+
+        # 1. Regex patterns for various OS discovery tools
+        # Windows arp -a: "Interface: 192.168.29.110 --- 0xc"
+        # "  192.168.29.1          70-97-41-e0-98-66     dynamic"
+        # Linux ip neigh: "192.168.29.1 dev eth0 lladdr 70:97:41:e0:98:66 REACHABLE"
+        # Nmap -sn: "Nmap scan report for 192.168.29.1" / "MAC Address: 70:97:41:E0:98:66 (Vendor)"
+
+        cur_ip = ""
+        cur_mac = ""
+
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+
+            # Detect Windows interface banner
+            if "interface:" in line_str.lower():
+                m_if = re.search(r"interface:\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line_str, re.IGNORECASE)
+                if m_if:
+                    interface_ip = m_if.group(1)
+                continue
+
+            # Check Nmap report
+            if "nmap scan report for" in line_str.lower():
+                m_nmap = re.search(r"for\s+(?:(\S+)\s+\()?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\)?", line_str, re.IGNORECASE)
+                if m_nmap:
+                    cur_ip = m_nmap.group(2)
+                continue
+            if "mac address:" in line_str.lower() and cur_ip:
+                m_mac = re.search(r"([0-9a-fA-F:]{17})\s*(?:\((.*?)\))?", line_str)
+                if m_mac:
+                    entries.append({
+                        "ip": cur_ip,
+                        "mac": m_mac.group(1),
+                        "type": m_mac.group(2) or "dynamic",
+                    })
+                    cur_ip = ""
+                continue
+
+            # Check Linux ip neigh
+            m_neigh = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+dev\s+\S+\s+lladdr\s+([0-9a-fA-F:-]{17})\s+(\w+)", line_str)
+            if m_neigh:
+                entries.append({
+                    "ip": m_neigh.group(1),
+                    "mac": m_neigh.group(2),
+                    "type": m_neigh.group(3).lower(),
+                })
+                continue
+
+            # Check Windows ARP table line
+            m_arp = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+([0-9a-fA-F:-]{17})\s+(\w+)", line_str)
+            if m_arp:
+                entries.append({
+                    "ip": m_arp.group(1),
+                    "mac": m_arp.group(2),
+                    "type": m_arp.group(3).lower(),
+                })
+                continue
+
+        if not entries:
+            return raw_output
+
+        # Role classifier
+        peer_count = 0
+        formatted_rows: list[str] = []
+
+        # If interface_ip not found in output, inspect local address from first subnet
+        first_ip = entries[0]["ip"]
+        subnet_prefix = ".".join(first_ip.split(".")[:3]) + "." if first_ip else ""
+
+        for item in entries:
+            ip = item["ip"]
+            mac = item["mac"].replace("-", ":").upper()
+            typ = item["type"]
+
+            # Classify device role
+            is_broadcast = (
+                ip.endswith(".255")
+                or ip == "255.255.255.255"
+                or ip.startswith("224.")
+                or ip.startswith("239.")
+                or mac == "FF:FF:FF:FF:FF:FF"
+            )
+            is_gateway = ip.endswith(".1") or (subnet_prefix and ip == subnet_prefix + "1")
+            is_me = (ip == interface_ip) if interface_ip else False
+
+            if is_me:
+                role = "🖥️  THIS MACHINE (Your Device)"
+                role_col = cls.C_CYAN
+            elif is_gateway:
+                role = "📶 WI-FI ROUTER / GATEWAY"
+                role_col = cls.C_GREEN
+            elif is_broadcast:
+                role = "📡 BROADCAST / MULTICAST"
+                role_col = cls.C_MUTED
+            else:
+                peer_count += 1
+                role = f"📱 CONNECTED DEVICE (Peer #{peer_count})"
+                role_col = cls.C_YELLOW
+
+            # Vendor heuristic from OUI
+            vendor = ""
+            if mac.startswith("00:15:5D"):
+                vendor = "[Hyper-V / WSL2]"
+            elif mac.startswith("F0:18:98") or mac.startswith("AC:DE:48"):
+                vendor = "[Apple]"
+            elif mac.startswith("B8:27:EB") or mac.startswith("DC:A6:32"):
+                vendor = "[Raspberry Pi]"
+            elif typ and typ not in ("dynamic", "static"):
+                vendor = f"[{typ[:14]}]"
+
+            role_str = f"{role} {cls.C_MUTED}{vendor}".strip()
+            formatted_rows.append(
+                f"  {cls.C_CYAN}│ {cls.C_WHITE}{ip:<17} {cls.C_MUTED}{mac:<19} {role_col}{role_str:<30}{cls.C_CYAN}│{cls.C_RESET}"
+            )
+
+        if_hdr = f"Interface: {interface_ip}" if interface_ip else "Local Broadcast Domain"
+        subnet_hdr = f"Subnet: {subnet_prefix}0/24" if subnet_prefix else "Local Network"
+
+        out: list[str] = [
+            f"\n  {cls.C_BOLD}{cls.C_CYAN}╭── 📡 Local Wi-Fi & Network Device Inventory ────────────────────────╮{cls.C_RESET}",
+            f"  {cls.C_CYAN}│ {cls.C_BOLD}{if_hdr:<32} {subnet_hdr:<36}{cls.C_CYAN}│{cls.C_RESET}",
+            f"  {cls.C_CYAN}├──────────────────────────────────────────────────────────────────────┤{cls.C_RESET}",
+            f"  {cls.C_CYAN}│ {cls.C_BOLD}{'IP ADDRESS':<17} {'MAC ADDRESS':<19} {'ROLE / IDENTIFICATION':<30}{cls.C_CYAN}│{cls.C_RESET}",
+            f"  {cls.C_CYAN}├──────────────────────────────────────────────────────────────────────┤{cls.C_RESET}",
+        ]
+        out.extend(formatted_rows)
+        out.append(f"  {cls.C_CYAN}╰──────────────────────────────────────────────────────────────────────╯{cls.C_RESET}")
+        out.append(f"  {cls.C_BOLD}{cls.C_GREEN}✔ Found {peer_count} other active device(s) on your Wi-Fi network.{cls.C_RESET}\n")
+        return "\n".join(out)
+
+    @classmethod
+    def format_kali_generic(cls, raw_output: str, command: str = "") -> str:
+        """
+        Universal fallback formatter for all Kali / security command-line outputs.
+        Extracts status markers ([+], [*], [-], [!], vulnerabilities, targets).
+        """
+        lines = raw_output.splitlines()
+        findings: list[tuple[str, str]] = []
+
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+
+            # Standard Kali CLI prefixes: [+] found, [*] status, [!] warning, [-] failed
+            if line_str.startswith("[+]"):
+                findings.append(("SUCCESS", line_str[3:].strip()))
+            elif line_str.startswith("[*]"):
+                findings.append(("INFO", line_str[3:].strip()))
+            elif line_str.startswith("[!]"):
+                findings.append(("ALERT", line_str[3:].strip()))
+            elif line_str.startswith("[-]"):
+                findings.append(("FAILURE", line_str[3:].strip()))
+            elif "vulnerable" in line_str.lower() or "cve-" in line_str.lower():
+                findings.append(("ALERT", line_str))
+
+        if len(findings) < 2:
+            return raw_output
+
+        tool_name = command.split()[0].upper() if command else "SECURITY TOOL"
+        out: list[str] = [
+            f"\n  {cls.C_BOLD}{cls.C_MAGENTA}╭── 🛡️ {tool_name} Structured Execution Output ──────────────────────╮{cls.C_RESET}",
+            f"  {cls.C_MAGENTA}│ {cls.C_BOLD}{'STATUS':<12} {'DETAILS':<56}{cls.C_MAGENTA}│{cls.C_RESET}",
+            f"  {cls.C_MAGENTA}├──────────────────────────────────────────────────────────────────────┤{cls.C_RESET}",
+        ]
+
+        for status, detail in findings[:30]:
+            col = cls.C_GREEN if status == "SUCCESS" else (cls.C_RED if status == "ALERT" else (cls.C_YELLOW if status == "FAILURE" else cls.C_CYAN))
+            short_det = detail if len(detail) <= 54 else detail[:51] + "..."
+            out.append(f"  {cls.C_MAGENTA}│ {col}{status:<12}{cls.C_RESET} {cls.C_WHITE}{short_det:<56}{cls.C_MAGENTA}│{cls.C_RESET}")
+
+        out.append(f"  {cls.C_MAGENTA}╰──────────────────────────────────────────────────────────────────────╯{cls.C_RESET}\n")
         return "\n".join(out)
