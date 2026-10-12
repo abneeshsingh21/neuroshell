@@ -1448,6 +1448,325 @@ RECIPES: list[Recipe] = [
         is_destructive=False,
         explanation="Spawns an HTTP staging delivery service in background while keeping foreground listener active.",
     ),
+    # ── Additional Recon & Scanning ──
+    Recipe(
+        action_id="recon_nmap_full_udp",
+        category="RECON_SCANNING",
+        canonical_nl="scan target for top UDP ports with version detection",
+        default_cmd="nmap -sU --top-ports 100 -T4 {target}",
+        powershell_cmd="wsl nmap -sU --top-ports 100 -T4 {target}",
+        cmd_exe="wsl nmap -sU --top-ports 100 -T4 {target}",
+        parameters={
+            "target": ["10.10.10.5", "10.10.10.50", "target.htb", "192.168.1.100"],
+        },
+        nl_templates=[
+            "scan target for top UDP ports with version detection",
+            "perform fast UDP scan on top 100 ports of {target}",
+            "audit open UDP services on {target}",
+            "nmap scan top udp services for host {target}",
+        ],
+        hard_negatives=[
+            "nmap -sS -p- {target}",
+            "ping {target}",
+        ],
+        is_destructive=False,
+        explanation="Audits UDP service availability across the top 100 most common ports.",
+    ),
+    Recipe(
+        action_id="recon_amass_enum_domains",
+        category="RECON_SCANNING",
+        canonical_nl="enumerate subdomains passively using amass",
+        default_cmd="amass enum -passive -d {domain} -o subdomains.txt",
+        powershell_cmd="wsl amass enum -passive -d {domain} -o subdomains.txt",
+        cmd_exe="wsl amass enum -passive -d {domain} -o subdomains.txt",
+        parameters={
+            "domain": ["example.com", "target.local", "inlanefreight.com"],
+        },
+        nl_templates=[
+            "enumerate subdomains passively using amass",
+            "find all subdomains for {domain} with amass",
+            "passive dns discovery for domain {domain}",
+            "amass passive subdomain enumeration on {domain}",
+        ],
+        hard_negatives=[
+            "dig {domain}",
+            "whois {domain}",
+        ],
+        is_destructive=False,
+        explanation="Discovers target subdomains through passive OSINT sources without direct connection.",
+    ),
+    Recipe(
+        action_id="recon_whatweb_fingerprint",
+        category="RECON_SCANNING",
+        canonical_nl="fingerprint web technologies and headers with whatweb",
+        default_cmd="whatweb http://{target} -v",
+        powershell_cmd="wsl whatweb http://{target} -v",
+        cmd_exe="wsl whatweb http://{target} -v",
+        parameters={
+            "target": ["10.10.10.5", "target.htb", "192.168.1.20"],
+        },
+        nl_templates=[
+            "fingerprint web technologies and headers with whatweb",
+            "identify tech stack on http://{target}",
+            "whatweb verbose inspection on {target}",
+            "detect cms, server, and libraries on http://{target}",
+        ],
+        hard_negatives=[
+            "curl -I http://{target}",
+            "nmap -p80 {target}",
+        ],
+        is_destructive=False,
+        explanation="Detects CMS, server headers, frameworks, and JavaScript libraries on target website.",
+    ),
+    # ── Additional Web Security & Fuzzing ──
+    Recipe(
+        action_id="web_nuclei_cve_scan",
+        category="WEB_SECURITY",
+        canonical_nl="scan target web application for known CVEs using nuclei",
+        default_cmd="nuclei -u http://{target} -severity medium,high,critical",
+        powershell_cmd="nuclei -u http://{target} -severity medium,high,critical",
+        cmd_exe="nuclei -u http://{target} -severity medium,high,critical",
+        parameters={
+            "target": ["10.10.10.5", "target.htb:8080", "192.168.1.50"],
+        },
+        nl_templates=[
+            "scan target web application for known CVEs using nuclei",
+            "run nuclei templates for medium and critical bugs on {target}",
+            "audit http://{target} for cves and misconfigurations with nuclei",
+            "vulnerability scan {target} using nuclei community templates",
+        ],
+        hard_negatives=[
+            "nikto -h {target}",
+            "gobuster dir -u http://{target}",
+        ],
+        is_destructive=False,
+        explanation="Audits web applications against curated community vulnerability and misconfiguration templates.",
+    ),
+    Recipe(
+        action_id="web_wpscan_plugin_enum",
+        category="WEB_SECURITY",
+        canonical_nl="enumerate wordpress vulnerable plugins and users with wpscan",
+        default_cmd="wpscan --url http://{target} --enumerate vp,vt,u",
+        powershell_cmd="wpscan --url http://{target} --enumerate vp,vt,u",
+        cmd_exe="wpscan --url http://{target} --enumerate vp,vt,u",
+        parameters={
+            "target": ["10.10.10.5/blog", "target.htb/wordpress", "192.168.1.50"],
+        },
+        nl_templates=[
+            "enumerate wordpress vulnerable plugins and users with wpscan",
+            "scan wordpress site on {target} for vulnerable plugins",
+            "wpscan audit on http://{target} for themes and users",
+            "find vulnerable plugins on wordpress instance {target}",
+        ],
+        hard_negatives=[
+            "gobuster dir -u http://{target}",
+            "curl http://{target}/wp-login.php",
+        ],
+        is_destructive=False,
+        explanation="Enumerates vulnerable plugins, themes, and usernames on WordPress sites.",
+    ),
+    Recipe(
+        action_id="web_nikto_tuning_scan",
+        category="WEB_SECURITY",
+        canonical_nl="run comprehensive nikto web server vulnerability scan",
+        default_cmd="nikto -h http://{target} -Tuning 123b",
+        powershell_cmd="nikto -h http://{target} -Tuning 123b",
+        cmd_exe="nikto -h http://{target} -Tuning 123b",
+        parameters={
+            "target": ["10.10.10.5", "target.htb", "192.168.1.20:8000"],
+        },
+        nl_templates=[
+            "run comprehensive nikto web server vulnerability scan",
+            "scan web server on {target} for dangerous files with nikto",
+            "nikto tuning scan on http://{target}",
+            "check outdated web components and server files on {target}",
+        ],
+        hard_negatives=[
+            "nmap -p80 {target}",
+            "curl -v http://{target}",
+        ],
+        is_destructive=False,
+        explanation="Scans web servers for dangerous files, outdated server software, and configuration weaknesses.",
+    ),
+    # ── Additional Privilege Escalation ──
+    Recipe(
+        action_id="privesc_capabilities_audit",
+        category="PRIVESC",
+        canonical_nl="audit binary capabilities on linux system for privilege escalation",
+        default_cmd="getcap -r / 2>/dev/null",
+        powershell_cmd="wsl getcap -r / 2>/dev/null",
+        cmd_exe="wsl getcap -r / 2>/dev/null",
+        nl_templates=[
+            "audit binary capabilities on linux system for privilege escalation",
+            "find all executables with setuid or cap_setuid capabilities",
+            "getcap scan on root filesystem for privesc",
+            "check file capabilities for local privilege escalation",
+        ],
+        hard_negatives=[
+            "find / -perm -4000 2>/dev/null",
+            "sudo -l",
+        ],
+        is_destructive=False,
+        explanation="Finds binaries granted elevated Linux POSIX capabilities such as cap_setuid.",
+    ),
+    Recipe(
+        action_id="privesc_find_suid_bins",
+        category="PRIVESC",
+        canonical_nl="find all suid binaries on linux filesystem",
+        default_cmd="find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
+        powershell_cmd="wsl find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
+        cmd_exe="wsl find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
+        nl_templates=[
+            "find all suid binaries on linux filesystem",
+            "list files with suid permission bit set",
+            "search for suid files for root privilege escalation",
+            "audit setuid executables on linux",
+        ],
+        hard_negatives=[
+            "find / -writable 2>/dev/null",
+            "ls -la /bin",
+        ],
+        is_destructive=False,
+        explanation="Searches the filesystem for binaries running with root owner SUID permissions.",
+    ),
+    Recipe(
+        action_id="privesc_linpeas_run",
+        category="PRIVESC",
+        canonical_nl="run linpeas privilege escalation auditor directly in memory",
+        default_cmd="curl -sSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+        powershell_cmd="wsl curl -sSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+        cmd_exe="wsl curl -sSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+        nl_templates=[
+            "run linpeas privilege escalation auditor directly in memory",
+            "download and execute linpeas without saving to disk",
+            "run automated linux privesc enumeration script",
+            "pipe linpeas script directly into sh",
+        ],
+        hard_negatives=[
+            "sudo -l",
+            "uname -a",
+        ],
+        is_destructive=False,
+        explanation="Runs LinPEAS directly from memory to enumerate local privilege escalation vectors.",
+    ),
+    # ── Additional Password & Cracking ──
+    Recipe(
+        action_id="cracking_hashcat_md5",
+        category="CRACKING",
+        canonical_nl="crack md5 hashes using hashcat with rockyou dictionary",
+        default_cmd="hashcat -m 0 -a 0 {hashfile} /usr/share/wordlists/rockyou.txt",
+        powershell_cmd="hashcat.exe -m 0 -a 0 {hashfile} C:\\tools\\rockyou.txt",
+        cmd_exe="hashcat.exe -m 0 -a 0 {hashfile} C:\\tools\\rockyou.txt",
+        parameters={
+            "hashfile": ["hashes.txt", "md5.txt", "targets.hash"],
+        },
+        nl_templates=[
+            "crack md5 hashes using hashcat with rockyou dictionary",
+            "run hashcat mode 0 on {hashfile} with rockyou",
+            "brute force md5 hash file {hashfile} on gpu",
+            "hashcat straight dictionary attack for md5",
+        ],
+        hard_negatives=[
+            "john {hashfile}",
+            "hashcat -m 1000 {hashfile}",
+        ],
+        is_destructive=False,
+        explanation="GPU-accelerated straight dictionary cracking of raw MD5 hashes.",
+    ),
+    Recipe(
+        action_id="cracking_john_shadow",
+        category="CRACKING",
+        canonical_nl="crack linux shadow password hashes using john the ripper",
+        default_cmd="john --wordlist=/usr/share/wordlists/rockyou.txt {hashfile}",
+        powershell_cmd="john --wordlist=/usr/share/wordlists/rockyou.txt {hashfile}",
+        cmd_exe="john --wordlist=/usr/share/wordlists/rockyou.txt {hashfile}",
+        parameters={
+            "hashfile": ["shadow.txt", "unshadowed.txt", "passwords.txt"],
+        },
+        nl_templates=[
+            "crack linux shadow password hashes using john the ripper",
+            "run john the ripper against unshadowed file {hashfile}",
+            "john wordlist attack with rockyou on {hashfile}",
+            "crack /etc/shadow hashes with john",
+        ],
+        hard_negatives=[
+            "hashcat -m 500 {hashfile}",
+            "cat {hashfile}",
+        ],
+        is_destructive=False,
+        explanation="Identifies hash types and executes CPU/GPU dictionary cracking via John the Ripper.",
+    ),
+    Recipe(
+        action_id="cracking_hydra_http_post",
+        category="CRACKING",
+        canonical_nl="brute-force web login form using hydra http-post-form",
+        default_cmd="hydra -l {user} -P /usr/share/wordlists/rockyou.txt {target} http-post-form \"/login.php:user=^USER^&pass=^PASS^:F=invalid\"",
+        powershell_cmd="hydra -l {user} -P /usr/share/wordlists/rockyou.txt {target} http-post-form \"/login.php:user=^USER^&pass=^PASS^:F=invalid\"",
+        cmd_exe="hydra -l {user} -P /usr/share/wordlists/rockyou.txt {target} http-post-form \"/login.php:user=^USER^&pass=^PASS^:F=invalid\"",
+        parameters={
+            "target": ["10.10.10.5", "target.htb", "192.168.1.100"],
+            "user": ["admin", "root", "administrator"],
+        },
+        nl_templates=[
+            "brute-force web login form using hydra http-post-form",
+            "crack web portal password for {user} on {target} with hydra",
+            "hydra http post attack against login endpoint on {target}",
+            "test passwords against web form for user {user}",
+        ],
+        hard_negatives=[
+            "curl -d 'user=admin' http://{target}",
+            "hydra -l admin -P rockyou.txt {target} ssh",
+        ],
+        is_destructive=False,
+        explanation="Performs multi-threaded online dictionary attack against HTTP POST web authentication forms.",
+    ),
+    # ── Additional Multi-Step Orchestration ──
+    Recipe(
+        action_id="orchestration_nmap_to_nuclei",
+        category="ORCHESTRATION",
+        canonical_nl="scan web ports with nmap and pipe directly into nuclei vulnerability scanner",
+        default_cmd="nmap -sS -p80,443,8080 -T4 {target} -oG - | nuclei -severity high,critical",
+        powershell_cmd="wsl nmap -sS -p80,443,8080 -T4 {target} -oG - | nuclei -severity high,critical",
+        cmd_exe="wsl nmap -sS -p80,443,8080 -T4 {target} -oG - | nuclei -severity high,critical",
+        parameters={
+            "target": ["10.10.10.5", "target.htb", "192.168.1.50"],
+        },
+        nl_templates=[
+            "scan web ports with nmap and pipe directly into nuclei vulnerability scanner",
+            "discover web ports on {target} and immediately audit for cves",
+            "pipeline nmap web port scan into nuclei on {target}",
+            "automate port discovery to high severity nuclei scans",
+        ],
+        hard_negatives=[
+            "nmap -p80 {target}",
+            "nuclei -u http://{target}",
+        ],
+        is_destructive=False,
+        explanation="Chains initial port availability checking directly into CVE template execution.",
+    ),
+    Recipe(
+        action_id="orchestration_triage_playbook",
+        category="ORCHESTRATION",
+        canonical_nl="run nmap service scan and correlate with exploit-db searchsploit",
+        default_cmd="nmap -sV -sC -oN scan.txt {target} && searchsploit --nmap scan.txt",
+        powershell_cmd="wsl nmap -sV -sC -oN scan.txt {target} && wsl searchsploit --nmap scan.txt",
+        cmd_exe="wsl nmap -sV -sC -oN scan.txt {target} && wsl searchsploit --nmap scan.txt",
+        parameters={
+            "target": ["10.10.10.5", "target.htb", "192.168.1.100"],
+        },
+        nl_templates=[
+            "run nmap service scan and correlate with exploit-db searchsploit",
+            "scan {target} and search known exploits for discovered versions",
+            "automate nmap banner scan to searchsploit correlation",
+            "find public exploits for open services on {target}",
+        ],
+        hard_negatives=[
+            "nmap {target}",
+            "searchsploit apache",
+        ],
+        is_destructive=False,
+        explanation="Performs automated service enumeration and immediately queries Exploit-DB for public exploits.",
+    ),
 ]
 
 
@@ -1515,10 +1834,17 @@ def generate_variations_for_recipe(recipe: Recipe, target_count: int = 50) -> li
     prefixes = [
         "please ", "can you ", "how do i ", "what is the command to ",
         "run command to ", "terminal command for ", "i want to ", "help me ",
-        "bash command to ", "quick command: ", ""
+        "bash command to ", "quick command: ", "execute command to ",
+        "cli syntax for ", "show me how to ", "terminal snippet: ",
+        "safely ", "prompt: ", "how to ", "give me the command to ",
+        "need a command to ", "shell command: ", "terminal one-liner to ",
+        "powershell command to ", "wsl command to ", "fast syntax for ", ""
     ]
     suffixes = [
-        "", " please", " right now", " in terminal", " safely", " using cli"
+        "", " please", " right now", " in terminal", " safely", " using cli",
+        " in background", " with high verbosity", " quietly", " recursively",
+        " without prompt", " for my environment", " in bash", " via powershell",
+        " on local system", " using wsl", " as administrator", " with default flags"
     ]
 
     base_samples = list(results)
@@ -1534,27 +1860,92 @@ def generate_variations_for_recipe(recipe: Recipe, target_count: int = 50) -> li
     return results[:target_count]
 
 
-def build_full_corpus(target_total_samples: int = 50000) -> tuple[list[dict], list[dict]]:
-    """Builds the entire multi-domain synthetic dataset and canonical action catalog."""
+# ══════════════════════════════════════════════════════════════════════════════
+# MASTER 7-CATEGORY QUOTAS (Section 4.1 of Master Plan)
+# ══════════════════════════════════════════════════════════════════════════════
+
+MASTER_CATEGORY_MAPPING: dict[str, str] = {
+    # 1. Standard Polyglot & Git (Plan: 120,000 pairs)
+    "POLYGLOT_DEV": "POLYGLOT_DEV",
+    "GIT": "POLYGLOT_DEV",
+    "DOCKER": "POLYGLOT_DEV",
+    "K8S": "POLYGLOT_DEV",
+
+    # 2. Linux & SysAdmin Core (Plan: 80,000 pairs)
+    "SYSADMIN_CORE": "SYSADMIN_CORE",
+    "PROCESS": "SYSADMIN_CORE",
+    "SYSTEM": "SYSADMIN_CORE",
+    "FILESYSTEM": "SYSADMIN_CORE",
+    "NETWORK": "SYSADMIN_CORE",
+
+    # 3. Recon & Scanning (Plan: 60,000 pairs)
+    "RECON_SCANNING": "RECON_SCANNING",
+
+    # 4. Web Security & Fuzzing (Plan: 90,000 pairs)
+    "WEB_SECURITY": "WEB_SECURITY",
+
+    # 5. Privilege Escalation (Plan: 45,000 pairs)
+    "PRIVESC": "PRIVESC",
+
+    # 6. Password & Cryptography (Plan: 35,000 pairs)
+    "CRACKING": "CRACKING",
+
+    # 7. Multi-Step Orchestration (Plan: 70,000 pairs)
+    "ORCHESTRATION": "ORCHESTRATION",
+}
+
+BASE_CATEGORY_QUOTAS: dict[str, int] = {
+    "POLYGLOT_DEV": 120_000,
+    "SYSADMIN_CORE": 80_000,
+    "RECON_SCANNING": 60_000,
+    "WEB_SECURITY": 90_000,
+    "PRIVESC": 45_000,
+    "CRACKING": 35_000,
+    "ORCHESTRATION": 70_000,
+}
+
+
+def build_full_corpus(target_total_samples: int = 500000) -> tuple[list[dict], list[dict]]:
+    """
+    Builds the entire multi-domain synthetic dataset across all 7 Master Plan categories.
+    Accurately satisfies the 500,000+ curated pair requirement.
+    """
     corpus: list[dict] = []
     actions_catalog: list[dict] = []
 
-    samples_per_recipe = max(100, target_total_samples // len(RECIPES))
+    scale = target_total_samples / 500000.0
+    cat_quotas = {k: int(v * scale) for k, v in BASE_CATEGORY_QUOTAS.items()}
 
-    for recipe in RECIPES:
-        actions_catalog.append({
-            "action_id": recipe.action_id,
-            "category": recipe.category,
-            "canonical_nl": recipe.canonical_nl,
-            "default_cmd": recipe.default_cmd,
-            "powershell_cmd": recipe.powershell_cmd or recipe.default_cmd,
-            "cmd_exe": recipe.cmd_exe or recipe.default_cmd,
-            "is_destructive": recipe.is_destructive,
-            "explanation": recipe.explanation,
-        })
+    # Group recipes by master category
+    grouped: dict[str, list[Recipe]] = {}
+    for r in RECIPES:
+        master_cat = MASTER_CATEGORY_MAPPING.get(r.category, "SYSADMIN_CORE")
+        grouped.setdefault(master_cat, []).append(r)
 
-        variations = generate_variations_for_recipe(recipe, target_count=samples_per_recipe)
-        corpus.extend(variations)
+    print("\n📊 7-Category Dataset Allocation Targets:")
+    for master_cat, quota in cat_quotas.items():
+        rec_count = len(grouped.get(master_cat, []))
+        print(f"  • {master_cat:<18} Target: {quota:>7,} pairs ({rec_count} canonical recipes)")
+
+    for master_cat, rec_list in grouped.items():
+        quota = cat_quotas.get(master_cat, 50000)
+        per_rec = max(50, quota // len(rec_list))
+
+        for recipe in rec_list:
+            actions_catalog.append({
+                "action_id": recipe.action_id,
+                "category": recipe.category,
+                "master_category": master_cat,
+                "canonical_nl": recipe.canonical_nl,
+                "default_cmd": recipe.default_cmd,
+                "powershell_cmd": recipe.powershell_cmd or recipe.default_cmd,
+                "cmd_exe": recipe.cmd_exe or recipe.default_cmd,
+                "is_destructive": recipe.is_destructive,
+                "explanation": recipe.explanation,
+            })
+
+            variations = generate_variations_for_recipe(recipe, target_count=per_rec)
+            corpus.extend(variations)
 
     random.shuffle(corpus)
     return corpus, actions_catalog
@@ -1563,13 +1954,13 @@ def build_full_corpus(target_total_samples: int = 50000) -> tuple[list[dict], li
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="NeuroShell Synthetic Dataset Generator")
-    parser.add_argument("--samples", type=int, default=50000, help="Target total training pairs (default: 50000)")
+    parser.add_argument("--samples", type=int, default=500000, help="Target total training pairs (default: 500000)")
     args = parser.parse_args()
 
-    print("=" * 60)
+    print("=" * 70)
     print("🧠 NeuroShell Synthetic Dataset & Canonical Recipe Generator")
     print(f"Target Volume: {args.samples:,} samples across {len(RECIPES)} recipes")
-    print("=" * 60)
+    print("=" * 70)
 
     output_dir = Path(__file__).resolve().parent.parent.parent / "data" / "kaggle_dataset"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1580,6 +1971,7 @@ def main():
 
     # 1. Save training JSONL
     train_file = output_dir / "neuroshell_train.jsonl"
+    print(f"[*] Writing {len(corpus):,} training pairs to {train_file.name}...")
     with open(train_file, "w", encoding="utf-8") as f:
         for item in corpus:
             f.write(json.dumps(item) + "\n")
@@ -1602,9 +1994,9 @@ def main():
         json.dump(metadata, f, indent=2)
     print(f"[+] Saved Kaggle dataset metadata: {metadata_file}")
 
-    print("=" * 60)
-    print("✅ Phase 1 Dataset Generation Complete!")
-    print("=" * 60)
+    print("=" * 70)
+    print(f"✅ Phase 1 Dataset Generation Complete! Generated {len(corpus):,} samples.")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

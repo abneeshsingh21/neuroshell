@@ -213,6 +213,21 @@ try:
     v256_out, v768_out = sess.run(None, ort_inputs)
     assert not np.isnan(v256_out).any(), "FATAL: Exported ONNX produced NaNs in vector_256!"
     print(f"[+] ONNX CPU validation verified: v256 shape {v256_out.shape}, all finite values.")
+
+    # Generate INT8 Quantized model for on-device ultra-low-latency execution
+    try:
+        from onnxruntime.quantization import quantize_dynamic, QuantType
+        int8_file = os.path.join(onnx_dir, "model_int8.onnx")
+        print(f"[*] Quantizing to INT8 at {int8_file}...")
+        quantize_dynamic(
+            model_input=onnx_file,
+            model_output=int8_file,
+            weight_type=QuantType.QInt8
+        )
+        int8_mb = os.path.getsize(int8_file) / (1024 * 1024)
+        print(f"[+] INT8 ONNX generated: {int8_file} ({int8_mb:.2f} MB)")
+    except Exception as q_err:
+        print(f"[*] INT8 quantization note: {q_err}")
 except Exception as onnx_err:
     print(f"[!] ONNX export error: {onnx_err}")
     import traceback
