@@ -4727,6 +4727,16 @@ public:
             return;
         }
 
+        // ── Plain English Network Discovery ──
+        if (lowerTrim.find("devices on my network") != std::string::npos ||
+            lowerTrim.find("devices on my wifi") != std::string::npos ||
+            lowerTrim.find("ip address") != std::string::npos && (lowerTrim.find("network") != std::string::npos || lowerTrim.find("wifi") != std::string::npos) ||
+            lowerTrim.find("scan my local network") != std::string::npos) {
+            std::cout << "\n  " << C_BOLD << C_CYAN << "⚡ Discovering Local Devices & IP Addresses (ARP Table)..." << C_RESET << "\n\n";
+            ExecuteCommand("arp -a");
+            return;
+        }
+
         // ── NeuroShell Cyber Edition Direct Handlers ──
         if (lowerTrim == "mode cyber" || lowerTrim == "edition cyber" || lowerTrim == "cyber" ||
             lowerTrim == "mode standard" || lowerTrim == "edition standard" || lowerTrim == "standard" ||

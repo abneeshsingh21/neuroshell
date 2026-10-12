@@ -29,6 +29,12 @@ CYBER_PATTERNS: dict[str, str] = {
     r"(?:start|catch|listen)\s+(?:a\s+)?(?:reverse\s+shell\s+)?(?:listener|handler)(?:\s+(?:on|port)\s+(\d+))?": "listen {0}",
     r"(?:listen|catch)\s+(?:on\s+)?(?:port\s+)?(\d+)": "listen {0}",
 
+    # ── Local Network & Host Discovery ──
+    r"(?:find|discover|show|list|get)\s+(?:all\s+)?(?:other\s+)?(?:ip\s+address(?:es)?|ips|devices|hosts)\s+(?:connected\s+to|on|in)\s+(?:my\s+)?(?:network|wifi|lan)": "arp -a",
+    r"(?:scan|discover)\s+(?:my\s+)?local\s+network": "arp -a",
+    r"(?:ping\s+sweep|discover\s+hosts?|find\s+hosts?|find\s+devices?)\s+(?:on|in)\s+(\S+)": "nmap -sn {0}",
+    r"(?:ping\s+sweep)\s+(\S+)": "nmap -sn {0}",
+
     # ── Reconnaissance & Port Scanning ──
     r"(?:stealth\s+syn\s+scan|syn\s+scan)\s+(\S+)": "nmap -sS -Pn {0}",
     r"(?:aggressive|full)\s+scan\s+(\S+)": "nmap -A -p- -T4 {0}",

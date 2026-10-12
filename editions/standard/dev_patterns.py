@@ -36,6 +36,11 @@ DEV_PATTERNS = [
     (r"^(?:stash\s+changes|save\s+stash|git\s+stash)$", "git stash"),
     (r"^(?:pop\s+stash|apply\s+stash)$", "git stash pop"),
     (r"^(?:clean\s+workspace|git\s+clean)$", "git clean -fd"),
+
+    # Network Administration & Device Discovery
+    (r"^(?:find|discover|show|list|get)\s+(?:all\s+)?(?:other\s+)?(?:ip\s+address(?:es)?|ips|devices|hosts)\s+(?:connected\s+to|on|in)\s+(?:my\s+)?(?:network|wifi|lan)$", "arp -a"),
+    (r"^(?:scan|discover)\s+(?:my\s+)?local\s+network$", "arp -a"),
+    (r"^(?:show|get|what\s+is)\s+(?:my\s+)?(?:ip\s+address|local\s+ip)$", "ipconfig"),
 ]
 
 
