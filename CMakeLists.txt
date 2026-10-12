@@ -67,7 +67,11 @@ if(APPLE)
     endif()
 endif()
 
-add_executable(neuroshell cpp_engine/launcher/main.cpp)
+if(WIN32)
+    add_executable(neuroshell cpp_engine/launcher/main.cpp cpp_engine/launcher/resource.rc)
+else()
+    add_executable(neuroshell cpp_engine/launcher/main.cpp)
+endif()
 target_link_libraries(neuroshell PRIVATE $<$<NOT:$<PLATFORM_ID:Windows>>:pthread> ${CMAKE_DL_LIBS})
 
 if(NEUROSHELL_LTO AND NOT NEUROSHELL_SANITIZERS)
