@@ -52,6 +52,18 @@ class ScopeGuard:
         "netexec", "impacket", "msfconsole", "smbclient", "rpcclient"
     }
 
+    def __init__(self, allowed_targets: list[str] | None = None):
+        if allowed_targets is not None:
+            self._local_scope = EngagementScope()
+            for t in allowed_targets:
+                self._add_to_scope(self._local_scope, t)
+        else:
+            self._local_scope = None
+
+    @property
+    def current_scope(self) -> EngagementScope:
+        return self._local_scope if self._local_scope is not None else self._scope
+
     @classmethod
     def get_scope(cls) -> EngagementScope:
         return cls._scope
@@ -65,17 +77,23 @@ class ScopeGuard:
         cls._scope.strict_mode = strict
 
     @classmethod
-    def add_target(cls, target: str) -> bool:
-        """Add an IP, CIDR, or domain to authorized engagement scope."""
+    def _add_to_scope(cls, scope_obj: EngagementScope, target: str) -> bool:
         target = target.strip().lower()
         if not target:
             return False
+
+        # Remove URL scheme if user pasted full URL
+        if target.startswith("http://") or target.startswith("https://"):
+            try:
+                target = urlparse(target).netloc.split(":")[0]
+            except Exception:
+                pass
 
         # 1. Try CIDR notation
         if "/" in target:
             try:
                 net = ipaddress.ip_network(target, strict=False)
-                cls._scope.allowed_cidrs.append(net)
+                scope_obj.allowed_cidrs.append(net)
                 return True
             except ValueError:
                 pass
@@ -83,22 +101,22 @@ class ScopeGuard:
         # 2. Try single IP
         try:
             ip = ipaddress.ip_address(target)
-            cls._scope.allowed_ips.add(ip)
+            scope_obj.allowed_ips.add(ip)
             return True
         except ValueError:
             pass
 
         # 3. Domain or hostname
-        # Remove URL scheme if user pasted full URL
-        if target.startswith("http://") or target.startswith("https://"):
-            parsed = urlparse(target)
-            target = parsed.netloc.split(":")[0]
-
         if cls._DOMAIN_PATTERN.match(target) or target in ("localhost", "target.local", "target.htb", "target.thm"):
-            cls._scope.allowed_domains.add(target)
+            scope_obj.allowed_domains.add(target)
             return True
 
         return False
+
+    @classmethod
+    def add_target(cls, target: str) -> bool:
+        """Add an IP, CIDR, or domain to authorized engagement scope."""
+        return cls._add_to_scope(cls._scope, target)
 
     @classmethod
     def remove_target(cls, target: str) -> bool:
@@ -134,35 +152,55 @@ class ScopeGuard:
         cls._scope = EngagementScope()
 
     @classmethod
-    def is_in_scope(cls, target: str) -> bool:
-        """Check if an IP or host is within authorized scope."""
+    def _check_in_scope(cls, scope_obj: EngagementScope, target: str) -> bool:
         target = target.strip().lower()
         if not target or target == "localhost":
             return True
 
+        # Remove URL scheme if user pasted full URL
+        if target.startswith("http://") or target.startswith("https://"):
+            try:
+                target = urlparse(target).netloc.split(":")[0]
+            except Exception:
+                pass
+
         # Check domain list
-        if target in cls._scope.allowed_domains:
+        if target in scope_obj.allowed_domains:
             return True
 
         # Check subdomains (e.g. *.target.com)
-        for dom in cls._scope.allowed_domains:
+        for dom in scope_obj.allowed_domains:
             if dom.startswith("*.") and target.endswith(dom[1:]):
                 return True
             if target.endswith("." + dom):
                 return True
 
-        # Check single IP
+        # Check single IP and CIDRs
         try:
             ip = ipaddress.ip_address(target)
-            if ip in cls._scope.allowed_ips:
+            if ip in scope_obj.allowed_ips:
                 return True
-            for cidr in cls._scope.allowed_cidrs:
+            for cidr in scope_obj.allowed_cidrs:
                 if ip in cidr:
                     return True
         except ValueError:
             pass
 
         return False
+
+    @classmethod
+    def is_in_scope(cls, target: str) -> bool:
+        """Check if an IP or host is within authorized scope."""
+        return cls._check_in_scope(cls._scope, target)
+
+    def is_target_in_scope(self, target: str) -> tuple[bool, str]:
+        """Validate target against active scope (instance or global)."""
+        scope_obj = self.current_scope if isinstance(self, ScopeGuard) else ScopeGuard._scope
+        if not scope_obj.enabled:
+            return True, "Scope guard disabled"
+        if ScopeGuard._check_in_scope(scope_obj, target):
+            return True, f"Target '{target}' is authorized in scope"
+        return False, f"Target '{target}' is not in authorized scope"
 
     @classmethod
     def extract_targets(cls, command: str) -> list[str]:

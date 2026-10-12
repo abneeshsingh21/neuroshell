@@ -110,7 +110,10 @@ class PayloadGenerator:
         )
 
     @classmethod
-    def generate_webshell(cls, shell_type: str = "php") -> str:
+    def generate_webshell(cls, shell_type: str = "php", param: str = "cmd") -> str:
         st = shell_type.lower()
         b64_str = _WEBSHELLS_B64.get(st, _WEBSHELLS_B64["php"])
-        return base64.b64decode(b64_str).decode("utf-8")
+        code = base64.b64decode(b64_str).decode("utf-8")
+        if param and param != "cmd":
+            code = code.replace("'cmd'", f"'{param}'").replace('"cmd"', f'"{param}"')
+        return code

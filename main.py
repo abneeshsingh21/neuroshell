@@ -69,8 +69,14 @@ class NeuroShell:
         self._last_error_output = ""
         self._last_command = ""
         self._running = True
-        self._command_count = 0
         self.mode = "Builder"
+        self.edition = os.environ.get("NEUROSHELL_EDITION", "standard").lower()
+        if "--cyber" in sys.argv:
+            self.edition = "cyber"
+        self.cyber_scope = None
+        self.target_graph = None
+        self.rag_engine = None
+        self.recursive_learner = None
 
         # Conversation memory for follow-ups
         self._conversation_context = []  # last N (input, command, result) tuples
@@ -246,6 +252,17 @@ class NeuroShell:
             self.update_manager = UpdateManager(NEUROSHELL_DIR / "release")
             self.git_ops = GitOps()
             self.deep_search = DeepSearch()
+
+            # ── Cyber & Intelligence Engines ─────────────
+            from intelligence.rag_engine import DualRAGEngine
+            from intelligence.recursive_learner import RecursiveLearner
+            from editions.cyber.scope_guard import ScopeGuard
+            from editions.cyber.target_graph import TargetGraph
+
+            self.rag_engine = DualRAGEngine()
+            self.recursive_learner = RecursiveLearner()
+            self.cyber_scope = ScopeGuard()
+            self.target_graph = TargetGraph()
 
             # ── Phase 7 Agentic Features ─────────────────
             from intelligence.coordinator import Coordinator
@@ -597,6 +614,8 @@ class NeuroShell:
                     env_name=env_name,
                     network=self.network.is_online if hasattr(self.network, "is_online") else True,
                 )
+                if getattr(self, "edition", "standard") == "cyber":
+                    prompt = "\033[1m\033[38;2;74;222;128m⌬ [CYBER] \033[0m" + prompt
 
                 if hasattr(self, "line_editor") and self.line_editor:
                     raw_input = self.line_editor.read_line(prompt)
@@ -2021,6 +2040,14 @@ class NeuroShell:
         """Execute shell command through safety pipeline."""
         self.tracer.add_event(cid, "safety_check")
 
+        # ── Scope Guard Check (Cyber Edition) ──
+        if getattr(self, "edition", "standard") == "cyber" and hasattr(self, 'cyber_scope') and self.cyber_scope:
+            in_scope, reason = self.cyber_scope.validate_command_string(command)
+            if not in_scope:
+                print(f"\n\033[38;2;248;113;113m❌ Scope Violation: {reason}\033[0m")
+                print("  \033[38;2;100;116;139mTarget is not in active scope. Use /scope add <target> to authorize.\033[0m\n")
+                return
+
         # ── Safe Degradation Checks ──
         has_ui = hasattr(self, 'ui') and self.ui
         has_safety = hasattr(self, 'safety') and self.safety
@@ -2105,6 +2132,32 @@ class NeuroShell:
                 print(result.stdout)
             if result.stderr:
                 print(f"Error: {result.stderr}")
+
+        # ── Recursive Learning & AutoDream Memory Loop ──
+        if hasattr(self, 'recursive_learner') and self.recursive_learner:
+            code = getattr(result, 'exit_code', getattr(result, 'returncode', 0))
+            if code != 0:
+                delta = self.recursive_learner.analyze_result(
+                    command=command,
+                    returncode=code,
+                    stdout=result.stdout or "",
+                    stderr=result.stderr or "",
+                )
+                if delta:
+                    card = self.recursive_learner.format_correction_card(delta)
+                    print("\n" + card)
+                    if sys.stdin.isatty() and os.environ.get("NEUROSHELL_TEST_MODE") != "1":
+                        try:
+                            choice = input("  Run corrected command? [y/N]: ").strip().lower()
+                            if choice in ("y", "yes"):
+                                self._handle_shell_command(delta.suggested_command, cid)
+                                self.recursive_learner.consolidate_success(
+                                    command, command, delta.suggested_command
+                                )
+                        except Exception:
+                            pass
+            else:
+                self.recursive_learner.consolidate_success(command, command, command)
 
         # Store in history
         if hasattr(self, 'history') and self.history:
@@ -2231,6 +2284,32 @@ class NeuroShell:
                 self.cpp_parser.parse(user_input)
             except Exception:
                 pass
+
+        # ---- Cyber & Standard Fast Intent Synthesizer ----
+        if getattr(self, "edition", "standard") == "cyber":
+            from editions.cyber.cyber_patterns import translate_cyber_intent
+            cyber_cmd = translate_cyber_intent(user_input)
+            if cyber_cmd:
+                print(f"\n\033[1m\033[38;2;74;222;128m⚡ Cyber Synthesis:\033[0m \033[1m\033[38;2;241;245;249m{cyber_cmd}\033[0m")
+                if self.ui.confirm("Execute cyber command?"):
+                    return self._handle_shell_command(cyber_cmd, cid)
+                return
+
+        from editions.standard.dev_patterns import translate_dev_intent
+        dev_cmd = translate_dev_intent(user_input)
+        if dev_cmd:
+            print(f"\n\033[1m\033[38;2;56;189;248m⚡ Dev Synthesis:\033[0m \033[1m\033[38;2;241;245;249m{dev_cmd}\033[0m")
+            if self.ui.confirm("Execute command?"):
+                return self._handle_shell_command(dev_cmd, cid)
+            return
+
+        if hasattr(self, 'recursive_learner') and self.recursive_learner:
+            cached_cmd = self.recursive_learner.get_cached_fix(user_input)
+            if cached_cmd:
+                print(f"\n\033[1m\033[38;2;192;132;252m🧠 AutoDream Recall (<0.1ms):\033[0m \033[1m\033[38;2;241;245;249m{cached_cmd}\033[0m")
+                if self.ui.confirm("Execute recalled command?"):
+                    return self._handle_shell_command(cached_cmd, cid)
+                return
 
         """Handle NL translation with entity enrichment and streaming."""
         self.tracer.add_event(cid, "translate_start")
@@ -2700,6 +2779,127 @@ class NeuroShell:
 
         if cmd in ("api-key", "apikey", "key"):
             self._handle_slash_api_key(args)
+            return True
+
+        if cmd in ("mode", "edition"):
+            if not arg_str:
+                cur = getattr(self, "edition", "standard")
+                self.ui.print_info(f"  Current edition: {cur.upper()}")
+                self.ui.print_info("  Usage: /mode [standard|cyber]")
+            elif arg_str.lower() in ("cyber", "redteam", "kali"):
+                self.edition = "cyber"
+                print("\n\033[1m\033[38;2;74;222;128m╭── 🛡️ NeuroShell Cyber Edition Activated ────────────────────────────╮\033[0m")
+                print("\033[38;2;74;222;128m│\033[0m Mode:        Kali Security & Penetration Testing Orchestrator")
+                print("\033[38;2;74;222;128m│\033[0m Engine:      Transparent WSL2 Kali Bridge / Native POSIX PTY")
+                print("\033[38;2;74;222;128m│\033[0m Scope Guard: ACTIVE")
+                print("\033[38;2;74;222;128m│\033[0m Features:    Payload Crafter, Staging Hub, Reverse Listeners")
+                print("\033[38;2;74;222;128m╰─────────────────────────────────────────────────────────────────────╯\033[0m\n")
+            elif arg_str.lower() in ("standard", "dev", "normal"):
+                self.edition = "standard"
+                print("\n\033[1m\033[38;2;56;189;248m╭── ⚡ NeuroShell Standard Developer Edition Activated ───────────────╮\033[0m")
+                print("\033[38;2;56;189;248m│\033[0m Mode:        Full-Stack Polyglot Developer Terminal")
+                print("\033[38;2;56;189;248m│\033[0m Languages:   Python, C++, Java, Rust, Go, TypeScript, C#, Dart")
+                print("\033[38;2;56;189;248m│\033[0m Features:    Zero-Config Code Runner, Git & GitHub Lifecycle")
+                print("\033[38;2;56;189;248m╰─────────────────────────────────────────────────────────────────────╯\033[0m\n")
+            return True
+
+        if cmd == "scope":
+            if not hasattr(self, 'cyber_scope') or not self.cyber_scope:
+                from editions.cyber.scope_guard import ScopeGuard
+                self.cyber_scope = ScopeGuard()
+            if not args or args[0] in ("show", "list", "status"):
+                print(self.cyber_scope.format_scope_status())
+            elif args[0] in ("add", "set") and len(args) > 1:
+                self.cyber_scope.add_target(args[1])
+                self.ui.print_info(f"  ✔ Target added to scope: {args[1]}")
+            elif args[0] == "clear":
+                self.cyber_scope.clear()
+                self.ui.print_info("  ✔ Engagement scope cleared.")
+            else:
+                self.ui.print_info("  Usage: /scope [show|add <target>|clear]")
+            return True
+
+        if cmd == "payload":
+            from editions.cyber.payloads.generator import PayloadGenerator
+            if not args:
+                self.ui.print_info("  Usage: /payload <bash|python|powershell|php|nc|socat> [lhost] [lport]")
+            else:
+                ptype = args[0]
+                lhost = args[1] if len(args) > 1 else "10.10.10.5"
+                lport = int(args[2]) if len(args) > 2 and args[2].isdigit() else 4444
+                res = PayloadGenerator.generate_reverse_shell(ptype, lhost=lhost, lport=lport)
+                if res.success:
+                    print(f"\n\033[1m\033[38;2;74;222;128m╭── 🎯 Generated {res.payload_type.upper()} Reverse Shell ─────────────────╮\033[0m")
+                    print(f"  \033[38;2;241;245;249m{res.raw_payload}\033[0m")
+                    print("\033[1m\033[38;2;74;222;128m╰─────────────────────────────────────────────────────────────────────╯\033[0m\n")
+                else:
+                    self.ui.print_error(f"  ❌ {res.error_message}")
+            return True
+
+        if cmd in ("stage", "staging"):
+            if not hasattr(self, "_staging_mgr"):
+                from editions.cyber.staging.http_server import StagingServerManager
+                self._staging_mgr = StagingServerManager()
+            if args and args[0] == "stop":
+                self._staging_mgr.stop()
+                self.ui.print_info("  ✔ Staging server stopped.")
+            else:
+                port = int(args[1]) if len(args) > 1 and args[1].isdigit() else (int(args[0]) if args and args[0].isdigit() else 8000)
+                directory = args[0] if args and not args[0].isdigit() and args[0] != "start" else os.getcwd()
+                self._staging_mgr.start(directory=directory, port=port)
+                self.ui.print_info(f"  ✔ Staging server active on port {port} (Root: {directory})")
+            return True
+
+        if cmd in ("listen", "listener"):
+            from editions.cyber.listeners.listener_daemon import ListenerManager
+            port = int(args[0]) if args and args[0].isdigit() else 4444
+            tool = args[1] if len(args) > 1 else "nc"
+            cmd_str = ListenerManager.build_listener_command(port, tool=tool)
+            print(f"\n\033[1m\033[38;2;74;222;128m╭── 👂 Listener Command (Port {port}) ─────────────────────────╮\033[0m")
+            print(f"  \033[1m\033[38;2;241;245;249m{cmd_str}\033[0m")
+            print("\033[1m\033[38;2;74;222;128m├─────────────────────────────────────────────────────────────────────┤\033[0m")
+            print("  TTY Upgrade Sequence:")
+            for s in ListenerManager.tty_upgrade_sequence()[:3]:
+                print(f"    • {s}")
+            print("\033[1m\033[38;2;74;222;128m╰─────────────────────────────────────────────────────────────────────╯\033[0m\n")
+            return True
+
+        if cmd in ("toolchain", "tools"):
+            from editions.cyber.wsl_bridge import WSLKaliBridge
+            print("\n" + WSLKaliBridge.format_toolchain_status())
+            return True
+
+        if cmd == "rag":
+            if not hasattr(self, "rag_engine") or not self.rag_engine:
+                from intelligence.rag_engine import DualRAGEngine
+                self.rag_engine = DualRAGEngine()
+            if not arg_str:
+                self.ui.print_info("  Usage: /rag <search query across GTFOBins, LOLBAS, and tools>")
+            else:
+                res = self.rag_engine.search(arg_str, top_k=5)
+                print("\n" + self.rag_engine.format_results(res))
+            return True
+
+        if cmd in ("train", "training"):
+            from scripts.train.kaggle_trainer import KaggleTrainer
+            sub = args[0] if args else "status"
+            if sub == "status":
+                st = KaggleTrainer.get_status()
+                self.ui.print_info(f"  📊 Kaggle Kernel Status: {st}")
+            elif sub == "auth":
+                ok, msg = KaggleTrainer.check_auth()
+                self.ui.print_info(f"  {'✔' if ok else '❌'} {msg}")
+            elif sub == "pull":
+                self.ui.print_info("  [*] Pulling trained ONNX model from Kaggle...")
+                KaggleTrainer.pull_model()
+            elif sub == "push":
+                self.ui.print_info("  [*] Dispatching GPU training kernel on Kaggle...")
+                KaggleTrainer.push_kernel()
+            elif sub == "generate":
+                samples = int(args[1]) if len(args) > 1 and args[1].isdigit() else 50000
+                KaggleTrainer.generate_corpus(samples=samples)
+            else:
+                self.ui.print_info("  Usage: /train [status|auth|pull|push|generate]")
             return True
 
         if cmd == "model":

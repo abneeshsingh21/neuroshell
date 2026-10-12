@@ -221,3 +221,73 @@ class WSLKaliBridge:
             return res.returncode == 0 and bool(res.stdout.strip())
         except Exception:
             return False
+
+    @classmethod
+    def audit_toolchain(cls, custom_tools: list[str] | None = None) -> dict[str, dict[str, Any]]:
+        """
+        Audit availability of key security tools across the active environment.
+        Returns a dict of tool metadata and installation status.
+        """
+        default_catalog = {
+            "nmap": ("Recon", "Network scanner & service discovery"),
+            "gobuster": ("Web", "Directory/DNS brute-force fuzzer"),
+            "ffuf": ("Web", "Fast web application fuzzer"),
+            "sqlmap": ("Database", "Automatic SQL injection detector"),
+            "hydra": ("Auth", "Network login brute-force engine"),
+            "hashcat": ("Cracking", "Advanced GPU password hash cracker"),
+            "john": ("Cracking", "John the Ripper password auditor"),
+            "nuclei": ("Vulnerability", "Template-based CVE vulnerability scanner"),
+            "nikto": ("Web", "Web server misconfiguration scanner"),
+            "tshark": ("Traffic", "Terminal Wireshark packet analyzer"),
+            "msfconsole": ("Exploitation", "Metasploit framework console"),
+            "searchsploit": ("Vulnerability", "Offline Exploit-DB command line archive"),
+            "socat": ("Pivoting", "Multipurpose bidirectional relay"),
+            "netcat": ("Pivoting", "Arbitrary TCP and UDP connections"),
+        }
+
+        tools_to_check = {t: default_catalog.get(t, ("Custom", "Security utility")) for t in custom_tools} if custom_tools else default_catalog
+        results = {}
+        for tool, (category, desc) in tools_to_check.items():
+            installed = cls.check_tool_installed(tool)
+            results[tool] = {
+                "installed": installed,
+                "category": category,
+                "description": desc,
+            }
+        return results
+
+    @classmethod
+    def format_toolchain_status(cls, audit: dict[str, dict[str, Any]] | None = None) -> str:
+        """Render a high-contrast ANSI status report of the security toolchain."""
+        if audit is None:
+            audit = cls.audit_toolchain()
+
+        distro = cls.detect_wsl_distro()
+        host_label = f"WSL2: {distro.distro_name}" if distro.available and cls.is_windows() else ("Native Linux" if cls.is_native_linux() else "Windows Host")
+
+        lines = [
+            f"\033[38;2;74;222;128m╭── 🛡️ NeuroShell Cyber Toolchain Audit ({host_label}) ───────────────╮\033[0m",
+            f"\033[38;2;74;222;128m│ \033[1m\033[38;2;241;245;249m{'TOOL':<14} {'CATEGORY':<15} {'STATUS':<12} {'DESCRIPTION':<35}\033[0m\033[38;2;74;222;128m│\033[0m",
+            f"\033[38;2;74;222;128m├─────────────────────────────────────────────────────────────────────────────┤\033[0m",
+        ]
+
+        installed_count = 0
+        for tool, data in audit.items():
+            installed = data["installed"]
+            if installed:
+                installed_count += 1
+                status = "\033[38;2;74;222;128m✔ INSTALLED\033[0m"
+            else:
+                status = "\033[38;2;251;191;36m✘ MISSING\033[0m  "
+
+            cat = data["category"]
+            desc = data["description"]
+            lines.append(
+                f"\033[38;2;74;222;128m│\033[0m {tool:<14} {cat:<15} {status} {desc:<35} \033[38;2;74;222;128m│\033[0m"
+            )
+
+        lines.append(f"\033[38;2;74;222;128m╰─────────────────────────────────────────────────────────────────────────────╯\033[0m")
+        pct = (installed_count / len(audit) * 100) if audit else 0
+        lines.append(f"  \033[1mReadiness: {installed_count}/{len(audit)} tools available ({pct:.0f}%)\033[0m\n")
+        return "\n".join(lines)
+

@@ -1,4 +1,13 @@
-"""NeuroShell Cyber Staging package."""
-from editions.cyber.staging.http_server import PullCommands, StagingServerManager
+"""
+NeuroShell Cyber — Delivery Staging Subsystem.
+Provides ephemeral HTTP staging server and pull command synthesis.
+"""
 
-__all__ = ["PullCommands", "StagingServerManager"]
+from editions.cyber.staging.http_server import PullCommands, StagingServerManager
+from editions.cyber.staging.pull_builder import PullCommandBuilder
+
+__all__ = [
+    "StagingServerManager",
+    "PullCommands",
+    "PullCommandBuilder",
+]

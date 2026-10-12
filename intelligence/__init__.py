@@ -14,9 +14,19 @@ from intelligence.safety import SafetyChecker
 from intelligence.script_generator import ScriptGenerator
 from intelligence.translator import Translator
 
+from intelligence.rag_engine import DualRAGEngine, RAGDocument, RAGSearchResult
+from intelligence.recursive_learner import (
+    CorrectionDelta,
+    FailureCategory,
+    RecursiveLearner,
+)
+
 __all__ = [
     "Translator", "SafetyChecker", "ErrorFixer",
     "Explainer", "Autocomplete", "PipelineBuilder",
     "FuzzyCorrector", "ChainBuilder", "ProjectDetector",
     "BookmarkManager", "AgentPlanner", "ScriptGenerator",
+    "DualRAGEngine", "RAGDocument", "RAGSearchResult",
+    "RecursiveLearner", "CorrectionDelta", "FailureCategory",
 ]
+
