@@ -181,6 +181,87 @@ Nmap done: 1 IP address (1 host up) scanned in 2.14 seconds
         assert "/admin" in formatted
         assert "/login" in formatted
 
+    def test_format_nuclei_output(self):
+        sample_nuclei = """
+[cve-2021-44228] [http] [critical] https://vuln.target.com/api/v1/login
+[git-config-exposure] [http] [medium] http://target.com/.git/config
+"""
+        formatted = CyberFormatter.format_nuclei(sample_nuclei)
+        assert "Nuclei Vulnerability Assessment" in formatted
+        assert "CRITICAL" in formatted
+        assert "cve-2021-44228" in formatted
+
+    def test_format_sqlmap_output(self):
+        sample_sqlmap = """
+[INFO] testing 'AND boolean-based blind - WHERE or HAVING clause'
+Parameter: id (GET)
+    Type: boolean-based blind
+    Title: AND boolean-based blind - WHERE or HAVING clause
+    Payload: id=1 AND 8821=8821
+back-end DBMS: MySQL >= 8.0
+"""
+        formatted = CyberFormatter.format_sqlmap(sample_sqlmap)
+        assert "SQL Injection Verification" in formatted
+        assert "MySQL" in formatted
+        assert "id" in formatted
+
+    def test_format_hashcat_output(self):
+        sample_hashcat = """
+e80b5017098950fc58aad83c8c14978e:password123
+85c3b4007d4b29bbbe5573ca1be2e737:admin2026
+"""
+        formatted = CyberFormatter.format_hashcat(sample_hashcat)
+        assert "Recovered Credentials" in formatted
+        assert "password123" in formatted
+        assert "admin2026" in formatted
+
+    def test_format_smart_error(self):
+        err_msg = "Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn"
+        card = CyberFormatter.format_smart_error("nmap -sS 10.10.10.5", err_msg, exit_code=1)
+        assert "Smart Error Diagnosis" in card
+        assert "DIAGNOSIS:" in card
+        assert "-Pn" in card
+
+    def test_target_graph_topology(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "topo.db"
+            tg = TargetGraph(db_path)
+            tg.add_host("10.10.10.5", hostname="target.htb")
+            tg.add_port("10.10.10.5", 80, "tcp", "http", "Apache 2.4.41")
+            tg.add_credential("10.10.10.5", "ssh", "root", "toor")
+            topo = tg.format_topology()
+            assert "Persistent Engagement Target Graph" in topo
+            assert "10.10.10.5" in topo
+            assert "80/tcp" in topo
+            assert "root" in topo
+
+    def test_target_graph_export_json_and_markdown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "topo.db"
+            report_md_path = Path(tmpdir) / "report.md"
+            report_json_path = Path(tmpdir) / "report.json"
+
+            tg = TargetGraph(db_path)
+            tg.add_host("192.168.1.10", hostname="dc01.local", os_name="Windows Server 2022")
+            tg.add_port("192.168.1.10", 445, "tcp", "microsoft-ds", "Windows SMB")
+            tg.add_web_path("192.168.1.10", 80, "/admin", status_code=200, title="Admin Portal")
+            tg.add_credential("192.168.1.10", "smb", "Administrator", "aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0", is_hash=True)
+
+            # Markdown report export
+            md = tg.export_markdown_report(report_md_path)
+            assert "NeuroShell Cyber — Security Assessment & Engagement Report" in md
+            assert "dc01.local" in md
+            assert "445/tcp" in md
+            assert "/admin" in md
+            assert "Administrator" in md
+            assert report_md_path.exists()
+
+            # JSON export
+            js = tg.export_json(report_json_path)
+            assert "192.168.1.10" in js
+            assert "dc01.local" in js
+            assert report_json_path.exists()
+
 
 class TestCyberPatterns:
     def test_plain_english_cyber_translations(self):
@@ -195,6 +276,15 @@ class TestCyberPatterns:
 
         cmd4 = translate_cyber_intent("find suid binaries")
         assert "find / -perm -4000" in cmd4
+
+        cmd5 = translate_cyber_intent("find subdomains for example.com")
+        assert "subfinder -d example.com" in cmd5
+
+        cmd6 = translate_cyber_intent("search exploits for apache 2.4")
+        assert "searchsploit apache 2.4" in cmd6
+
+        cmd7 = translate_cyber_intent("generate engagement report")
+        assert cmd7 == "/report"
 
 
 class TestZeroRegressionStandardEdition:

@@ -54,6 +54,29 @@ CYBER_PATTERNS: dict[str, str] = {
     r"(?:find|search\s+for)\s+suid\s+binaries": "find / -perm -4000 -type f -exec ls -la {} + 2>/dev/null",
     r"(?:find|check)\s+sudo\s+privileges": "sudo -l",
     r"(?:find|check)\s+internal\s+listening\s+ports": "ss -tulpn",
+
+    # ── Information Gathering & Subdomain Enumeration ──
+    r"(?:find|enumerate)\s+subdomains\s+(?:for|on)\s+(\S+)": "subfinder -d {0} || amass enum -d {0}",
+    r"(?:masscan|fast\s+syn\s+scan)\s+(\S+)": "masscan -p1-65535 {0} --rate=1000",
+    r"(?:whois|lookup\s+whois)\s+(?:for|on\s+)?(\S+)": "whois {0}",
+    r"(?:lookup\s+dns|dns\s+lookup)\s+(?:for|on\s+)?(\S+)": "dig +short {0} ANY",
+
+    # ── Vulnerability Search & CMS Assessment ──
+    r"(?:search\s+exploits?\s+for|searchsploit)\s+(.+)": "searchsploit {0}",
+    r"(?:scan|audit)\s+wordpress\s+(?:site\s+)?(?:on\s+)?(\S+)": "wpscan --url {0} --enumerate p,t,u",
+
+    # ── Sniffing, Spoofing & Network Interception ──
+    r"(?:sniff|capture)\s+packets?\s+(?:on\s+)?(\S+)": "tcpdump -i {0} -n",
+    r"(?:start\s+responder\s+on)\s+(\S+)": "responder -I {0} -dwv",
+
+    # ── Post-Exploitation & Active Directory ──
+    r"(?:dump\s+hashes|secretsdump)\s+(?:from|on)\s+(\S+)": "impacket-secretsdump {0}",
+    r"(?:kerberoast|get\s+user\s+spns)\s+(?:on|for)\s+(\S+)": "impacket-GetUserSPNs {0} -request",
+
+    # ── Reporting & Engagement Documentation ──
+    r"(?:generate|export|create)\s+(?:engagement\s+)?report": "/report",
+    r"(?:export|dump)\s+targets?\s+(?:to\s+)?json": "/report json",
+    r"(?:show|view|display)\s+(?:targets?|target\s+graph|topology)": "/target",
 }
 
 

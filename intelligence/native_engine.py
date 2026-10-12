@@ -563,3 +563,17 @@ class NativeEngine:
                 "explanation": "Queries external echo endpoint to find public IP.",
             },
         ]
+
+    def get_status(self) -> dict[str, Any]:
+        """Returns runtime status and diagnostic telemetry for on-device Native AI."""
+        return {
+            "is_initialized": self._is_initialized,
+            "onnx_available": self._session is not None,
+            "onnx_model_path": str(self.onnx_path) if self.onnx_path.exists() else "",
+            "canonical_actions_count": len(self._recipes),
+            "cached_vectors_count": len(self._cached_vectors),
+            "tokenizer_available": self._tokenizer is not None,
+            "models_dir": str(self.models_dir),
+            "os_name": self._os_name,
+        }
+

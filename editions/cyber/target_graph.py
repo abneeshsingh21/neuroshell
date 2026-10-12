@@ -205,3 +205,173 @@ class TargetGraph:
             "total_credentials": len(creds),
             "hosts": [h.ip for h in hosts],
         }
+
+    def get_web_paths(self) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            cursor = conn.execute("SELECT ip, port, path, status_code, title, timestamp FROM web_paths ORDER BY ip, port, path ASC;")
+            return [
+                {"ip": r[0], "port": r[1], "path": r[2], "status_code": r[3], "title": r[4], "timestamp": r[5]}
+                for r in cursor.fetchall()
+            ]
+
+    def get_findings(self) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            cursor = conn.execute("SELECT target, title, severity, description, tool, timestamp FROM findings ORDER BY timestamp DESC;")
+            return [
+                {"target": r[0], "title": r[1], "severity": r[2], "description": r[3], "tool": r[4], "timestamp": r[5]}
+                for r in cursor.fetchall()
+            ]
+
+    def export_json(self, filepath: str | Path | None = None) -> str:
+        """Export all discovered entities and security findings as JSON."""
+        import json
+        data = {
+            "version": "1.0",
+            "summary": self.get_summary(),
+            "hosts": [
+                {"ip": h.ip, "hostname": h.hostname, "os_name": h.os_name, "status": h.status, "notes": h.notes}
+                for h in self.get_hosts()
+            ],
+            "ports": [
+                {"ip": p.ip, "port": p.port, "protocol": p.protocol, "service": p.service, "version": p.version, "banner": p.banner}
+                for p in self.get_ports()
+            ],
+            "web_paths": self.get_web_paths(),
+            "credentials": [
+                {"target_ip": c.target_ip, "service": c.service, "username": c.username, "secret": c.secret, "is_hash": c.is_hash}
+                for c in self.get_credentials()
+            ],
+            "findings": self.get_findings(),
+        }
+        json_str = json.dumps(data, indent=2)
+        if filepath:
+            Path(filepath).write_text(json_str, encoding="utf-8")
+        return json_str
+
+    def export_markdown_report(self, output_path: str | Path | None = None) -> str:
+        """Generate an executive security assessment report in Markdown."""
+        hosts = self.get_hosts()
+        ports = self.get_ports()
+        creds = self.get_credentials()
+        web_paths = self.get_web_paths()
+        findings = self.get_findings()
+
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        report = [
+            "# 🛡️ NeuroShell Cyber — Security Assessment & Engagement Report",
+            "",
+            f"**Generated:** {now_str}  ",
+            "**Tool:** NeuroShell Cyber (AI-Native Terminal & Reconnaissance Orchestrator)  ",
+            "",
+            "---",
+            "",
+            "## 1. Executive Summary",
+            "",
+            f"- **Total Discovered Hosts:** {len(hosts)}",
+            f"- **Total Open Services:** {len(ports)}",
+            f"- **Total Web Endpoints Discovered:** {len(web_paths)}",
+            f"- **Captured Credentials:** {len(creds)}",
+            f"- **Documented Findings:** {len(findings)}",
+            "",
+            "---",
+            "",
+            "## 2. Discovered Target Topology",
+            "",
+            "| Host IP | Hostname | OS / Banner | Status | Open Ports & Services |",
+            "| :--- | :--- | :--- | :--- | :--- |",
+        ]
+
+        if not hosts:
+            report.append("| *None* | - | - | - | - |")
+        else:
+            for h in hosts:
+                h_ports = [p for p in ports if p.ip == h.ip]
+                ports_desc = ", ".join(f"{p.port}/{p.protocol} ({p.service})" for p in h_ports) or "None"
+                report.append(f"| `{h.ip}` | {h.hostname or '-'} | {h.os_name or '-'} | {h.status} | {ports_desc} |")
+
+        report.extend([
+            "",
+            "---",
+            "",
+            "## 3. Web Application Attack Surface",
+            "",
+            "| Host IP | Port | Path | Status Code | Title / Response |",
+            "| :--- | :--- | :--- | :--- | :--- |",
+        ])
+
+        if not web_paths:
+            report.append("| *None* | - | - | - | - |")
+        else:
+            for wp in web_paths:
+                report.append(f"| `{wp['ip']}` | {wp['port']} | `{wp['path']}` | {wp['status_code']} | {wp['title'] or '-'} |")
+
+        report.extend([
+            "",
+            "---",
+            "",
+            "## 4. Compromised & Captured Credentials",
+            "",
+            "| Target IP | Service | Username | Secret / Hash | Type |",
+            "| :--- | :--- | :--- | :--- | :--- |",
+        ])
+
+        if not creds:
+            report.append("| *None* | - | - | - | - |")
+        else:
+            for c in creds:
+                ctype = "HASH" if c.is_hash else "PLAINTEXT"
+                report.append(f"| `{c.target_ip}` | {c.service} | **{c.username}** | `{c.secret}` | {ctype} |")
+
+        report.extend([
+            "",
+            "---",
+            "",
+            "## 5. Security Recommendations & Hardening",
+            "",
+            "1. **Surface Reduction:** Restrict externally accessible administrative ports and disable non-essential services.",
+            "2. **Patch Management:** Immediately upgrade vulnerable server packages identified during reconnaissance.",
+            "3. **Credential Hygiene:** Rotate all compromised accounts, enforce strong multifactor authentication (MFA), and deprecate legacy hash formats.",
+            "4. **Continuous Monitoring:** Implement rate limiting and intrusion detection against automated fuzzing and injection attempts.",
+            "",
+            "*Report compiled automatically by NeuroShell Cyber.*",
+        ])
+
+        content = "\n".join(report)
+        if output_path:
+            Path(output_path).write_text(content, encoding="utf-8")
+        return content
+
+    def format_topology(self) -> str:
+        """Render the complete engagement target topology into a rich ANSI table."""
+        hosts = self.get_hosts()
+        ports = self.get_ports()
+        creds = self.get_credentials()
+
+        if not hosts:
+            return "\n  \033[90m[i] Target graph is currently empty. Run reconnaissance scans to automatically discover hosts.\033[0m\n"
+
+        lines = [
+            "\n  \033[1m\033[38;2;74;222;128m╭── 🎯 Persistent Engagement Target Graph ─────────────────────────────╮\033[0m",
+            f"  \033[38;2;74;222;128m│\033[0m \033[1mHosts: {len(hosts)} | Open Services: {len(ports)} | Credentials: {len(creds)}\033[0m",
+            "  \033[38;2;74;222;128m├──────────────────────────────────────────────────────────────────────┤\033[0m",
+        ]
+
+        for host in hosts:
+            h_ports = [p for p in ports if p.ip == host.ip]
+            host_label = f"{host.ip} ({host.hostname})" if host.hostname else host.ip
+            lines.append(f"  \033[38;2;74;222;128m│\033[0m \033[1m\033[37m🖥️  {host_label:<32}\033[0m [Status: \033[32m{host.status}\033[0m]")
+            for p in h_ports:
+                svc_desc = f"{p.service} {p.version}".strip() or "unknown"
+                lines.append(f"  \033[38;2;74;222;128m│\033[0m   \033[36m↳ {p.port}/{p.protocol:<4}\033[0m \033[32mopen\033[0m \033[90m{svc_desc:<35}\033[0m")
+
+        if creds:
+            lines.append("  \033[38;2;74;222;128m├──────────────────────────────────────────────────────────────────────┤\033[0m")
+            lines.append("  \033[38;2;74;222;128m│\033[0m \033[1m\033[33m🔑 Captured Credentials:\033[0m")
+            for c in creds:
+                tag = "[HASH]" if c.is_hash else "[PASS]"
+                lines.append(f"  \033[38;2;74;222;128m│\033[0m   \033[33m{c.target_ip}\033[0m (\033[36m{c.service}\033[0m) -> \033[1m{c.username}\033[0m : \033[90m{c.secret}\033[0m {tag}")
+
+        lines.append("  \033[38;2;74;222;128m╰──────────────────────────────────────────────────────────────────────╯\033[0m\n")
+        return "\n".join(lines)

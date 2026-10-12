@@ -1,0 +1,22 @@
+Source: neuroshell-cyber
+Section: utils
+Priority: optional
+Maintainer: Abneesh Singh <abneesh@neuroshell.dev>
+Build-Depends: debhelper-compat (= 13), cmake (>= 3.20), python3-dev (>= 3.10)
+Standards-Version: 4.6.2
+Homepage: https://github.com/abneeshsingh21/neuroshell
+Vcs-Git: https://github.com/abneeshsingh21/neuroshell.git
+Vcs-Browser: https://github.com/abneeshsingh21/neuroshell
+
+Package: neuroshell-cyber
+Architecture: any
+Version: 5.18.0
+Depends: ${misc:Depends}, ${shlibs:Depends}, python3 (>= 3.10)
+Recommends: nmap, gobuster, nuclei, sqlmap, hashcat, john, nikto, wpscan, seclists
+Suggests: metasploit-framework, burpsuite, wireshark
+Description: AI-Native Offensive Security Terminal & Kali Linux Orchestrator
+ NeuroShell Cyber transforms traditional penetration testing workflows with
+ on-device AI intelligence (EmbeddingGemma 2 270M INT8 ONNX), an engagement
+ scope guard (CIDR whitelist protection), persistent SQLite WAL target graph,
+ autonomous payload crafter, staging delivery server, TTY shell auto-stabilization,
+ and real-time ANSI vulnerability cards for Nmap, Gobuster, FFuF, Nuclei, and SQLmap.

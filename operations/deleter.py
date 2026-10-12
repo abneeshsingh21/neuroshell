@@ -175,6 +175,9 @@ class AssetDeleter:
         # Check direct path (relative or absolute)
         candidate = (self.cwd / raw).resolve() if not os.path.isabs(raw) else Path(raw).resolve()
         if candidate.exists():
+            if self.is_protected(candidate):
+                items.append(DeleteItem(path=candidate, is_dir=candidate.is_dir(), size_bytes=0))
+                return items
             if candidate.is_dir():
                 total_sz = 0
                 try:
@@ -202,6 +205,9 @@ class AssetDeleter:
         for mp in matched_paths:
             p = Path(mp)
             is_d = p.is_dir()
+            if self.is_protected(p):
+                items.append(DeleteItem(path=p, is_dir=is_d, size_bytes=0))
+                continue
             sz = 0
             try:
                 if not is_d:

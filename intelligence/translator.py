@@ -774,7 +774,12 @@ class Translator:
         except Exception:
             pass
 
-        # 4. AI MODEL TRANSLATION (Primary Intelligence)
+        # 3.9 High-confidence Native Neural Core (EmbeddingGemma 2 on-device vector match, sub-5ms)
+        native_match = self._try_native_engine(user_input_clean)
+        if native_match and native_match.confidence >= 0.85:
+            return native_match
+
+        # 4. AI MODEL TRANSLATION (Primary Cloud / SLM Intelligence)
         # Dynamically synthesizes tailored commands based on context, OS, language, and tools
         llm_result = None
         if hasattr(self, "llm") and self.llm:
@@ -796,8 +801,7 @@ class Translator:
         if local:
             return local
 
-        # 5.3 High-confidence Native Neural Core (EmbeddingGemma 2 vector match)
-        native_match = self._try_native_engine(user_input_clean)
+        # 5.3 Medium-confidence Native Neural Core fallback (0.75 <= conf < 0.85)
         if native_match and native_match.confidence >= 0.75:
             return native_match
 

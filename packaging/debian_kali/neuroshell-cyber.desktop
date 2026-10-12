@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=NeuroShell Cyber
+GenericName=AI-Native Security Terminal
+Comment=AI-Native Offensive Security & Penetration Testing Orchestrator
+Exec=neuroshell --cyber
+Icon=neuroshell-cyber
+Terminal=true
+Type=Application
+Categories=01-info-gathering;02-vulnerability-analysis;03-webapp-analysis;05-password-attacks;08-exploitation-tools;System;TerminalEmulator;
+Keywords=kali;nmap;nuclei;gobuster;cyber;pentest;ai;terminal;redteam;
+StartupNotify=true
+X-Kali-Package=neuroshell-cyber

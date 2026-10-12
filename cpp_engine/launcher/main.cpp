@@ -1803,6 +1803,10 @@ public:
         CheckForUpdatesAsync();
     }
 
+    void SetCyberMode(bool cyber) {
+        isCyberEdition = cyber;
+    }
+
     // Cryptographically verified self-update (v5.9+).
     // Replaces the old curl|bash / blind-download flow with the signed
     // pipeline in update_installer.hpp: Ed25519-signed manifest → policy
@@ -5313,6 +5317,14 @@ void NeuroShellPosixSignalHandler(int sig, siginfo_t* info, void* /*ucontext*/) 
 #endif
 
 int main(int argc, char* argv[]) {
+    bool cyberMode = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--cyber" || a == "-cyber") {
+            cyberMode = true;
+        }
+    }
+
     if (argc >= 2) {
         std::string arg1 = argv[1];
         if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
@@ -5327,6 +5339,7 @@ int main(int argc, char* argv[]) {
                 cmd += argv[i];
             }
             EnterpriseTerminalHost host;
+            if (cyberMode) host.SetCyberMode(true);
             host.ExecuteCommand(cmd, false);
             return 0;
         }
@@ -5339,6 +5352,7 @@ int main(int argc, char* argv[]) {
             std::cout << "⌬ NeuroShell v" << NEUROSHELL_VERSION << " — Tier-1 Enterprise Flagship AI Terminal\n\n";
             std::cout << "Usage: neuroshell [options] [command]\n\n";
             std::cout << "Options:\n";
+            std::cout << "  --cyber           Launch directly in NeuroShell Cyber Edition\n";
             std::cout << "  init zsh          Output Zsh semantic shell integration\n";
             std::cout << "  init bash         Output Bash semantic shell integration\n";
             std::cout << "  init fish         Output Fish semantic shell integration\n";
@@ -5377,6 +5391,9 @@ int main(int argc, char* argv[]) {
     }
 
     EnterpriseTerminalHost host;
+    if (cyberMode) {
+        host.SetCyberMode(true);
+    }
     host.Run();
     return 0;
 }
