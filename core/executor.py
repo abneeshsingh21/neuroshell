@@ -965,9 +965,9 @@ class ShellExecutor:
         """Build platform-specific shell command."""
         if self._system == "Windows":
             lower = command.strip().lower()
-            # If the command already explicitly invokes a shell, execute it as a raw string
+            # If the command already explicitly invokes a shell or WSL, execute it as a raw string
             # to prevent subprocess.Popen quote mangling and double-evaluation.
-            if lower.startswith("powershell ") or lower.startswith("pwsh ") or lower.startswith("cmd "):
+            if lower.startswith("powershell ") or lower.startswith("pwsh ") or lower.startswith("cmd ") or lower.startswith("wsl ") or lower.startswith("wsl.exe "):
                 return (command, None)
 
             if shell == "powershell" or shell == "pwsh":

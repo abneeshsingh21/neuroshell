@@ -11,6 +11,7 @@ Usage:
 
 import atexit
 import os
+import platform
 import shlex
 import signal
 import sys
@@ -2091,8 +2092,14 @@ class NeuroShell:
                 else:
                     print(f"  ⚠️ Warning: {safety.reason}. Skipping for safety in degraded mode.")
                     return
-        # Dependency check
-        if hasattr(self, 'dep_resolver') and self.dep_resolver:
+        # Dependency check (skip for cyber tools if WSL Kali bridge is available)
+        skip_dep = False
+        if platform.system().lower() == "windows":
+            from editions.cyber.wsl_bridge import WSLKaliBridge
+            if WSLKaliBridge.detect_wsl_distro().available:
+                skip_dep = any(c in command.lower() for c in ("nmap", "gobuster", "ffuf", "nuclei", "sqlmap", "hashcat", "john", "nikto", "wpscan", "masscan", "hydra"))
+
+        if not skip_dep and hasattr(self, 'dep_resolver') and self.dep_resolver:
             dep_issues = self.dep_resolver.check_command(command)
             for issue in dep_issues:
                 if not issue.is_available:
@@ -2120,11 +2127,43 @@ class NeuroShell:
             capture = safety.risk_level == self._RiskLevel.CAUTION
 
         is_cyber = getattr(self, "edition", "standard") == "cyber"
-        cyber_structured_cmds = ("nmap", "gobuster", "ffuf", "nuclei", "sqlmap", "hashcat", "john", "nikto", "wpscan", "masscan")
+        cyber_structured_cmds = (
+            "nmap", "gobuster", "ffuf", "nuclei", "sqlmap", "hashcat", "john",
+            "nikto", "wpscan", "masscan", "hydra", "aircrack-ng", "tcpdump",
+            "wireshark", "tshark", "subfinder", "amass", "enum4linux", "smbclient",
+            "crackmapexec", "responder", "msfconsole", "searchsploit", "dirb",
+            "dirbuster", "whatweb", "wafw00f", "arp-scan"
+        )
         is_cyber_tool = any(c in command.lower() for c in cyber_structured_cmds)
 
+        cmd_to_execute = command
+        if platform.system().lower() == "windows":
+            import shutil
+            from editions.cyber.wsl_bridge import WSLKaliBridge
+            distro_info = WSLKaliBridge.detect_wsl_distro()
+            if distro_info.available:
+                cmd_parts = command.strip().split()
+                first_word = cmd_parts[0].lower() if cmd_parts else ""
+                win_native_cmds = {
+                    "cmd", "powershell", "pwsh", "dir", "cd", "cls", "echo", "type",
+                    "del", "copy", "ipconfig", "ping", "netstat", "python", "git", "gh",
+                    "ssh", "nsh", "mstsc", "explorer"
+                }
+                if first_word not in win_native_cmds and (is_cyber_tool or (is_cyber and not shutil.which(first_word))):
+                    target_distro = distro_info.distro_name
+                    escaped_cmd = command.replace('"', '\\"')
+                    cmd_to_execute = f'wsl.exe -d {target_distro} -- bash -c "{escaped_cmd}"'
+                    if has_ui:
+                        self.ui.print_info(f"  ⚡ [WSL2 Bridge] Routing via {target_distro}...")
+            elif is_cyber_tool:
+                cmd_parts = command.strip().split()
+                first_word = cmd_parts[0].lower() if cmd_parts else ""
+                if not shutil.which(first_word) and has_ui:
+                    self.ui.print_info(f"  ⚠️ Security tool '{first_word}' is not installed on Windows host or in WSL.")
+                    self.ui.print_info(f"  💡 Quick Install: 'winget install Insecure.Nmap' or 'wsl --install -d kali-linux'")
+
         result = self.executor.execute(
-            command,
+            cmd_to_execute,
             stream_callback=lambda line: print(line) if not (is_cyber and is_cyber_tool) else None,
             capture_snapshot=capture,
         )

@@ -891,6 +891,14 @@ public:
             } else if (cmdFirst == "npn") {
                 rep.detail = "Typo detected: 'npn' instead of 'npm'.";
                 rep.autoFixCmd = "npm" + (lastCmd.size() > 3 ? lastCmd.substr(3) : "");
+            } else if (cmdFirst == "nmap") {
+                rep.category = "Security Tool Not Installed";
+                rep.detail = "Nmap is not installed on Windows or in WSL. Install via 'winget install Insecure.Nmap' or 'wsl --install -d kali-linux'.";
+                rep.autoFixCmd = "winget install Insecure.Nmap";
+            } else if (cmdFirst == "gobuster") {
+                rep.category = "Security Tool Not Installed";
+                rep.detail = "Gobuster is not installed. Install via WSL Kali ('sudo apt install gobuster') or 'go install github.com/OJ/gobuster/v3@latest'.";
+                rep.autoFixCmd = "wsl -d kali-linux sudo apt install -y gobuster";
             } else {
                 rep.detail = "'" + cmdFirst + "' is not recognized. Check spelling or install it.";
             }
@@ -1239,6 +1247,174 @@ public:
 };
 
 // ═══════════════════════════════════════════════════════════
+// Transparent WSL2 Kali & Linux Security Toolchain Bridge
+// ═══════════════════════════════════════════════════════════
+
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+class WSLBridge {
+public:
+    struct DistroInfo {
+        bool available = false;
+        std::string distroName;
+        bool isKali = false;
+    };
+
+    static DistroInfo& GetDistro() {
+        static DistroInfo cached;
+        static bool initialized = false;
+        if (initialized) return cached;
+        initialized = true;
+
+        wchar_t sysDir[MAX_PATH];
+        if (GetSystemDirectoryW(sysDir, MAX_PATH) > 0) {
+            std::filesystem::path wslPath = std::filesystem::path(sysDir) / L"wsl.exe";
+            if (!std::filesystem::exists(wslPath)) {
+                cached.available = false;
+                return cached;
+            }
+        }
+
+        SECURITY_ATTRIBUTES sa;
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+        sa.lpSecurityDescriptor = NULL;
+
+        HANDLE hRead = NULL, hWrite = NULL;
+        if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return cached;
+        SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+        STARTUPINFOA si;
+        PROCESS_INFORMATION pi;
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        si.hStdOutput = hWrite;
+        si.hStdError = hWrite;
+        si.dwFlags |= STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        ZeroMemory(&pi, sizeof(pi));
+
+        char cmd[] = "wsl.exe -l -q";
+        if (CreateProcessA(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            CloseHandle(hWrite);
+            WaitForSingleObject(pi.hProcess, 3000);
+            char buf[4096];
+            DWORD bytesRead = 0;
+            std::string raw;
+            while (ReadFile(hRead, buf, sizeof(buf) - 1, &bytesRead, NULL) && bytesRead > 0) {
+                raw.append(buf, bytesRead);
+            }
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            CloseHandle(hRead);
+
+            std::string cleaned;
+            for (char c : raw) {
+                if (c != '\0' && c != '\r') cleaned += c;
+            }
+
+            std::stringstream ss(cleaned);
+            std::string line;
+            std::vector<std::string> distros;
+            while (std::getline(ss, line)) {
+                size_t start = line.find_first_not_of(" \t\r\n");
+                size_t end = line.find_last_not_of(" \t\r\n");
+                if (start != std::string::npos && end != std::string::npos) {
+                    std::string d = line.substr(start, end - start + 1);
+                    if (!d.empty()) distros.push_back(d);
+                }
+            }
+
+            if (!distros.empty()) {
+                cached.available = true;
+                for (const auto& d : distros) {
+                    std::string dl = d;
+                    std::transform(dl.begin(), dl.end(), dl.begin(), ::tolower);
+                    if (dl.find("kali") != std::string::npos) {
+                        cached.distroName = d;
+                        cached.isKali = true;
+                        return cached;
+                    }
+                }
+                cached.distroName = distros[0];
+                cached.isKali = false;
+            }
+        } else {
+            CloseHandle(hWrite);
+            CloseHandle(hRead);
+        }
+        return cached;
+    }
+
+    static bool ShouldRouteThroughWSL(const std::string& cmd, bool isCyberMode) {
+        auto& distro = GetDistro();
+        if (!distro.available) return false;
+
+        std::string lower = cmd;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        size_t s = lower.find_first_not_of(" \t\r\n");
+        if (s != std::string::npos) lower = lower.substr(s);
+        if (lower.empty()) return false;
+
+        if (lower.rfind("wsl", 0) == 0) return false;
+
+        std::string firstWord = lower.substr(0, lower.find_first_of(" \t|;&"));
+
+        const std::unordered_set<std::string> winNative = {
+            "cmd", "powershell", "pwsh", "dir", "cd", "cls", "clear", "type", "del", "copy",
+            "move", "ren", "md", "rd", "mkdir", "rmdir", "echo", "set", "path", "ipconfig",
+            "net", "netstat", "route", "ping", "tracert", "nslookup", "tasklist", "taskkill",
+            "start", "explorer", "code", "notepad", "git", "gh", "cargo", "npm", "node", "pip",
+            "python", "winget", "where", "findstr", "mstsc", "ssh", "scp", "sftp", "nsh"
+        };
+        if (winNative.count(firstWord)) return false;
+
+        const std::vector<std::string> cyberTools = {
+            "nmap", "gobuster", "ffuf", "nuclei", "sqlmap", "hashcat", "john", "nikto",
+            "wpscan", "masscan", "hydra", "medusa", "aircrack-ng", "netcat", "nc", "socat",
+            "tcpdump", "wireshark", "tshark", "subfinder", "amass", "assetfinder", "enum4linux",
+            "smbclient", "crackmapexec", "responder", "impacket-", "msfconsole", "msfvenom",
+            "searchsploit", "dirb", "dirbuster", "recon-ng", "whatweb", "wafw00f", "arp-scan",
+            "bettercap", "hping3", "dnsrecon", "dnsenum", "fierce", "theharvester", "commix",
+            "metasploit", "exiftool", "volatility", "binwalk", "radare2", "ghidra", "gdb"
+        };
+        for (const auto& tool : cyberTools) {
+            if (firstWord == tool || lower.find(tool) != std::string::npos) return true;
+        }
+
+        if (isCyberMode) {
+            char pathBuf[MAX_PATH];
+            if (SearchPathA(NULL, firstWord.c_str(), ".exe", MAX_PATH, pathBuf, NULL) == 0 &&
+                SearchPathA(NULL, firstWord.c_str(), ".cmd", MAX_PATH, pathBuf, NULL) == 0 &&
+                SearchPathA(NULL, firstWord.c_str(), ".bat", MAX_PATH, pathBuf, NULL) == 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static std::string WrapForWSL(const std::string& cmd) {
+        auto& distro = GetDistro();
+        if (!distro.available) return cmd;
+
+        std::string escaped;
+        escaped.reserve(cmd.size() + 16);
+        for (char c : cmd) {
+            if (c == '"') escaped += "\\\"";
+            else escaped += c;
+        }
+
+        std::string wslCmd = "wsl.exe";
+        if (!distro.distroName.empty()) {
+            wslCmd += " -d " + distro.distroName;
+        }
+        wslCmd += " -- bash -c \"" + escaped + "\"";
+        return wslCmd;
+    }
+};
+#endif
+
+// ═══════════════════════════════════════════════════════════
 // Cross-Platform Process Spawner & Job Control
 // ═══════════════════════════════════════════════════════════
 
@@ -1496,7 +1672,9 @@ public:
             }
         }
 
-        if (ShouldUsePowerShell(trimmedCmd)) {
+        if (trimmedCmd.rfind("wsl", 0) == 0 || trimmedCmd.rfind("wsl.exe", 0) == 0) {
+            cmdLine = trimmedCmd;
+        } else if (ShouldUsePowerShell(trimmedCmd)) {
             if (trimmedCmd.rfind("powershell", 0) == 0 || trimmedCmd.rfind("pwsh", 0) == 0) {
                 cmdLine = trimmedCmd;
             } else {
@@ -5190,7 +5368,8 @@ public:
             }
         }
 
-        // 5.9. Cyber Structured Output Interception
+        // 5.9. Cyber Structured Output Interception & WSL2 Kali Bridge
+        std::string originalCyberCmd = commandToRun;
         std::string cmdLower = commandToRun;
         std::transform(cmdLower.begin(), cmdLower.end(), cmdLower.begin(), ::tolower);
         bool isCyberTool = isCyberEdition && (
@@ -5210,6 +5389,14 @@ public:
             cmdLower.find("subfinder") != std::string::npos
         );
 
+#if defined(NEUROSHELL_PLATFORM_WINDOWS)
+        if (WSLBridge::ShouldRouteThroughWSL(commandToRun, isCyberEdition)) {
+            auto& distro = WSLBridge::GetDistro();
+            std::cout << "  " << C_CYAN << "⚡ [WSL2 Bridge] Routing via " << C_BOLD << distro.distroName << C_RESET << "...\n\n";
+            commandToRun = WSLBridge::WrapForWSL(commandToRun);
+        }
+#endif
+
         // 6. Cross-Platform Process Runner — DLP masking is applied as a live
         // line filter so secrets never reach the viewport unredacted
         // (previously raw output was displayed and only the record was masked).
@@ -5221,7 +5408,7 @@ public:
 
         // If cyber structured tool output was captured, format dynamically via IPC CyberFormatter
         if (isCyberTool && !execRes.output.empty()) {
-            std::string formatted = ipcClient.FormatCyberOutput(commandToRun, execRes.output);
+            std::string formatted = ipcClient.FormatCyberOutput(originalCyberCmd, execRes.output);
             if (!formatted.empty() && formatted != execRes.output) {
                 std::cout << formatted << "\n";
             } else {

@@ -269,3 +269,6 @@ class ScopeGuard:
             )
 
         return True, "All targets verified in scope"
+
+    # Alias for API compatibility
+    validate_command_string = validate_command

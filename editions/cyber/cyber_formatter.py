@@ -390,12 +390,12 @@ class CyberFormatter:
             root_cause = "Insufficient VRAM or system RAM."
             suggestion = "Reduce batch size or use CPU offloading / INT8 quantization."
             fix_cmd = "export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
-        elif "command not found" in err_lower:
-            pkg = error_text.split(":")[0].strip() if ":" in error_text else command.split()[0]
-            diagnosis = f"Binary '{pkg}' is not installed on PATH."
-            root_cause = "Missing dependency package."
-            suggestion = f"Install the package via your system package manager."
-            fix_cmd = f"sudo apt update && sudo apt install -y {pkg}"
+        elif "command not found" in err_lower or "not recognized as an internal or external command" in err_lower:
+            pkg = error_text.split(":")[0].strip() if ":" in error_text else (command.split()[0] if command else "tool")
+            diagnosis = f"Binary '{pkg}' is not installed on PATH or in WSL."
+            root_cause = "Missing dependency package in active environment."
+            suggestion = f"Install the package via system package manager or WSL Kali."
+            fix_cmd = f"wsl -d kali-linux sudo apt update && wsl -d kali-linux sudo apt install -y {pkg}"
 
         out: list[str] = [
             f"\n  {cls.C_BOLD}{cls.C_RED}╭── ❌ Smart Error Diagnosis (Exit Code {exit_code}) ────────────────────────╮{cls.C_RESET}",
