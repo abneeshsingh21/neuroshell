@@ -1509,6 +1509,19 @@ class NeuroShell:
             self.tracer.end_trace(cid)
             return
 
+        if lower == "nsh" or lower.startswith("nsh "):
+            import shlex
+            from core.remote_executor import cli_main
+            try:
+                argv = shlex.split(user_input)[1:]
+                cli_main(argv)
+            except Exception as e:
+                self.ui.print_error(f"  Remote executor error: {e}")
+            total_ms = (time.time() - start_time) * 1000
+            self.metrics.record_latency("total_pipeline", total_ms)
+            self.tracer.end_trace(cid)
+            return
+
         # ── SmartOpen: intercept explicit desktop app / URL / folder opens ──
         _SMART_PREFIXES = ("open ", "launch ", "browse ", "navigate to ", "go to ")
         _POWER_WORDS   = ("lock", "restart", "reboot", "shutdown", "shut down",
